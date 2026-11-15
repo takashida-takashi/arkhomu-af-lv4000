@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         はこホム AF Lv4000予測
 // @namespace    arkhomu-af-lv4000
-// @version      2.0.16
+// @version      2.0.17
 // @description  AFの現在値とLv4000予測値を並べて表示し、読み込まれた一覧を絞り込みます。
 // @match        https://arkhomu.com/*
 // @run-at       document-start
@@ -17,7 +17,7 @@
   // Each preset has a separate key, so saving from one tab cannot replace other names.
   const presetPrefix = "hakoAf4000:userscript:";
   const modules = {
-    hakoAfUserscriptVersion: "2.0.16",
+    hakoAfUserscriptVersion: "2.0.17",
     hakoAfUpdateManaged: document.currentScript?.dataset.hakoAfUpdateManaged === "true",
     hakoAfPresetStorage: {
       get() {
@@ -1622,13 +1622,15 @@ function mount() {
       const rows = [];
       const nativeCategories = new Set();
       const hasHatcheryTimer = homeTimers.some(task => task.id === "hatchery");
+      const guildBossDefeated = homeChecked.has("guildBoss") && !homeTimers.some(task => task.id === "guildBoss");
       for (const row of document.querySelectorAll("#fx-todo .fx-todo__list > li,[aria-label='国のお知らせ'] li")) {
         const message = row.textContent.trim().replace(/\s+/g, " ").replace(/[×›▽]\s*$/g, "").trim();
         const link = row.querySelector("a[href]");
         if (/ギルドダンジョン/.test(message) || /^\/(?:f\/)?guild-dungeons(?:\/|$)/.test(link?.pathname ?? "")) continue;
         const isNation = row.closest("[aria-label='国のお知らせ']") && !homeText.guildBoss.test(message);
         const id = classify(message, isNation ? "nation" : null);
-        if (!withinFilter(id)) {
+        const staleBossReminder = id === "guildBoss" && guildBossDefeated && /未討伐|未実行|未参加|未確認/.test(message);
+        if (!withinFilter(id) || staleBossReminder) {
           row.setAttribute("data-ha4-hidden-alert", "");
           nextHidden.add(row);
         } else if (message && !(id === "hatchery" && hasHatcheryTimer) &&
@@ -1817,6 +1819,8 @@ function mount() {
   const verifiedAlerts = new Map();
   const observedReports = new WeakMap();
   const homeSubscriptions = new Map();
+  let raidResultStore;
+  let disposeRaidResult;
   const jstOffset = 9 * 3600000;
   const dayMs = 86400000;
   const minuteMs = 60000;
@@ -2424,6 +2428,28 @@ function mount() {
     readHome();
   }
 
+  function rememberGuildBoss(message, until, guildId) {
+    const key = "guildBoss:daily";
+    const previous = verifiedAlerts.get(key);
+    const sameGuild = previous?.guildId == null || guildId == null || previous.guildId === guildId;
+    if (previous?.until === until && sameGuild && (previous.message === "" || previous.message === message)) return false;
+    verifiedAlerts.set(key, { id: "guildBoss", message, until, to: reportLinks.guildBoss, guildId });
+    persistReports();
+    return true;
+  }
+
+  function readRaidOutcome(stores, now) {
+    const raid = raidResultStore?.current;
+    if (!raid || raid.debugPractice || String(raid.ownerUserId) !== String(reportOwner) || raid.raidDate !== dateJst(now)) return;
+    const guildId = stores.get("guild")?.guild?.id?.toString();
+    const raidGuildId = raid.guildId?.toString();
+    if (guildId != null && raidGuildId != null && guildId !== raidGuildId) return;
+    const hp = String(raid.outcome?.currentHp ?? "").trim();
+    const defeated = raid.outcome?.refunded === true || /^0+$/.test(hp);
+    if (!defeated && !/^\d+$/.test(hp)) return;
+    rememberGuildBoss(defeated ? "" : "未討伐（戦闘結果で確認）", nextMidnight(now), raidGuildId ?? guildId);
+  }
+
   function observeAlertPage(name, instance, el) {
     if (name === "SlotHallClassic" || name === "FlexSlotHall") {
       observeSlotHall(instance, instance.props.hall);
@@ -2519,7 +2545,7 @@ function mount() {
       }
     }
     if (name === "GuildPageScreen" || name === "GuildRaidPanel") {
-      const heading = [...el.querySelectorAll("h2,h3,h4,legend")].find(node => /^(?:ギルド(?:レイド|ボス)|日替わりレイド)(?:\s|$)/.test(node.textContent.trim()));
+        const heading = [...el.querySelectorAll("h2,h3,h4,legend")].find(node => /^(?:ギルド(?:レイド|ボス)(?:戦)?|日替わりレイド)(?:\s|$)/.test(node.textContent.trim()));
       const panel = heading?.closest("section") ?? heading?.parentElement?.parentElement;
       if (panel) {
         const status = panel.textContent;
@@ -2527,17 +2553,9 @@ function mount() {
         const defeated = /本日(?:のボスは)?討伐済み|すでに討伐済み/.test(status);
         if (hp || defeated) {
           const pending = !defeated && hp && Number(hp[1].replaceAll(",", "")) > 0;
-          remember("guildBoss", "daily", pending ? "未討伐（確認時点）" : "", expires, reportLinks.guildBoss);
+          if (rememberGuildBoss(pending ? "未討伐（確認時点）" : "", expires, stores.get("guild")?.guild?.id?.toString())) readHome();
         }
       }
-    }
-    if (name === "guild-raid-result" || name === "FlexGuildRaidResultPage") {
-      const raid = stores?.get("guildRaidResult")?.current;
-      const hp = raid?.outcome?.currentHp;
-      if (!raid || raid.debugPractice || String(raid.ownerUserId) !== String(reportOwner) ||
-          raid.raidDate !== dateJst(now) || hp == null || !Number.isFinite(Number(hp))) return;
-      remember("guildBoss", "daily", Number(hp) > 0 && !raid.outcome.refunded ? "未討伐（戦闘結果で確認）" : "",
-        expires, reportLinks.guildBoss, raid.runId ?? raid);
     }
     if (name === "FlexWorldBaseHomeScreen") {
       const sites = [...el.querySelectorAll(".fx-wbase-home__outpost")];
@@ -2551,10 +2569,21 @@ function mount() {
 
   const homeObserverNames = new Set(["FlexShopBuy", "ShopNpcModal", "FlexShopMedalExchange", "FlexShopMarkExchange", "FlexArkShopPage",
     "GuildShopView", "GuildMemberShopView", "FlexWorldBaseHomeScreen", "GuildPageScreen", "GuildRaidPanel",
-    "guild-raid-result", "FlexGuildRaidResultPage", "SlotHallClassic", "FlexSlotHall"]);
+    "SlotHallClassic", "FlexSlotHall"]);
 
   function readHome() {
     clearTimeout(nextHomeUpdate);
+    const stores = options.home ? appProperties()?.$pinia?._s : undefined;
+    const raid = stores?.get("guildRaidResult");
+    if (raid !== raidResultStore) {
+      disposeRaidResult?.();
+      raidResultStore = raid;
+      // Record the result before the game's return action clears the store.
+      disposeRaidResult = raid?.$subscribe?.(readHome, { detached: true, flush: "sync" });
+    }
+    const now = Date.now();
+    const owner = options.home ? accountReports(stores) : null;
+    if (owner) readRaidOutcome(stores, now);
     const onHome = options.home && ["/", "/f/home", "/home"].includes(location.pathname);
     if (!onHome) {
       for (const { dispose } of homeSubscriptions.values()) dispose?.();
@@ -2562,7 +2591,6 @@ function mount() {
       return;
     }
     if (document.hidden) return;
-    const stores = appProperties()?.$pinia?._s;
     for (const key of ["expedition", "hatchery", "userProfile", "guild"]) {
       const store = stores?.get(key);
       const existing = homeSubscriptions.get(key);
@@ -2571,8 +2599,6 @@ function mount() {
       homeSubscriptions.set(key, { store, dispose: store.$subscribe?.(readHome, { detached: true }) });
     }
     const alerts = [];
-    const now = Date.now();
-    const owner = accountReports(stores);
     let next = nextMidnight(now);
     const add = (id, message, end = null, to, pending = false) => {
       alerts.push({ id, message, end, to, pending });
@@ -2604,6 +2630,7 @@ function mount() {
     const checked = new Set();
     const guild = stores?.get("guild");
     const noGuild = (guild?.isLoaded || guild?.isSummaryLoaded) && guild.isInGuild === false;
+    const guildId = guild?.guild?.id?.toString();
     for (const [key, row] of verifiedAlerts) {
       if (row.until <= now) {
         verifiedAlerts.delete(key);
@@ -2611,6 +2638,7 @@ function mount() {
       }
       else {
         if (noGuild && (row.id === "guildBoss" || row.id === "guildShop")) continue;
+        if (row.id === "guildBoss" && row.guildId != null && guildId != null && row.guildId !== guildId) continue;
         const id = row.id === "slot" ? key : row.id;
         checked.add(id);
         if (row.message) add(id, row.message, null, row.to);
@@ -2644,6 +2672,7 @@ function mount() {
     readHome();
   });
   document.addEventListener("visibilitychange", readHome);
+  window.addEventListener("pageshow", readHome);
   document.addEventListener(settingsEvent, readHome);
 
   function indexChatReplies(chat) {
