@@ -54,54 +54,57 @@
 <body>
   <main>
     <header>
-      <div class="version">v2.0.14</div>
+      <div class="version">v2.0.15</div>
       <h1>はこホム AF Lv4000予測</h1>
       <p class="intro">アーティファクトの現在値とLv4000の予測値を表示します。予測値で絞り込み・並べ替えができ、条件をプリセットに保存できます。</p>
-      <div class="links">
-        <a class="button primary" href="./arkhomu-af-lv4000.user.js">共通版をインストール</a>
-      </div>
     </header>
 
     <section aria-labelledby="install">
-      <h2 id="install">端末ごとの導入</h2>
+      <h2 id="install">ダウンロード・導入</h2>
       <div class="platforms">
         <article>
           <h3>PC（Chrome・Edge）</h3>
+          <div class="links"><a class="button primary" href="./arkhomu-af-lv4000-v2.0.15.zip" download>PC用ZIPをダウンロード</a></div>
           <ol>
-            <li>ブラウザーに<a href="https://www.tampermonkey.net/">Tampermonkey</a>を追加します。</li>
-            <li>「共通版をインストール」を開き、Tampermonkeyでインストールします。</li>
+            <li>ZIPを展開します。</li>
+            <li>「拡張機能の管理」でデベロッパーモードを有効にし、「パッケージ化されていない拡張機能を読み込む」で展開したフォルダーを選びます。</li>
           </ol>
-          <p>以前のZIP版から移行する場合は、共通版を入れたあと、ブラウザーの拡張機能の管理で旧版をオフにしてください。旧ZIP版で保存した絞り込みプリセットは、共通版で再登録してください。</p>
+          <p>以前のZIP版から更新する場合は、展開したファイルを、すでに読み込んでいるフォルダーの <code>manifest.json</code> がある場所に上書きします。拡張機能の管理画面とはこホムのタブで再読み込みします。</p>
         </article>
         <article>
           <h3>Android（Firefox）</h3>
+          <div class="links"><a class="button primary" href="./arkhomu-af-lv4000.user.js">Tampermonkey用を開く</a></div>
           <ol>
             <li>Firefoxに<a href="https://addons.mozilla.org/ja/firefox/addon/tampermonkey/">Tampermonkey</a>を追加します。</li>
-            <li>「共通版をインストール」を開きます。確認画面が出ない場合は、Tampermonkeyの「ユーティリティ」から同じリンクのURLをインポートします。</li>
+            <li>上のリンクを開いてインストールします。確認画面が出ない場合は、Tampermonkeyの「ユーティリティ」から同じリンクのURLをインポートします。</li>
           </ol>
         </article>
         <article>
           <h3>iPhone・iPad（Safari）</h3>
+          <div class="links"><a class="button primary" href="./safari/arkhomu-af-lv4000.user.js">Userscripts用を開く</a></div>
           <ol>
             <li>無料の<a href="https://apps.apple.com/jp/app/userscripts/id1463298887">Userscripts</a>を入れ、Safariの機能拡張で有効にします。</li>
-            <li>Safariで「共通版をインストール」を開き、ページメニューの「Userscripts」からインストールします。</li>
+            <li>Safariで上のリンクを開き、ページメニューの「Userscripts」からインストールします。</li>
           </ol>
         </article>
       </div>
-      <p>旧版のユーザースクリプトを使っている場合は、共通版に一度入れ替えてください。</p>
       <p><a href="https://arkhomu.com/">はこホムを開く</a>と、画面上部の「拡張設定」で機能を切り替えられます。</p>
     </section>
 
     <section aria-labelledby="updates">
       <h2 id="updates">自動更新</h2>
-      <p>初期設定はオンです。はこホムを表示している間に24時間に1回確認し、取得した版は次にページが読み込まれるときに有効になります。</p>
+      <p>初期設定はオンです。はこホムを表示している間に24時間に1回確認します。</p>
+      <ul>
+        <li><strong>PC</strong>では、新版のZIPを自動で取得します。保存先に見当たらない場合は「拡張設定」→「更新」→「更新ZIPを保存」から保存できます。適用は上のPC欄の手順で行います。</li>
+        <li><strong>Android・iPhone・iPad</strong>では、取得した版が次にページが読み込まれるときに有効になります。</li>
+      </ul>
       <p>「拡張設定」→「更新」から、使用中のバージョンの確認と自動更新のオン・オフができます。</p>
     </section>
 
     <section aria-labelledby="changes">
       <h2 id="changes">最近の変更</h2>
       <ul>
-        <li>v2.0.14でPC・Android・iPhone・iPadの配布を共通化し、拡張設定に自動更新の切り替えを追加しました。</li>
+        <li>v2.0.15で端末ごとの配布を整理し、PC用ZIPの自動取得に対応しました。</li>
         <li>ギルダンの獲得量を戦闘回数から換算し、探索中のストック回復の影響を除きました。</li>
         <li>チャットの引用を押すと、読み込み済みの非表示の返信元をその投稿だけ表示できます。</li>
       </ul>

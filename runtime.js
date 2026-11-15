@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         はこホム AF Lv4000予測
 // @namespace    arkhomu-af-lv4000
-// @version      2.0.14
+// @version      2.0.15
 // @description  AFの現在値とLv4000予測値を並べて表示し、読み込まれた一覧を絞り込みます。
 // @match        https://arkhomu.com/*
 // @run-at       document-start
@@ -17,7 +17,7 @@
   // Each preset has a separate key, so saving from one tab cannot replace other names.
   const presetPrefix = "hakoAf4000:userscript:";
   const modules = {
-    hakoAfUserscriptVersion: "2.0.14",
+    hakoAfUserscriptVersion: "2.0.15",
     hakoAfUpdateManaged: document.currentScript?.dataset.hakoAfUpdateManaged === "true",
     hakoAfPresetStorage: {
       get() {
@@ -1359,10 +1359,12 @@ function mount() {
       header.append(title, close);
       dialog.append(header);
 
-      if (modules.hakoAfUserscriptVersion) {
+      const desktop = modules.hakoAfDesktopUpdates;
+      const version = desktop?.version ?? modules.hakoAfUserscriptVersion;
+      if (version) {
         const updates = subsection(dialog, "更新");
-        updates.append(node("p", "extra-note", "使用中のバージョン v" + modules.hakoAfUserscriptVersion));
-        if (modules.hakoAfUpdateManaged) {
+        updates.append(node("p", "extra-note", "使用中のバージョン v" + version));
+        if (desktop || modules.hakoAfUpdateManaged) {
           const autoUpdate = document.createElement("input");
           autoUpdate.type = "checkbox";
           autoUpdate.checked = get(autoUpdateKey) !== false;
@@ -1371,7 +1373,24 @@ function mount() {
             save(autoUpdateKey, autoUpdate.checked);
             document.dispatchEvent(new Event("hako-af:auto-update-changed"));
           });
-          updates.append(node("p", "extra-note", "はこホムを表示している間に24時間に1回確認し、次にページが読み込まれるときに反映します。"));
+          updates.append(node("p", "extra-note", desktop
+            ? "24時間に1回確認し、新しいZIPを取得します。展開したファイルを現在の拡張機能フォルダーに上書きし、拡張機能とはこホムのタブを再読み込みしてください。"
+            : "はこホムを表示している間に24時間に1回確認し、次にページが読み込まれるときに反映します。"));
+        }
+        if (desktop) {
+          const status = node("p", "extra-note");
+          status.setAttribute("role", "status");
+          const saveZip = makeButton("更新ZIPを保存");
+          saveZip.addEventListener("click", desktop.saveArchive);
+          const showArchive = () => {
+            const available = desktop.archiveVersion();
+            status.textContent = available ? "v" + available + "のZIPを取得済み" : "";
+            saveZip.hidden = !available;
+          };
+          updates.append(status, saveZip);
+          showArchive();
+          document.addEventListener("hako-af:desktop-update-archive", showArchive);
+          dialog.addEventListener("close", () => document.removeEventListener("hako-af:desktop-update-archive", showArchive), { once: true });
         }
       }
       const functions = subsection(dialog, "機能のオン／オフ");
