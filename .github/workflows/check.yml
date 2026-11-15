@@ -1,0 +1,31 @@
+name: Check extension build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript and build the distribution files
+        run: |
+          for script in extension/*.js scripts/*.js scripts/*.cjs; do
+            node --check "$script"
+          done
+          version=$(node -p 'require("./extension/manifest.json").version')
+          mkdir -p dist/arkhomu-af-lv4000
+          cp -R extension/. dist/arkhomu-af-lv4000/
+          (cd dist && zip -q -r "arkhomu-af-lv4000-v$version.zip" arkhomu-af-lv4000)
+          node scripts/build-userscripts.cjs --pages
+          for script in dist/pages/*.js dist/pages/safari/*.js; do
+            node --check "$script"
+          done

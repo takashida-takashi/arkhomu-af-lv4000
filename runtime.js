@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         はこホム AF Lv4000予測
 // @namespace    arkhomu-af-lv4000
-// @version      2.0.18
+// @version      2.0.19
 // @description  AFの現在値とLv4000予測値を並べて表示し、読み込まれた一覧を絞り込みます。
 // @match        https://arkhomu.com/*
 // @run-at       document-start
@@ -17,7 +17,7 @@
   // Each preset has a separate key, so saving from one tab cannot replace other names.
   const presetPrefix = "hakoAf4000:userscript:";
   const modules = {
-    hakoAfUserscriptVersion: "2.0.18",
+    hakoAfUserscriptVersion: "2.0.19",
     hakoAfUpdateManaged: document.currentScript?.dataset.hakoAfUpdateManaged === "true",
     hakoAfPresetStorage: {
       get() {
@@ -1634,18 +1634,16 @@ function mount() {
       const rows = [];
       const nativeCategories = new Set();
       const hasHatcheryTimer = homeTimers.some(task => task.id === "hatchery");
-      const guildBossDefeated = homeChecked.has("guildBoss") && !homeTimers.some(task => task.id === "guildBoss");
       for (const row of document.querySelectorAll("#fx-todo .fx-todo__list > li,[aria-label='国のお知らせ'] li")) {
         const message = row.textContent.trim().replace(/\s+/g, " ").replace(/[×›▽]\s*$/g, "").trim();
         const link = row.querySelector("a[href]");
         if (/ギルドダンジョン/.test(message) || /^\/(?:f\/)?guild-dungeons(?:\/|$)/.test(link?.pathname ?? "")) continue;
         const isNation = row.closest("[aria-label='国のお知らせ']") && !homeText.guildBoss.test(message);
         const id = classify(message, isNation ? "nation" : null);
-        const staleBossReminder = id === "guildBoss" && guildBossDefeated && /未討伐|未実行|未参加|未確認/.test(message);
-        if (!withinFilter(id) || staleBossReminder) {
+        if (!withinFilter(id)) {
           row.setAttribute("data-ha4-hidden-alert", "");
           nextHidden.add(row);
-        } else if (message && !(id === "hatchery" && hasHatcheryTimer) &&
+        } else if (message && id !== "guildBoss" && !(id === "hatchery" && hasHatcheryTimer) &&
             !(id === "npc" && homeChecked.has("npcLimited") && homeChecked.has("npcNormal") && /商品が入れ替わりました/.test(message))) {
           nativeCategories.add(id);
           rows.push({ id, message, to: link?.pathname && link.origin === location.origin ? link.pathname + link.search : null });
@@ -1833,11 +1831,18 @@ function mount() {
   const homeSubscriptions = new Map();
   let raidResultStore;
   let disposeRaidResult;
+  let raidQuotaOwner;
+  let raidQuotaLabelNode;
+  let lastRaidQuota;
   const jstOffset = 9 * 3600000;
   const dayMs = 86400000;
   const minuteMs = 60000;
   const slotDayStart = 210 * minuteMs;
   const slotSecondPart = 960 * minuteMs;
+  const guildBossDailyLimit = 2;
+  const guildBossReport = "guildBoss:attendance";
+  const raidQuotaLabel = "本日の残り参加回数";
+  const raidQuotaPattern = /本日の残り参加回数\s*([0-9]+)\s*[/／]\s*2(?![0-9])/;
   const slotRates = [["low", "低レート", 1000, 10000], ["mid", "中レート", 10000, 10000],
     ["high", "高レート", 50000, 10000], ["vip", "超高レート", 500000, 5000]];
   const reportLinks = {
@@ -2386,7 +2391,7 @@ function mount() {
       const saved = JSON.parse(localStorage.getItem(reportKey()));
       const now = Date.now();
       for (const [key, value] of Array.isArray(saved) ? saved : []) {
-        if (value?.until > now && value.id !== "guildDungeon") verifiedAlerts.set(key, value);
+        if (value?.until > now && value.id !== "guildDungeon" && key !== "guildBoss:daily") verifiedAlerts.set(key, value);
       }
     } catch { /* The in-tab state remains available. */ }
   }
@@ -2440,26 +2445,104 @@ function mount() {
     readHome();
   }
 
-  function rememberGuildBoss(message, until, guildId) {
-    const key = "guildBoss:daily";
-    const previous = verifiedAlerts.get(key);
+  function raidAttendance(now, guildId) {
+    const previous = verifiedAlerts.get(guildBossReport);
     const sameGuild = previous?.guildId == null || guildId == null || previous.guildId === guildId;
-    if (previous?.until === until && sameGuild && (previous.message === "" || previous.message === message)) return false;
-    verifiedAlerts.set(key, { id: "guildBoss", message, until, to: reportLinks.guildBoss, guildId });
+    return previous?.until === nextMidnight(now) && sameGuild ? previous : null;
+  }
+
+  function saveRaidAttendance(now, guildId, remaining, runs, fromPanel) {
+    const message = remaining ? `残り ${remaining} / ${guildBossDailyLimit} 回` + (fromPanel ? "" : "（このブラウザで確認）") : "";
+    verifiedAlerts.set(guildBossReport, { id: "guildBoss", message, until: nextMidnight(now), to: reportLinks.guildBoss,
+      guildId, remaining, runs, fromPanel });
     persistReports();
-    return true;
   }
 
   function readRaidOutcome(stores, now) {
     const raid = raidResultStore?.current;
-    if (!raid || raid.debugPractice || String(raid.ownerUserId) !== String(reportOwner) || raid.raidDate !== dateJst(now)) return;
+    if (!raid?.outcome || raid.debugPractice || raid.outcome.refunded || typeof raid.runId !== "string" || !raid.runId ||
+        String(raid.ownerUserId) !== String(reportOwner) || raid.raidDate !== dateJst(now)) return;
     const guildId = stores.get("guild")?.guild?.id?.toString();
     const raidGuildId = raid.guildId?.toString();
     if (guildId != null && raidGuildId != null && guildId !== raidGuildId) return;
-    const hp = String(raid.outcome?.currentHp ?? "").trim();
-    const defeated = raid.outcome?.refunded === true || /^0+$/.test(hp);
-    if (!defeated && !/^\d+$/.test(hp)) return;
-    rememberGuildBoss(defeated ? "" : "未討伐（戦闘結果で確認）", nextMidnight(now), raidGuildId ?? guildId);
+    const previous = raidAttendance(now, raidGuildId ?? guildId);
+    const runs = previous?.runs ?? [];
+    if (previous?.remaining === 0 || runs.includes(raid.runId)) return;
+    const nextRuns = [...runs, raid.runId].slice(-guildBossDailyLimit);
+    // A loaded result may predate the panel's reading. The two counts can overlap.
+    const remaining = Math.min(previous?.remaining ?? guildBossDailyLimit, guildBossDailyLimit - nextRuns.length);
+    const keepPanel = previous?.remaining === remaining && previous.fromPanel;
+    saveRaidAttendance(now, raidGuildId ?? guildId ?? previous?.guildId, remaining, nextRuns, keepPanel);
+  }
+
+  function updateRaidQuota() {
+    if (!raidQuotaLabelNode?.isConnected) return;
+    let row = raidQuotaLabelNode.parentElement;
+    for (let depth = 0; row && depth < 4; depth++, row = row.parentElement) {
+      const match = raidQuotaPattern.exec(row.textContent);
+      if (!match) continue;
+      const remaining = Number(match[1]);
+      if (remaining > guildBossDailyLimit || !row.getClientRects().length ||
+          row.closest('[hidden],[aria-hidden="true"]')) return;
+      let panel = row;
+      for (let depth = 0; panel && panel !== document.body && depth < 5; depth++, panel = panel.parentElement) {
+        const text = panel.textContent;
+        if (text.length > 2000) return;
+        if (text.includes("本日のギルド進行")) break;
+      }
+      if (!panel || panel === document.body || !panel.textContent.includes("本日のギルド進行")) return;
+      const stores = appProperties()?.$pinia?._s;
+      if (!options.home || accountReports(stores) !== raidQuotaOwner) return;
+      const guildId = stores.get("guild")?.guild?.id?.toString();
+      if (lastRaidQuota?.node === raidQuotaLabelNode && lastRaidQuota.remaining === remaining && lastRaidQuota.guildId === guildId) return;
+      lastRaidQuota = { node: raidQuotaLabelNode, remaining, guildId };
+      const now = Date.now();
+      const previous = raidAttendance(now, guildId);
+      const runs = previous?.runs?.slice(0, guildBossDailyLimit - remaining) ?? [];
+      saveRaidAttendance(now, guildId ?? previous?.guildId, remaining, runs, true);
+      readHome();
+      return;
+    }
+  }
+
+  function findRaidQuotaLabel(root) {
+    if (root.nodeType === Node.TEXT_NODE) {
+      return !root.parentElement?.matches("script,style") && root.data.includes(raidQuotaLabel) ? root : null;
+    }
+    if (root.nodeType !== Node.ELEMENT_NODE || !root.textContent.includes(raidQuotaLabel)) return null;
+    return document.evaluate(`.//text()[not(parent::script or parent::style) and contains(., '${raidQuotaLabel}')]`, root, null,
+      XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+  }
+
+  const raidQuotaObserver = new MutationObserver(records => {
+    let check = false;
+    const holder = raidQuotaLabelNode?.parentElement?.parentElement;
+    for (const record of records) {
+      if (holder && (holder.contains(record.target) || record.type === "attributes" && record.target.contains(holder))) check = true;
+      const changed = record.type === "characterData" ? [record.target] : record.addedNodes;
+      for (const node of changed) {
+        const label = findRaidQuotaLabel(node);
+        if (label) {
+          raidQuotaLabelNode = label;
+          check = true;
+          break;
+        }
+      }
+    }
+    if (check) updateRaidQuota();
+  });
+
+  function observeRaidQuota(owner) {
+    if (owner === raidQuotaOwner || owner && !document.body) return;
+    raidQuotaOwner = owner;
+    raidQuotaObserver.disconnect();
+    raidQuotaLabelNode = null;
+    lastRaidQuota = null;
+    if (!owner) return;
+    raidQuotaLabelNode = findRaidQuotaLabel(document.body);
+    raidQuotaObserver.observe(document.body, { subtree: true, childList: true, characterData: true,
+      attributes: true, attributeFilter: ["hidden", "aria-hidden"] });
+    updateRaidQuota();
   }
 
   function observeAlertPage(name, instance, el) {
@@ -2556,19 +2639,6 @@ function mount() {
           expires, reportLinks.guildShop, JSON.stringify([cards.length, count]));
       }
     }
-    if (name === "GuildPageScreen" || name === "GuildRaidPanel") {
-        const heading = [...el.querySelectorAll("h2,h3,h4,legend")].find(node => /^(?:ギルド(?:レイド|ボス)(?:戦)?|日替わりレイド)(?:\s|$)/.test(node.textContent.trim()));
-      const panel = heading?.closest("section") ?? heading?.parentElement?.parentElement;
-      if (panel) {
-        const status = panel.textContent;
-        const hp = status.match(/共有\s*HP\s*([\d,]+)\s*\/\s*[\d,]+/i);
-        const defeated = /本日(?:のボスは)?討伐済み|すでに討伐済み/.test(status);
-        if (hp || defeated) {
-          const pending = !defeated && hp && Number(hp[1].replaceAll(",", "")) > 0;
-          if (rememberGuildBoss(pending ? "未討伐（確認時点）" : "", expires, stores.get("guild")?.guild?.id?.toString())) readHome();
-        }
-      }
-    }
     if (name === "FlexWorldBaseHomeScreen") {
       const sites = [...el.querySelectorAll(".fx-wbase-home__outpost")];
       if (!sites.length && !el.textContent.includes("採取地はまだありません")) return;
@@ -2580,7 +2650,7 @@ function mount() {
   }
 
   const homeObserverNames = new Set(["FlexShopBuy", "ShopNpcModal", "FlexShopMedalExchange", "FlexShopMarkExchange", "FlexArkShopPage",
-    "GuildShopView", "GuildMemberShopView", "FlexWorldBaseHomeScreen", "GuildPageScreen", "GuildRaidPanel",
+    "GuildShopView", "GuildMemberShopView", "FlexWorldBaseHomeScreen",
     "SlotHallClassic", "FlexSlotHall"]);
 
   function readHome() {
@@ -2596,6 +2666,7 @@ function mount() {
     const now = Date.now();
     const owner = options.home ? accountReports(stores) : null;
     if (owner) readRaidOutcome(stores, now);
+    observeRaidQuota(owner);
     const onHome = options.home && ["/", "/f/home", "/home"].includes(location.pathname);
     if (!onHome) {
       for (const { dispose } of homeSubscriptions.values()) dispose?.();
@@ -2666,7 +2737,8 @@ function mount() {
       for (const [id, to] of Object.entries(reportLinks)) {
         if (checked.has(id) || id.startsWith("guild") && noGuild) continue;
         const caption = id === "npcMedal" ? "今週分" : "今日分";
-        add(id, caption + " 未実行（未確認）", null, to, true);
+        const message = id === "guildBoss" ? "今日分 未実行（参加回数未確認）" : caption + " 未実行（未確認）";
+        add(id, message, null, to, true);
       }
     }
     const signature = JSON.stringify({ alerts, checked: [...checked] });
