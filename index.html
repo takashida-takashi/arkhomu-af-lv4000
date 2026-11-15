@@ -54,12 +54,13 @@
 <body>
   <main>
     <header>
-      <div class="version">v2.0.12</div>
+      <div class="version">v2.0.13</div>
       <h1>はこホム AF Lv4000予測</h1>
       <p class="intro">アーティファクトの現在値とLv4000の予測値を表示します。予測値で絞り込み・並べ替えができ、条件をプリセットに保存できます。</p>
       <div class="links">
-        <a class="button primary" href="./arkhomu-af-lv4000.user.js">ユーザースクリプトを開く</a>
-        <a class="button" href="./arkhomu-af-lv4000-v2.0.12.zip" download>PC用拡張のZIPをダウンロード</a>
+        <a class="button primary" href="./safari/arkhomu-af-lv4000.user.js">iPhone・iPad用 自動更新版</a>
+        <a class="button" href="./arkhomu-af-lv4000.user.js">Tampermonkey用</a>
+        <a class="button" href="./arkhomu-af-lv4000-v2.0.13.zip" download>PC用拡張のZIPをダウンロード</a>
       </div>
     </header>
 
@@ -72,13 +73,13 @@
             <li>拡張のZIPをダウンロードして展開します。</li>
             <li>「拡張機能の管理」でデベロッパーモードを有効にし、「パッケージ化されていない拡張機能を読み込む」で展開先の拡張フォルダーを選びます。</li>
           </ol>
-          <p>ZIP版の更新時はフォルダーを上書きし、拡張機能の管理から再読み込みします。PCで更新を自動確認する場合は、<a href="https://www.tampermonkey.net/">Tampermonkey</a>で上のユーザースクリプトを導入してください。</p>
+          <p>ZIP版の更新時はフォルダーを上書きし、拡張機能の管理から再読み込みします。自動更新を使う場合は、<a href="https://www.tampermonkey.net/">Tampermonkey</a>で「Tampermonkey用」を導入してください。</p>
         </article>
         <article>
           <h3>Android（Firefox）</h3>
           <ol>
             <li>Firefoxに<a href="https://addons.mozilla.org/ja/firefox/addon/tampermonkey/">Tampermonkey</a>を追加します。</li>
-            <li>上のユーザースクリプトを開いてインストールします。確認画面が開かない場合は、Tampermonkeyの「ユーティリティ」からスクリプトのURLをインポートします。</li>
+            <li>「Tampermonkey用」を開いてインストールします。確認画面が開かない場合は、Tampermonkeyの「ユーティリティ」からスクリプトのURLをインポートします。</li>
           </ol>
           <p>更新はTampermonkeyの設定に従って確認されます。</p>
         </article>
@@ -86,24 +87,25 @@
           <h3>iPhone・iPad（Safari）</h3>
           <ol>
             <li>無料の<a href="https://apps.apple.com/jp/app/userscripts/id1463298887">Userscripts</a>を入れ、Safariの機能拡張で有効にします。</li>
-            <li>Safariで上のユーザースクリプトを開き、ページメニューの「Userscripts」からインストールします。ファイルで導入する場合は、Userscriptsの保存先に同じ <code>.user.js</code> ファイルを置きます。</li>
+            <li>Safariで「iPhone・iPad用 自動更新版」を開き、ページメニューの「Userscripts」からインストールします。旧版を使っていた場合は、自動更新版に入れ替えてください。</li>
           </ol>
-          <p>更新するときはSafariの「Userscripts」メニューで更新を確認し、はこホムを再読み込みします。</p>
+          <p>導入後は、はこホムを表示しているときに24時間に1回、更新を自動確認します。取得した更新は、次にはこホムが読み込まれたときに有効になります。</p>
         </article>
       </div>
       <p><a href="https://arkhomu.com/">はこホムを開く</a>と、画面上部の「拡張設定」で機能を切り替えられます。</p>
     </section>
 
     <section aria-labelledby="changes">
-      <h2 id="changes">v2.0.12の変更</h2>
+      <h2 id="changes">最近の変更</h2>
       <ul>
+        <li>v2.0.13でiPhone・iPad用の自動更新版を追加しました。</li>
         <li>ギルダンの獲得量を戦闘回数から換算し、探索中のストック回復の影響を除きました。</li>
         <li>チャットの引用を押すと、読み込み済みの非表示の返信元をその投稿だけ表示できます。</li>
       </ul>
     </section>
 
     <footer>
-      <p>非公式の拡張です。拡張設定、プリセット、探索の集計は使用中のブラウザーに保存されます。ユーザースクリプトの更新確認では、スクリプト管理アプリがGitHub Pagesの配布ファイルを取得します。</p>
+      <p>非公式の拡張です。拡張設定、プリセット、探索の集計は使用中のブラウザーに保存されます。更新確認ではGitHub Pagesの配布ファイルを取得します。Safari用の更新リクエストに、ゲームのデータやCookieは含めません。</p>
       <p><a href="https://github.com/takashida-takashi/arkhomu-af-lv4000">GitHubのリポジトリ</a> · <a href="./arkhomu-af-lv4000.meta.js">更新用メタデータ</a></p>
     </footer>
   </main>
