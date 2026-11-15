@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         はこホム AF Lv4000予測
 // @namespace    arkhomu-af-lv4000
-// @version      2.0.13
+// @version      2.0.14
 // @description  AFの現在値とLv4000予測値を並べて表示し、読み込まれた一覧を絞り込みます。
 // @match        https://arkhomu.com/*
 // @run-at       document-start
