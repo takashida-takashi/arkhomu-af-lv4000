@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="はこホム向けAF予測拡張の配布ページ。PC、Android、iPhoneの導入手順と更新方法。">
+  <title>はこホム AF Lv4000予測</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Inter", "Hiragino Sans", "Yu Gothic", sans-serif;
+      color: #f4effa;
+      background: #14111d;
+      --muted: #c8bdd8;
+      --line: #443653;
+      --accent: #ead0ff;
+      --surface: #20192b;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; font-size: 1rem; line-height: 1.7; }
+    main { max-width: 62rem; margin: auto; padding: 0 clamp(1rem, 5vw, 3rem); }
+    a { color: var(--accent); text-underline-offset: .2em; }
+    a:focus-visible { outline: 2px solid #9de4d8; outline-offset: 4px; }
+    header {
+      padding: clamp(3rem, 11vw, 7rem) 0 clamp(2rem, 6vw, 4rem);
+      border-bottom: 1px solid var(--line);
+    }
+    .version { color: #a9ebdf; font-size: .9rem; font-weight: 700; letter-spacing: .06em; }
+    h1 { margin: .4rem 0 1rem; font-size: clamp(2rem, 6.5vw, 3.75rem); line-height: 1.2; }
+    h2 { margin: 0 0 .75rem; font-size: 1.35rem; }
+    h3 { margin: 0 0 .5rem; font-size: 1.05rem; }
+    p, ol, ul { margin: .45rem 0; }
+    section { margin: 2.25rem 0; }
+    .intro { max-width: 38rem; color: var(--muted); }
+    .links { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.4rem; }
+    .button {
+      display: inline-block;
+      padding: .55rem 1rem;
+      border: 1px solid #8e6eaa;
+      border-radius: .45rem;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .button.primary { color: #1b1124; background: #ead0ff; border-color: #ead0ff; }
+    .button:hover { text-decoration: underline; }
+    .platforms { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; }
+    .platforms article { padding: 1rem; border: 1px solid var(--line); border-radius: .65rem; background: var(--surface); }
+    .platforms p { color: var(--muted); }
+    .platforms ol { padding-left: 1.25rem; }
+    footer { padding: 1.25rem 0 2.5rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; }
+    @media (max-width: 46rem) { .platforms { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="version">v2.0.12</div>
+      <h1>はこホム AF Lv4000予測</h1>
+      <p class="intro">アーティファクトの現在値とLv4000の予測値を表示します。予測値で絞り込み・並べ替えができ、条件をプリセットに保存できます。</p>
+      <div class="links">
+        <a class="button primary" href="./arkhomu-af-lv4000.user.js">ユーザースクリプトを開く</a>
+        <a class="button" href="./arkhomu-af-lv4000-v2.0.12.zip" download>PC用拡張のZIPをダウンロード</a>
+      </div>
+    </header>
+
+    <section aria-labelledby="install">
+      <h2 id="install">端末ごとの導入・更新</h2>
+      <div class="platforms">
+        <article>
+          <h3>PC（Chrome・Edge）</h3>
+          <ol>
+            <li>拡張のZIPをダウンロードして展開します。</li>
+            <li>「拡張機能の管理」でデベロッパーモードを有効にし、「パッケージ化されていない拡張機能を読み込む」で展開先の拡張フォルダーを選びます。</li>
+          </ol>
+          <p>ZIP版の更新時はフォルダーを上書きし、拡張機能の管理から再読み込みします。PCで更新を自動確認する場合は、<a href="https://www.tampermonkey.net/">Tampermonkey</a>で上のユーザースクリプトを導入してください。</p>
+        </article>
+        <article>
+          <h3>Android（Firefox）</h3>
+          <ol>
+            <li>Firefoxに<a href="https://addons.mozilla.org/ja/firefox/addon/tampermonkey/">Tampermonkey</a>を追加します。</li>
+            <li>上のユーザースクリプトを開いてインストールします。確認画面が開かない場合は、Tampermonkeyの「ユーティリティ」からスクリプトのURLをインポートします。</li>
+          </ol>
+          <p>更新はTampermonkeyの設定に従って確認されます。</p>
+        </article>
+        <article>
+          <h3>iPhone・iPad（Safari）</h3>
+          <ol>
+            <li>無料の<a href="https://apps.apple.com/jp/app/userscripts/id1463298887">Userscripts</a>を入れ、Safariの機能拡張で有効にします。</li>
+            <li>Safariで上のユーザースクリプトを開き、ページメニューの「Userscripts」からインストールします。ファイルで導入する場合は、Userscriptsの保存先に同じ <code>.user.js</code> ファイルを置きます。</li>
+          </ol>
+          <p>更新するときはSafariの「Userscripts」メニューで更新を確認し、はこホムを再読み込みします。</p>
+        </article>
+      </div>
+      <p><a href="https://arkhomu.com/">はこホムを開く</a>と、画面上部の「拡張設定」で機能を切り替えられます。</p>
+    </section>
+
+    <section aria-labelledby="changes">
+      <h2 id="changes">v2.0.12の変更</h2>
+      <ul>
+        <li>ギルダンの獲得量を戦闘回数から換算し、探索中のストック回復の影響を除きました。</li>
+        <li>チャットの引用を押すと、読み込み済みの非表示の返信元をその投稿だけ表示できます。</li>
+      </ul>
+    </section>
+
+    <footer>
+      <p>非公式の拡張です。拡張設定、プリセット、探索の集計は使用中のブラウザーに保存されます。ユーザースクリプトの更新確認では、スクリプト管理アプリがGitHub Pagesの配布ファイルを取得します。</p>
+      <p><a href="https://github.com/takashida-takashi/arkhomu-af-lv4000">GitHubのリポジトリ</a> · <a href="./arkhomu-af-lv4000.meta.js">更新用メタデータ</a></p>
+    </footer>
+  </main>
+</body>
+</html>
