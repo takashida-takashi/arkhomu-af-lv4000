@@ -1,9 +1,10 @@
-name: Check extension build
+name: Build and publish extension
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,6 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -21,11 +25,45 @@ jobs:
           for script in extension/*.js scripts/*.js scripts/*.cjs; do
             node --check "$script"
           done
-          version=$(node -p 'require("./extension/manifest.json").version')
-          mkdir -p dist/arkhomu-af-lv4000
-          cp -R extension/. dist/arkhomu-af-lv4000/
-          (cd dist && zip -q -r "arkhomu-af-lv4000-v$version.zip" arkhomu-af-lv4000)
           node scripts/build-userscripts.cjs --pages
           for script in dist/pages/*.js dist/pages/safari/*.js; do
             node --check "$script"
           done
+          version=$(node -p 'require("./dist/pages/pc.json").version')
+          unzip -tq "dist/pages/arkhomu-af-lv4000-v$version.zip"
+      - name: Upload distribution site
+        if: github.repository == 'takashida-takashi/arkhomu-af-lv4000' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist/pages
+
+  deploy:
+    if: github.repository == 'takashida-takashi/arkhomu-af-lv4000' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check this commit is still the latest main
+        id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          if [ "$latest" = "$GITHUB_SHA" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "A newer commit is on main. Skipping this deployment."
+          fi
+      - name: Deploy to GitHub Pages
+        id: deployment
+        if: steps.commit.outputs.publish == 'true'
+        uses: actions/deploy-pages@v4

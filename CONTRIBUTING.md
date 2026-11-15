@@ -21,28 +21,12 @@ node scripts/build-userscripts.cjs
 node --check dist/arkhomu-af-lv4000.user.js
 ```
 
-プルリクエストではGitHub Actionsがソースの構文と配布ファイルの生成を確認します。生成物は `dist/` に出力されます。通常の機能追加PRにはソースの変更を含めてください。配布サイトが読むルートのZIP、メタデータ、ユーザースクリプトは、メンテナーがリリース時に更新します。
+プルリクエストではGitHub Actionsがソースの構文と配布ファイルの生成を確認します。PRにはソースの変更を含めてください。配布ページの文章は `index.html` で編集できます。
 
-## 配布版を作る
+## 配布の流れ
 
-メンテナーはバージョンを `extension/manifest.json` と配布ページ `index.html` に反映します。そのバージョンのZIPを `dist/arkhomu-af-lv4000-v<バージョン>.zip` に作ります。展開したときは `arkhomu-af-lv4000/` の中に `manifest.json` が入る構成にします。
+メンテナーが `main` にマージすると、GitHub Actionsが配布番号を更新し、PC用ZIP、Android用Tampermonkeyスクリプト、iPhone・iPad用Userscriptsスクリプトをビルドします。ビルドが通ると3つのファイルと配布ページをまとめて公開します。番号は `main` のコミット履歴から決まり、同じコミットを再実行すると同じ番号になります。
 
-Windows（PowerShell）
+公開結果は [Actions](https://github.com/takashida-takashi/arkhomu-af-lv4000/actions/workflows/check.yml) で確認できます。再実行する際は、最新の `main` で「Run workflow」を選びます。
 
-```powershell
-$version = node -p 'require("./extension/manifest.json").version'
-New-Item -ItemType Directory -Force dist/arkhomu-af-lv4000
-Copy-Item extension/* dist/arkhomu-af-lv4000 -Recurse -Force
-Compress-Archive -Path dist/arkhomu-af-lv4000 -DestinationPath "dist/arkhomu-af-lv4000-v$version.zip" -Force
-```
-
-macOS・Linux
-
-```sh
-version=$(node -p 'require("./extension/manifest.json").version')
-mkdir -p dist/arkhomu-af-lv4000
-cp -R extension/. dist/arkhomu-af-lv4000/
-(cd dist && zip -q -r "arkhomu-af-lv4000-v$version.zip" arkhomu-af-lv4000)
-```
-
-`node scripts/build-userscripts.cjs --pages` を実行します。動作を確認したうえで `dist/pages/` の中身をリポジトリのルートに反映し、リリースとしてコミットします。
+手元で配布用のファイルを確認する場合は `node scripts/build-userscripts.cjs --pages` を実行します。Gitの全履歴とZIP作成コマンド（Windowsでは標準の `tar.exe`、macOS・Linuxでは `zip`）を使い、`dist/pages/` に出力します。
