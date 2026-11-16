@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "はこホム AF Lv4000予測",
-  "version": "3.0.13",
+  "version": "3.0.14",
   "description": "AFの現在値とLv4000予測値を並べて表示し、読み込まれた一覧を絞り込みます。",
   "permissions": ["storage", "downloads"],
   "host_permissions": ["https://arkhomu.com/*"],

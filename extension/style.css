@@ -1051,8 +1051,23 @@ html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
   background: #15121e;
   color: inherit;
 }
-[data-ha4="estimate-market"] { color: #c6a2ff; text-decoration: underline; }
-[data-ha4="estimate-source"], [data-ha4="estimate-status"] { margin: 4px 0 6px; color: #d0c3de; overflow-wrap: anywhere; }
+[data-ha4="estimate-market"] {
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  color: #c6a2ff;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+[data-ha4="estimate-market"]:disabled { opacity: .65; cursor: wait; }
+[data-ha4="estimate-market-frame"] { display: none !important; }
+[data-ha4="estimate-market-status"]:empty { margin: 0; }
+:is([data-ha4="estimate-source"],[data-ha4="estimate-status"],[data-ha4="estimate-market-status"]:not(:empty)) {
+  margin: 4px 0 6px;
+  color: #d0c3de;
+  overflow-wrap: anywhere;
+}
 [data-ha4="estimate-table"] { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 [data-ha4="estimate-table"] [scope="row"] { text-align: start; }
 [data-ha4="estimate-table"] :is([scope="col"], td) { text-align: end; }

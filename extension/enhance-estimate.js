@@ -81,6 +81,69 @@
     const panels = new Map();
     const manual = new Map();
     const results = new Map();
+    let lookup;
+
+    function updatePriceInput(panel) {
+      const value = manual.get(panel.data.source) ?? panel.data.market?.price;
+      panel.price.value = value == null ? "" : format.format(value);
+    }
+
+    function closeLookup(message = "") {
+      if (!lookup) return;
+      const { frame, timer, panel } = lookup;
+      lookup = null;
+      clearTimeout(timer);
+      frame.remove();
+      panel.market.disabled = false;
+      panel.marketStatus.textContent = message;
+    }
+
+    function readMarket(panel) {
+      if (lookup?.panel === panel) return;
+      closeLookup();
+      const item = panel.data.source;
+      const frame = document.createElement("iframe");
+      frame.dataset.ha4 = "estimate-market-frame";
+      frame.hidden = true;
+      frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+      frame.src = `/market?${new URLSearchParams({ item })}`;
+      const current = lookup = { panel, frame, item };
+      panel.market.disabled = true;
+      panel.marketStatus.textContent = "フリマの売上平均を取得中…";
+
+      frame.addEventListener("hako-af:material-market-price", event => {
+        if (lookup !== current || !panel.root.isConnected || !panel.root.open || panel.data.source !== item) return;
+        let market;
+        try { market = JSON.parse(event.detail); } catch { return; }
+        if (!Number.isFinite(market?.at) || (market.price !== null && !(Number.isFinite(market.price) && market.price > 0))) return;
+        panel.data = { ...panel.data, market };
+        if (!manual.has(item) && !panel.invalidPrice) updatePriceInput(panel);
+        const keepInput = manual.has(item) || panel.invalidPrice;
+        const message = market.price === null ? "フリマに売上平均のデータがありません。" :
+          `売上平均 ${format.format(market.price)} G を${keepInput ? "取得しました。手入力の単価が優先されます。" : "反映しました。"}`;
+        closeLookup(message);
+        render(panel, panel.result);
+      });
+
+      // Check the local game store while its normal page loads, including when animation frames are paused.
+      const deadline = performance.now() + 15_000;
+      function check() {
+        if (lookup !== current) return;
+        if (!panel.root.isConnected || !panel.root.open) {
+          closeLookup();
+          return;
+        }
+        frame.dispatchEvent(new Event("hako-af:read-material-market", { bubbles: true }));
+        if (lookup !== current) return;
+        if (performance.now() >= deadline) {
+          closeLookup("売上平均を取得できませんでした。再試行できます。");
+          return;
+        }
+        current.timer = setTimeout(check, 250);
+      }
+      document.body.append(frame);
+      check();
+    }
 
     function mount(anchor) {
       const root = node("details", "enhance-estimate");
@@ -91,9 +154,10 @@
       price.placeholder = "例 1,000";
       const label = document.createElement("label");
       label.append("素材単価（G）", price);
-      const market = node("a", "estimate-market", "フリマで相場を見る");
-      market.target = "_blank";
-      market.rel = "noopener";
+      const market = node("button", "estimate-market", "フリマで相場を見る");
+      market.type = "button";
+      const marketStatus = node("p", "estimate-market-status");
+      marketStatus.setAttribute("aria-live", "polite");
       const source = node("p", "estimate-source");
       const status = node("p", "estimate-status");
       status.setAttribute("role", "status");
@@ -114,33 +178,40 @@
         row.append(th);
         return [row.insertCell(), row.insertCell()];
       });
-      body.append(label, market, source, status, table);
+      body.append(label, market, marketStatus, source, status, table);
       root.append(node("summary", "estimate-heading", `${names.enhanceEstimate}（Lv${target}）`), body);
       anchor.after(root);
-      const panel = { root, price, market, source, status, table, rows, ticket: 0 };
+      const panel = { root, price, market, marketStatus, source, status, table, rows, ticket: 0 };
+      market.addEventListener("click", event => {
+        if (event.isTrusted && panel.data?.source && root.open) readMarket(panel);
+      });
       root.addEventListener("toggle", () => {
         if (root.open) refresh(panel);
-        else { panel.ticket++; panel.calculating = false; }
+        else {
+          if (lookup?.panel === panel) closeLookup();
+          panel.ticket++;
+          panel.calculating = false;
+        }
       });
       price.addEventListener("input", () => {
         const text = price.value.normalize("NFKC").replace(/,/g, "").trim();
         if (text && /^\d+$/.test(text) && Number.isSafeInteger(Number(text))) manual.set(panel.data.source, Number(text));
         else manual.delete(panel.data.source);
-        render(panel, panel.result, text !== "" && !manual.has(panel.data.source));
+        panel.invalidPrice = text !== "" && !manual.has(panel.data.source);
+        render(panel, panel.result);
       });
       panels.set(anchor, panel);
       return panel;
     }
 
-    function render(panel, result, invalid = false) {
-      const { data, market, source, rows, table } = panel;
+    function render(panel, result) {
+      const { data, source, rows, table, invalidPrice } = panel;
       const entered = manual.get(data.source);
-      const price = invalid ? null : entered ?? data.market?.price;
-      market.href = `/market?${new URLSearchParams({ item: data.source })}`;
+      const price = invalidPrice ? null : entered ?? data.market?.price;
       const observed = data.market?.price != null
         ? `フリマ売上平均 ${format.format(data.market.price)} G（${time.format(data.market.at)} JSTに取得）`
         : "最近の売上平均なし";
-      source.textContent = `${data.name} · ${invalid ? "単価は0以上の整数で入力" : entered != null ? "手入力の単価を使用" : observed}`;
+      source.textContent = `${data.name} · ${invalidPrice ? "単価は0以上の整数で入力" : entered != null ? "手入力の単価を使用" : observed}`;
       table.hidden = !result;
       if (!result) return;
       const { expected, p90, goldExpected, goldP90 } = result;
@@ -204,20 +275,25 @@
       current.add(anchor);
       const panel = panels.get(anchor) ?? mount(anchor);
       if (panel.signature === event.detail) return;
-      const oldSource = panel.data?.source;
+      const sourceChanged = panel.data?.source !== data.source;
+      if (sourceChanged) {
+        if (lookup?.panel === panel) closeLookup();
+        panel.marketStatus.textContent = "";
+        panel.invalidPrice = false;
+      }
       panel.signature = event.detail;
       panel.data = data;
-      if (oldSource !== data.source || panel.price !== document.activeElement && !manual.has(data.source)) {
-        const entered = manual.get(data.source);
-        panel.price.value = entered == null ? "" : format.format(entered);
-        panel.price.placeholder = data.market?.price == null ? "例 1,000" : format.format(data.market.price);
+      if (sourceChanged || panel.price !== document.activeElement && !panel.invalidPrice && !manual.has(data.source)) {
+        updatePriceInput(panel);
       }
       refresh(panel);
     });
     window.addEventListener("storage", event => { if (event.key === "hakoAf4000:material-prices") requestScan(); });
+    window.addEventListener("pagehide", () => closeLookup());
     return () => {
       for (const [anchor, panel] of panels) {
         if (current.has(anchor) && anchor.isConnected) continue;
+        if (lookup?.panel === panel) closeLookup();
         panel.ticket++;
         panel.root.remove();
         panels.delete(anchor);

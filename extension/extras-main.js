@@ -163,30 +163,53 @@
     } catch { return new Map(); }
   }
 
+  function materialPrice(entry, now) {
+    if (!Number.isFinite(entry?.fetchedAt) || now - entry.fetchedAt >= marketPriceLifetime) return;
+    const amount = Number(entry.data?.sold_avg);
+    return { price: Number.isFinite(amount) && amount > 0 ? amount : null, at: entry.fetchedAt };
+  }
+
+  function saveMaterialPrices(entries, now = Date.now()) {
+    const prices = new Map(readMarketPrices());
+    let changed = false;
+    for (const [key, entry] of entries) {
+      if (typeof key !== "string" || key.includes("|") || (prices.get(key)?.at ?? 0) >= entry?.fetchedAt) continue;
+      const price = materialPrice(entry, now);
+      if (!price) continue;
+      prices.set(key, price);
+      changed = true;
+    }
+    if (!changed) return;
+    const recent = [...prices].filter(([, value]) => now - value.at < marketPriceLifetime)
+      .sort((a, b) => b[1].at - a[1].at).slice(0, 100);
+    try { localStorage.setItem(marketPriceKey, JSON.stringify(recent)); } catch { /* Storage is unavailable. */ }
+  }
+
   function watchMarketPrices(store) {
     if (!store?.cache || marketWatchers.has(store)) return;
     marketWatchers.add(store);
-    const capture = () => {
-      if (!options.enhanceEstimate) return;
-      const prices = new Map(readMarketPrices());
-      const now = Date.now();
-      let changed = false;
-      for (const [key, entry] of store.cache) {
-        if (typeof key !== "string" || key.includes("|") || !Number.isFinite(entry?.fetchedAt) ||
-            now - entry.fetchedAt >= marketPriceLifetime || (prices.get(key)?.at ?? 0) >= entry.fetchedAt) continue;
-        const data = entry.data;
-        const price = data?.sold_avg == null ? null : Number(data.sold_avg);
-        prices.set(key, { price: Number.isFinite(price) && price > 0 ? price : null, at: entry.fetchedAt });
-        changed = true;
-      }
-      if (!changed) return;
-      const recent = [...prices].filter(([, value]) => now - value.at < marketPriceLifetime)
-        .sort((a, b) => b[1].at - a[1].at).slice(0, 100);
-      try { localStorage.setItem(marketPriceKey, JSON.stringify(recent)); } catch { /* Storage is unavailable. */ }
-    };
+    const capture = () => { if (options.enhanceEstimate) saveMaterialPrices(store.cache); };
     store.$subscribe?.(capture, { detached: true });
     capture();
   }
+
+  document.addEventListener("hako-af:read-material-market", event => {
+    const frame = event.target;
+    if (!options.enhanceEstimate || !(frame instanceof HTMLIFrameElement) ||
+        frame.dataset.ha4 !== "estimate-market-frame") return;
+    const url = new URL(frame.src);
+    const source = url.searchParams.get("item");
+    const child = frame.contentDocument;
+    if (!source || url.origin !== location.origin || url.pathname !== "/market" || !child ||
+        !/^\/(?:f\/)?market\/?$/.test(new URL(child.URL).pathname)) return;
+    const store = appProperties(child)?.$pinia?._s?.get("marketInfo");
+    const entry = store?.cache?.get(source);
+    const now = Date.now();
+    const price = materialPrice(entry, now);
+    if (!price) return;
+    saveMaterialPrices([[source, entry]], now);
+    publish(frame, "hako-af:material-market-price", price);
+  });
 
   function readEnhanceEstimate(anchor, { item, translate }, config, profile) {
     const source = item.source_item_id || item.m_items?.id;
@@ -216,8 +239,8 @@
     });
   }
 
-  function appProperties() {
-    return document.getElementById("__nuxt")?.__vue_app__?.config?.globalProperties;
+  function appProperties(page = document) {
+    return page.getElementById("__nuxt")?.__vue_app__?.config?.globalProperties;
   }
 
   function publish(target, name, value) {
