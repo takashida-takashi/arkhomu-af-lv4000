@@ -9,21 +9,21 @@
   const features = {
     detail: `${names.forecast}（AF詳細・コピー）`,
     inventory: `${filterAndSort}（装備・強化・分解・AFガチャ）`,
-    enhanceEstimate: `${names.enhanceEstimate}（AFのLv4000到達）`,
+    enhanceEstimate: `${names.enhanceEstimate}（Lv4000までの費用）`,
     market: `${filterAndSort}（フリマ・オークション・個人間取引）`,
     marketWatch: `${names.marketWatch}（フリマ最安値）`,
     explore: `${names.explore}（${filterAndSort}・ページ表示）`,
     exploreAnalysis: `${names.exploreAnalysis}（獲得量・勝率・経過時間）`,
     hiddenTitles: `${names.hiddenTitles}（未取得の隠し称号）`,
-    gacha: `${names.gacha}（AFガチャ・スーパーガチャ）`,
+    gacha: `${names.gacha}（AFガチャ・スーパーガチャの性能表示）`,
     skillPresets: `${names.skillPresets}（ホムンクルスの使用中・控え）`,
     partyShare: names.partyShare,
-    trainingRoutes: names.trainingRoutes,
+    trainingRoutes: `${names.trainingRoutes}（目印・優先表示・引き継ぎ）`,
     slotBonus: `${names.slot}（継続ストック・決戦情報）`,
     ...(slotHome ? { slotHome: `${names.slot}（Homeで並行表示）` } : {}),
     chat: `${names.chat}（返信元への移動・表示）`,
-    daily: `${names.daily}（ゴールド・ポーション）`,
-    home: names.home
+    daily: `${names.daily}（今日のゴールド・ポーション増減）`,
+    home: `ホームの${names.home}`
   };
   const afRanks = ["コモン", "アンコモン", "レア", "エリート", "エピック", "ヒロイック", "レジェンダリー",
     "ミシック", "セレスティアル", "ディヴァイン", "トランセンデント", "エターナル"];

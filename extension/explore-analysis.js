@@ -128,11 +128,7 @@
       if (typeof event.data === "string" && panel?.data?.identity?.owner === event.data) loadHistory(panel);
     });
 
-    function createPanel(target, mode) {
-      const root = node("details", "explore-analysis");
-      const guild = mode === "guild";
-      const title = guild ? `${names.exploreAnalysis}（ギルダン）` : names.exploreAnalysis;
-      root.setAttribute("aria-label", title);
+    function createTable(guild, title) {
       const table = node("table", "explore-analysis-table");
       table.setAttribute("aria-label", title);
       const head = table.createTHead().insertRow();
@@ -156,23 +152,46 @@
       elapsedCells[0].title = "探索のボタンを押してから探索サマリが表示されるまで";
       for (const cell of elapsedCells.slice(1)) cell.textContent = "—";
       const winCells = cells.pop();
+      return { table, elapsed: elapsedCells[0], cells, winCells };
+    }
+
+    function createPanel(target, mode) {
+      const root = node("details", "explore-analysis");
+      const guild = mode === "guild";
+      const title = guild ? `${names.exploreAnalysis}（ギルダン）` : names.exploreAnalysis;
+      root.setAttribute("aria-label", title);
       const note = node("p", "explore-analysis-note");
       note.setAttribute("role", "status");
       const footer = node("div", "explore-analysis-footer");
       footer.append(note);
-      const active = { root, elapsed: elapsedCells[0], cells, winCells, note, mode };
+      const active = { root, note, mode };
       root.append(node("summary", "explore-analysis-title", title));
-      if (!guild) {
+      if (guild) {
+        active.guild = createTable(true, title);
+        root.append(active.guild.table);
+      } else {
+        root.setAttribute("data-ha4-explore-comparison", "");
         const label = node("label", "explore-analysis-group", "集計対象");
         active.group = document.createElement("select");
-        for (const [value, caption] of Object.entries(groups)) active.group.add(new Option(caption, value));
+        active.group.setAttribute("aria-label", "集計対象");
         label.append(active.group);
-        root.append(label);
-        active.group.addEventListener("change", () => renderHistory(active));
+        const tables = node("div", "explore-analysis-layout");
+        active.tables = Object.fromEntries(Object.entries(groups).map(([key, caption]) => {
+          active.group.add(new Option(caption, key));
+          const block = document.createElement("div");
+          block.setAttribute("data-ha4-explore-group", key);
+          const table = createTable(false, `${caption}の探索統計`);
+          const count = node("p", "explore-analysis-note");
+          block.append(node("h4", "explore-analysis-group-title", caption), table.table, count);
+          tables.append(block);
+          return [key, { ...table, block, count }];
+        }));
+        root.append(label, tables);
+        active.group.addEventListener("change", () => selectGroup(active));
         active.reset = resetButton(footer, "統計をリセット", () => active.data.identity, note);
         active.reset.disabled = true;
       }
-      root.append(table, footer);
+      root.append(footer);
       target.after(root);
       return active;
     }
@@ -203,22 +222,32 @@
       }
     }
 
+    function selectGroup(active) {
+      for (const [key, { block }] of Object.entries(active.tables)) {
+        block.toggleAttribute("data-ha4-explore-selected", key === active.group.value);
+      }
+    }
+
     function renderHistory(active) {
-      const { samples, mixed, estimated } = active.data;
-      const group = active.group.value;
-      const recent = active.history?.recent[group] ?? empty();
-      const all = active.history?.all[group] ?? empty();
-      render(active, 0, samples?.[group]);
-      render(active, 1, recent);
-      render(active, 2, all);
+      const { samples, mixed, estimated, elapsedMs } = active.data;
+      for (const [group, table] of Object.entries(active.tables)) {
+        const recent = active.history?.recent[group] ?? empty();
+        const all = active.history?.all[group] ?? empty();
+        table.elapsed.textContent = formatElapsed(elapsedMs);
+        render(table, 0, samples?.[group]);
+        render(table, 1, recent);
+        render(table, 2, all);
+        const count = active.history
+          ? `集計した結果 ${integer.format(recent.count)}件（直近30日） / ${integer.format(all.count)}件（累計）` : "";
+        const coverage = all.battleSamples < all.count ? "勝率は戦績を記録できた結果から集計" : "";
+        table.count.textContent = [count, coverage].filter(Boolean).join(" · ");
+      }
+      selectGroup(active);
       const split = mixed?.cloverStocks != null
         ? `今回の内訳 通常 ${integer.format(mixed.normalStocks)} / クローバー ${integer.format(mixed.cloverStocks)} ストック` : "";
       const excluded = mixed && !samples ? "通常・クローバーの報酬内訳が不足しているため集計対象外"
         : active.data.unclassified ? "今回のクローバー使用状況が不明のため集計対象外" : "";
-      const count = active.history
-        ? `集計した結果 ${integer.format(recent.count)}件（直近30日） / ${integer.format(all.count)}件（累計）` : "";
-      const coverage = all.battleSamples < all.count ? "勝率は戦績を記録できた結果から集計" : "";
-      active.note.textContent = [split, excluded, estimated && "戦闘回数からストックを換算", active.notice, count, coverage]
+      active.note.textContent = [split, excluded, estimated && "戦闘回数からストックを換算", active.notice]
         .filter(Boolean).join(" · ");
     }
 
@@ -308,9 +337,9 @@
       const previous = panel.data;
       panel.data = data;
       updateDisclosure(panel, data.hasDrops);
-      panel.elapsed.textContent = formatElapsed(data.elapsedMs);
-      render(panel, 0, data.current);
       if (data.mode === "guild") {
+        panel.guild.elapsed.textContent = formatElapsed(data.elapsedMs);
+        render(panel.guild, 0, data.current);
         const unavailable = data.missingGuildRewards ? "挑戦全体の報酬が表示されています。今回分の内訳を取得できませんでした。"
           : "今回の戦闘回数や報酬の内訳を確認できなかったため、ストックあたりの獲得量を表示できません。";
         panel.note.textContent = data.timingOnlyNote ||

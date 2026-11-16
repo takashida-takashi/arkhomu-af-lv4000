@@ -11,6 +11,14 @@
   const skillLines = text => [...new Map(text.split(/\r?\n/)
     .map(line => line.trim()).filter(Boolean).map(line => [nameKey(line), line])).values()];
 
+  function reassignSkill(skills, leaving, incoming) {
+    const next = skills.filter(skill => skill !== leaving);
+    if (incoming && !next.some(skill => nameKey(skill) === nameKey(incoming))) {
+      next.splice(leaving ? skills.indexOf(leaving) : next.length, 0, incoming);
+    }
+    return next;
+  }
+
   function load() {
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey)) ?? { routes: JSON.parse(localStorage.getItem(legacyKey)) };
@@ -139,9 +147,78 @@
           count.textContent = `${size} / ${limit}`;
           input.setCustomValidity(size > limit ? `${label}は${limit}個まで設定できます。` : "");
         };
-        input.addEventListener("input", refresh);
+        input.addEventListener("input", () => {
+          refresh();
+          refreshTransfers();
+        });
         return [key, { input, refresh }];
       }));
+      const transfers = node("fieldset", "training-transfer");
+      const transferFields = node("div", "training-skill-fields");
+      const choices = Object.fromEntries([["ordinary", "通常から選ぶ"], ["permanent", "永久から選ぶ"]].map(([key, label]) => {
+        const select = node("select", "training-input");
+        select.setAttribute("aria-label", label);
+        transferFields.append(field(label, select));
+        return [key, select];
+      }));
+      const transferStatus = node("span", "extra-note");
+      transferStatus.setAttribute("role", "status");
+      const applyTransfer = button("移動・入れ替え", () => {
+        const plan = transferPlan();
+        if (!plan.next) return;
+        for (const [key, { input, refresh }] of Object.entries(inputs)) {
+          input.value = plan.next[key].join("\n");
+          refresh();
+        }
+        refreshTransfers(true);
+        status.textContent = "";
+        transferStatus.textContent = "変更しました。「保存」で反映します。";
+      });
+      const transferActions = node("div", "party-actions");
+      transferActions.append(applyTransfer, transferStatus);
+      transfers.append(node("legend", "training-transfer-title", "通常・永久の入れ替え"),
+        node("p", "extra-note", "片方を選ぶと移動し、両方を選ぶと入れ替えます。"),
+        transferFields, transferActions);
+
+      function transferPlan() {
+        const ordinary = choices.ordinary.value;
+        const permanent = choices.permanent.value;
+        const label = ordinary && permanent ? "入れ替える" : ordinary ? "永久へ移す" : permanent ? "通常へ移す" : "移動・入れ替え";
+        if (!ordinary && !permanent) return { label };
+        if (ordinary && permanent && nameKey(ordinary) === nameKey(permanent)) {
+          return { label, message: "入れ替えるスキルは別々に選んでください。" };
+        }
+        const next = {};
+        for (const [key, leaving, incoming] of [["ordinary", ordinary, permanent], ["permanent", permanent, ordinary]]) {
+          const current = skillLines(inputs[key].input.value);
+          next[key] = reassignSkill(current, leaving, incoming);
+          const [group, limit] = groups[key];
+          if (next[key].length > limit && next[key].length > current.length) {
+            return { label, message: `${group}は${limit}枠までです。入れ替える${group}も選んでください。` };
+          }
+        }
+        return { label, next };
+      }
+
+      function updateTransferAction() {
+        const { label, next, message } = transferPlan();
+        applyTransfer.textContent = label;
+        applyTransfer.disabled = !next;
+        transferStatus.textContent = message ?? "";
+      }
+
+      function refreshTransfers(reset = false) {
+        for (const [key, select] of Object.entries(choices)) {
+          const selected = reset ? "" : select.value;
+          const skills = skillLines(inputs[key].input.value);
+          select.replaceChildren(new Option("選択なし", ""), ...skills.map(skill => new Option(skill, skill)));
+          select.value = skills.includes(selected) ? selected : "";
+        }
+        updateTransferAction();
+      }
+
+      choices.ordinary.addEventListener("change", updateTransferAction);
+      choices.permanent.addEventListener("change", updateTransferAction);
       const controls = node("div", "party-actions");
       const save = node("button", "extra-button", "保存");
       save.type = "submit";
@@ -157,7 +234,7 @@
         }
       });
       controls.append(save, remove);
-      form.append(fields, controls, status);
+      form.append(transfers, fields, controls, status);
 
       let currentId;
       function setRoute(route) {
@@ -171,6 +248,8 @@
         }
         status.textContent = "";
         remove.hidden = !currentId;
+        transfers.hidden = !currentId;
+        refreshTransfers(true);
       }
 
       picker.addEventListener("change", () => setRoute(load().routes.find(route => route.id === picker.value)));

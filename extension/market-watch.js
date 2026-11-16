@@ -193,7 +193,7 @@
       market = event.target;
       if (launcher?.parentElement !== market) {
         launcher?.remove();
-        launcher = node("button", "market-watch-button", names.marketWatch);
+        launcher = node("button", "market-watch-button", "最安値の推移");
         launcher.type = "button";
         launcher.addEventListener("click", () => open());
         market.prepend(launcher);

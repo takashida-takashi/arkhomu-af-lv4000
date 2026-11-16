@@ -609,6 +609,21 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
 [data-ha4="training-form"] { display: grid; gap: .6rem; padding: .7rem .9rem; }
 [data-ha4="training-field"] { display: grid; gap: .2rem; min-width: 0; }
 [data-ha4="training-skill-fields"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
+[data-ha4="training-transfer"]:not([hidden]) {
+  display: grid;
+  gap: .45rem;
+  min-inline-size: 0;
+  margin: 0;
+  padding: .4rem .55rem .55rem;
+  border: 1px solid #624a83;
+  border-radius: .4rem;
+}
+[data-ha4="training-transfer-title"] { padding-inline: .25rem; font-weight: 700; }
+[data-ha4="training-transfer"] select { width: 100%; min-width: 0; }
+[data-ha4="training-transfer"] [data-ha4="extra-button"]:disabled { opacity: .55; cursor: default; }
+@media (max-width: 420px) {
+  [data-ha4="training-transfer"] [data-ha4="training-skill-fields"] { grid-template-columns: minmax(0, 1fr); }
+}
 [data-ha4="training-input"], [data-ha4="training-active-route"] select {
   box-sizing: border-box;
   max-width: 100%;
@@ -1113,6 +1128,15 @@ html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
   border-radius: 8px;
   font-size: 12px;
 }
+[data-ha4="explore-analysis"][data-ha4-explore-comparison][open] {
+  width: min(100%, 82rem);
+  container: ha4-explore-stats / inline-size;
+}
+[data-ha4="explore-analysis-layout"] { display: grid; gap: .9rem; }
+[data-ha4-explore-group] { min-width: 0; }
+[data-ha4-explore-group]:where(:not([data-ha4-explore-selected])),
+[data-ha4="explore-analysis-group-title"] { display: none; }
+[data-ha4-explore-group] > [data-ha4="explore-analysis-note"] { margin-top: .35rem; }
 [data-ha4="explore-analysis-table"] { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 [data-ha4="explore-analysis"]:not([open]) { width: fit-content; padding: .25rem .55rem; }
 [data-ha4="explore-analysis-title"] { cursor: pointer; text-align: start; font-weight: 700; color: #e4c7ff; }
@@ -1128,6 +1152,13 @@ html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
 [data-ha4="explore-analysis-footer"] button { margin-inline-start: auto; }
 [data-ha4="explore-analysis-note"] { margin: 0; color: #d3c2e3; }
 [data-ha4="explore-analysis-note"]:empty { display: none; }
+@container ha4-explore-stats (min-width: 58rem) {
+  [data-ha4="explore-analysis-group"] { display: none; }
+  [data-ha4="explore-analysis-layout"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  [data-ha4-explore-group],
+  [data-ha4="explore-analysis-group-title"] { display: block; }
+  [data-ha4="explore-analysis-group-title"] { margin: .2rem 0 .4rem; font-size: 1em; color: #e4c7ff; }
+}
 @media (max-width: 480px) {
   [data-ha4="explore-analysis"] { padding: .5rem; }
   [data-ha4="explore-analysis-table"] :is(th, td) { padding-inline: .2rem; }

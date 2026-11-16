@@ -270,7 +270,7 @@
       button.type = "button";
       button.dataset.ha4 = "extra-button";
       button.dataset.ha4SlotHomeLaunch = "";
-      button.textContent = names.slot;
+      button.textContent = "Homeで並行する";
       button.title = "Homeでスロットを並行表示";
       button.addEventListener("click", event => { if (event.isTrusted) open(cabinet, button); });
       anchor.append(button);

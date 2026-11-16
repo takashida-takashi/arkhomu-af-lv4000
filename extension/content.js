@@ -333,7 +333,7 @@
       const button = node("button", "detail-switch");
       button.type = "button";
       button.setAttribute("role", "switch");
-      button.setAttribute("aria-label", names.forecast);
+      button.setAttribute("aria-label", "AF詳細の予測表示");
       button.addEventListener("click", event => {
         event.stopPropagation();
         showDetailForecast = !showDetailForecast;
@@ -345,7 +345,7 @@
       detailControls.set(root, tools);
     }
     const button = tools.firstElementChild;
-    const label = `${names.forecast} ${showDetailForecast ? "ON" : "OFF"}`;
+    const label = showDetailForecast ? "予測 ON" : "予測 OFF";
     if (button.textContent !== label) {
       button.textContent = label;
       button.setAttribute("aria-checked", String(showDetailForecast));
@@ -770,7 +770,7 @@
         state.nativeForecast = input.checked;
         requestScan();
       });
-      label.append(input, names.sort);
+      label.append(input, "予測値順");
       select.closest("label").after(label);
     }
     const input = label.firstElementChild;
