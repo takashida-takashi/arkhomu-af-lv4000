@@ -16,7 +16,7 @@
       <h1>はこホム拡張の使い方</h1>
       <p>やりたいことを選ぶと、ボタンの位置と操作の順番が分かります。ゲーム画面の画像は押すと拡大でき、原寸でも開けます。</p>
       <nav aria-label="目次">
-        <a href="#setup">導入・更新</a><a href="#af">AF比較・分解</a><a href="#explore">探索</a><a href="#training">編成・育成</a><a href="#notices">ホーム通知</a><a href="#other">その他</a>
+        <a href="#setup">導入・更新</a><a href="#settings">拡張設定</a><a href="#af">AF強化後予測値表示</a><a href="#explore">探索結果の見やすさ向上</a><a href="#training">編成共有・育成ルート</a><a href="#mating">合成操作性向上</a><a href="#notices">通知項目追加</a><a href="#gacha">AFガチャ周辺の機能追加</a><a href="#other">その他</a>
       </nav>
     </header>
 
@@ -27,12 +27,17 @@
         <article><h3>Android</h3><ol class="steps"><li>FirefoxにTampermonkeyを追加</li><li>配布ページの「Tampermonkey用を開く」を押す</li><li>Tampermonkeyの確認画面でインストール</li></ol></article>
         <article><h3>iPhone・iPad</h3><ol class="steps"><li>Userscriptsを入れ、Safariの機能拡張で有効にする</li><li>Safariで配布ページの「Userscripts用を開く」を押す</li><li>ページメニューからUserscriptsを開き、インストール</li></ol></article>
       </div>
+      <p class="hint">画面下の「拡張 v…」を押すと更新を確認します。PCでZIPの適用が必要な場合は、既存フォルダーに上書きして拡張を再読み込みします。Android・iPhone・iPadでは、取得済みの更新が次回のページ読み込みで有効になります。</p>
+    </section>
+
+    <section id="settings" aria-labelledby="settings-title">
+      <h2 id="settings-title">拡張設定</h2>
+      <p>ホームの上部メニューから「拡張設定」を開きます。機能ごとのオン／オフ、ホームに表示する通知項目、探索結果の表示順などを変更できます。</p>
       <figure data-shot="settings"></figure>
-      <p class="hint">上部メニューの「拡張設定」で各機能をオン／オフにできます。画面下の「拡張 v…」を押すと更新を確認します。PCでZIPの適用が必要な場合は、既存フォルダーに上書きして拡張を再読み込みします。Android・iPhone・iPadでは、取得済みの更新が次回のページ読み込みで有効になります。</p>
     </section>
 
     <section id="af" aria-labelledby="af-title">
-      <h2 id="af-title">AFの性能を比べる</h2>
+      <h2 id="af-title">AF強化後予測値表示</h2>
       <div class="pair">
         <figure data-shot="af-detail"></figure>
         <figure data-shot="af-filter"></figure>
@@ -47,7 +52,7 @@
     </section>
 
     <section id="explore" aria-labelledby="explore-title">
-      <h2 id="explore-title">探索結果から候補を見つける</h2>
+      <h2 id="explore-title">探索結果の見やすさ向上</h2>
       <figure data-shot="explore"></figure>
       <div class="pair">
         <figure data-shot="explore-matches"></figure>
@@ -57,14 +62,17 @@
     </section>
 
     <section id="training" aria-labelledby="training-title">
-      <h2 id="training-title">編成を受け取り、育成に使う</h2>
+      <h2 id="training-title">編成共有・育成ルート</h2>
       <div class="pair"><figure data-shot="party-share"></figure><figure data-shot="party-import"></figure></div>
       <ol class="flow"><li>パーティ・個体詳細・殿堂から<br><b>編成や個体を共有</b></li><li>リンクを開き、使いたい枠の<br><b>「拡張育成ルートに取り込む」</b></li><li><b>通常・永久スキルを確認して保存</b><br>新規ルートは拡張設定から作成</li><li>育てる個体を開き<br><b>「拡張育成ルートを読み込む」</b></li></ol>
       <div class="pair">
         <figure data-shot="training-editor"></figure>
         <div><figure data-shot="training-detail"></figure><figure data-shot="training-grant"></figure></div>
       </div>
-      <h3>継承候補をまとめて選ぶ</h3>
+    </section>
+
+    <section id="mating" aria-labelledby="mating-title">
+      <h2 id="mating-title">合成操作性向上</h2>
       <figure data-shot="training-inherit"></figure>
       <p class="hint">一括選択は初期設定でオンです。ゲームの枠・ポイント・スキルロックに従って選択します。両親に別々のルートがある場合は、使いたい親のルートを選んでから確認してください。</p>
       <h3>世代上げの継承を短縮する</h3>
@@ -74,16 +82,22 @@
     </section>
 
     <section id="notices" aria-labelledby="notices-title">
-      <h2 id="notices-title">ホームの通知を使う</h2>
+      <h2 id="notices-title">通知項目追加</h2>
       <div class="pair"><figure data-shot="notifications"></figure><figure data-shot="watch-item"></figure></div>
       <ol class="flow"><li><b>アイテム倉庫 → 通常</b><br>登録したい品を選ぶ</li><li><b>「拡張通知に追加」</b><br>必要なら目標数を入力</li><li><b>ホーム → 拡張通知</b><br>所持数・目標達成を確認</li><li><b>アイテム名を押す</b><br>倉庫でその品の詳細を開く</li></ol>
-      <p class="hint">拡張設定からショップ・ギルドボス・遠征・孵化・スロットなどの通知を選べます。ギルドボスは自分の参加残数、スロットはレートごとの残り回転数を表示します。</p>
+      <p class="hint">「拡張設定 → 拡張通知」で、ホームに表示するショップ・ギルドボス・遠征・孵化・スロットなどの項目を選べます。ギルドボスは自分の参加残数、スロットはレートごとの残り回転数を表示します。</p>
+    </section>
+
+    <section id="gacha" aria-labelledby="gacha-title">
+      <h2 id="gacha-title">AFガチャ周辺の機能追加</h2>
+      <figure data-shot="gacha"></figure>
+      <p>「拡張セットを使う」をオンにすると、投入できる所持AFを組み合わせ、できるだけ多く引けるようにセットします。理論上限に達した場合は「最大○連」と表示します。</p>
+      <p class="hint">拡張ガチャ結果をオンにすると、AFガチャ・スーパーガチャで公開したAFのカードにPWとAF変換率＋ドロップ率合計が表示されます。</p>
     </section>
 
     <section id="other" aria-labelledby="other-title">
       <h2 id="other-title">その他の機能</h2>
-      <div class="pair"><figure data-shot="estimate"></figure><figure data-shot="gacha"></figure></div>
-      <p class="hint">拡張ガチャ結果をオンにすると、AFガチャ・スーパーガチャで公開したAFのカードにPWとAF変換率＋ドロップ率合計が表示されます。</p>
+      <figure data-shot="estimate"></figure>
       <div class="cards compact">
         <article><h3>フリマの価格追跡</h3><ol class="steps"><li>フリマで通常アイテム・永久スキルを選ぶ</li><li>「最安値を追跡」を押す</li><li>「拡張価格追跡」で履歴を確認</li></ol></article>
         <article><h3>控えの配置を保存</h3><ol class="steps"><li>ホムンクルス詳細のスキルを開く</li><li>プリセット名を入れ「現在の控えを保存」</li><li>読み込んだ差分を見て控えボタンで切替</li></ol></article>

@@ -137,11 +137,25 @@
   const visibleButton = button => button?.isConnected && !button.matches(':disabled,[aria-disabled="true"]') && !!button.getClientRects().length;
   const buttonText = button => button?.textContent.trim();
   const dialogSelector = '[role="dialog"],[role="alertdialog"],[data-base-modal-root]';
+  // The game's BaseModal blocks clicks for the first 350 ms, including programmatic ones.
+  const modalReadyDelay = 360;
   const dialogHeading = (dialog, heading) => [...dialog.querySelectorAll("h2,h3,[role=heading]")]
     .some(title => heading.test(title.textContent.trim()) && title.getClientRects().length);
 
-  function findDialogButton(label, heading) {
-    for (const dialog of document.querySelectorAll(dialogSelector)) {
+  function topGameModal() {
+    let top;
+    for (const modal of document.querySelectorAll("[data-base-modal-root]")) {
+      if (modal.getClientRects().length && (!top || Number(modal.dataset.baseModalZ || 100) >= Number(top.dataset.baseModalZ || 100))) {
+        top = modal;
+      }
+    }
+    return top;
+  }
+
+  function findDialogButton(root, label, heading) {
+    const dialogs = root?.matches(dialogSelector) ? [root, ...root.querySelectorAll(dialogSelector)] :
+      document.querySelectorAll(dialogSelector);
+    for (const dialog of dialogs) {
       if (!dialogHeading(dialog, heading)) continue;
       const button = [...dialog.querySelectorAll("button")].find(button =>
         button.closest(dialogSelector) === dialog && buttonText(button) === label && visibleButton(button));
@@ -152,26 +166,32 @@
   function stopQuick() {
     const attempt = quickAttempt;
     quickAttempt = null;
-    attempt?.observer.disconnect();
-    clearTimeout(attempt?.timeout);
+    clearInterval(attempt?.timer);
   }
 
   function quickStep(attempt) {
     if (quickAttempt !== attempt) return;
     const parents = attempt.flow ? attempt.ctx.matingSlots?.map(parentId) : legacyParents;
-    if (!enabled || location.pathname !== attempt.path ||
+    if (!enabled || performance.now() >= attempt.deadline || location.pathname !== attempt.path ||
         JSON.stringify(parents?.map(String)) !== attempt.parents) {
       stopQuick();
       return;
     }
-    const trim = findDialogButton("次へ（継承選択）", /^永久化スキルを選別$/);
-    const unused = findDialogButton("このまま進む", /^(継承枠が余っています|継承スキルが引き継がれません)$/);
+    const modal = topGameModal();
+    if (modal !== attempt.modal) {
+      attempt.modal = modal;
+      attempt.modalOpenedAt = performance.now();
+    }
+    if (modal && performance.now() - attempt.modalOpenedAt < modalReadyDelay) return;
+    const trim = findDialogButton(modal, "次へ（継承選択）", /^永久化スキルを選別$/);
+    const unused = findDialogButton(modal, "このまま進む", /^(継承枠が余っています|継承スキルが引き継がれません)$/);
     const next = attempt.flow ? document.querySelector(".fx-matflow__next") :
-      findDialogButton("内容を確認 →", /^継承するスキル \/ パッシブを選択$/);
+      findDialogButton(modal, "内容を確認 →", /^継承するスキル \/ パッシブを選択$/);
     const finish = attempt.flow ? buttonText(next) === "継承合成する" && next :
-      findDialogButton("この内容で合成する", /^合成内容の最終確認$/);
+      findDialogButton(modal, "この内容で合成する", /^合成内容の最終確認$/);
     const advance = attempt.flow && buttonText(next) !== "確認へ →" ? null : next;
-    const button = [trim, unused, finish, advance].find(item => visibleButton(item) && !attempt.steps.has(buttonText(item)));
+    const button = [trim, unused, finish, advance].find(item =>
+      visibleButton(item) && (!modal || modal.contains(item)) && !attempt.steps.has(buttonText(item)));
     if (button) {
       attempt.steps.add(buttonText(button));
       // The Flex flow can show its unused-slot dialog after the final click. Continue only that native dialog.
@@ -197,13 +217,9 @@
     const materialGeneration = generation(records.get(material));
     if (materialGeneration == null || materialGeneration >= 1000) return;
     const attempt = { ...(flex ? flexCandidate : {}), path: location.pathname, parents: JSON.stringify(parents),
-      steps: new Set() };
-    attempt.observer = new MutationObserver(() => quickStep(attempt));
-    attempt.observer.observe(document.body, { subtree: true, childList: true, attributes: true,
-      attributeFilter: ["disabled", "aria-disabled", "style"] });
-    attempt.timeout = setTimeout(stopQuick, 2500);
+      steps: new Set(), deadline: performance.now() + 10000 };
+    attempt.timer = setInterval(() => quickStep(attempt), 60);
     quickAttempt = attempt;
-    queueMicrotask(() => quickStep(attempt));
   }, true);
   document.addEventListener("keydown", event => { if (event.isTrusted && event.key === "Escape") stopQuick(); }, true);
 
@@ -315,7 +331,7 @@
     if (badge.textContent !== caption) badge.textContent = caption;
   }
 
-  function runBulk(anchor, panel, scope, candidate, apply) {
+  function runBulk(anchor, panel, scope, candidate, apply, delay = 0) {
     const control = anchor.querySelector(':scope > [data-ha4="training-active-route"]');
     let label = anchor.querySelector(':scope > [data-ha4="training-bulk"]');
     if (!scope?.bulk || !control) {
@@ -343,14 +359,15 @@
     const input = label.firstElementChild;
     if (!input.checked || state.scheduled || state.applied) return;
     state.scheduled = true;
-    // The classic dialog initializes its native selection on opening. Apply after its first layout.
-    requestAnimationFrame(() => requestAnimationFrame(() => {
+    const applyWhenReady = () => {
       state.scheduled = false;
       const active = () => input.isConnected && input.checked && bulkChoices.get(panel) === state && !!panel.getClientRects().length;
       if (!active()) return;
       state.applied = true;
       void apply(active);
-    }));
+    };
+    if (delay) setTimeout(applyWhenReady, delay);
+    else requestAnimationFrame(() => requestAnimationFrame(applyWhenReady));
   }
 
   const visibleSkill = label => !!label && !/^[？?]/.test(label);
@@ -472,17 +489,9 @@
     }).catch(() => send({ unavailable: true }));
   }
 
-  function legacyMating(parentIds) {
-    legacyParents = Array.isArray(parentIds) ? parentIds : [];
-    const heading = [...document.querySelectorAll('[role="dialog"] h3,[data-base-modal-root] h3')]
-      .find(el => el.textContent.trim() === "継承するスキル / パッシブを選択" && el.getClientRects().length);
-    const modal = heading?.closest('[role="dialog"],[data-base-modal-root]');
-    if (!modal) return;
-    const rows = modal.querySelectorAll(".bg-background.border.rounded.transition-colors.overflow-hidden,[class~='bg-emerald-950/30'].border.rounded.overflow-hidden");
-    if (!rows.length) return;
-    if (!modal.hasAttribute("data-ha4-training-scope")) modal.setAttribute("data-ha4-training-scope", "");
-    const body = rows[0].closest(".p-3.flex.flex-col.h-full") ?? heading.closest("header")?.nextElementSibling ?? modal;
-    const scope = matingSkills(body, parentIds);
+  const legacyRowSelector = ".bg-background.border.rounded.transition-colors.overflow-hidden,[class~='bg-emerald-950/30'].border.rounded.overflow-hidden";
+
+  function legacySelections(modal, scope) {
     const { rows: owned } = ownedRecords();
     const locked = new Set([...recordsFor(legacyParents.map(String), owned).values()].flatMap(record => {
       const meta = record.meta ?? record.t_user_monsters?.meta;
@@ -490,7 +499,7 @@
     }));
     const changes = [];
     const additions = [];
-    for (const row of rows) {
+    for (const row of modal.querySelectorAll(legacyRowSelector)) {
       const auto = row.classList.contains("bg-emerald-950/30");
       const name = row.querySelector("span.font-bold.break-words");
       const forget = auto && [...row.querySelectorAll("input[type=checkbox]")]
@@ -510,7 +519,24 @@
         blocked: row.classList.contains("opacity-60")
       });
     }
+    return { changes, additions };
+  }
+
+  function legacyMating(parentIds) {
+    legacyParents = Array.isArray(parentIds) ? parentIds : [];
+    const heading = [...document.querySelectorAll('[role="dialog"] h3,[data-base-modal-root] h3')]
+      .find(el => el.textContent.trim() === "継承するスキル / パッシブを選択" && el.getClientRects().length);
+    const modal = heading?.closest(dialogSelector);
+    const firstRow = modal?.querySelector(legacyRowSelector);
+    if (!firstRow) return;
+    if (!modal.hasAttribute("data-ha4-training-scope")) modal.setAttribute("data-ha4-training-scope", "");
+    const body = firstRow.closest(".p-3.flex.flex-col.h-full") ?? heading.closest("header")?.nextElementSibling ?? modal;
+    const scope = matingSkills(body, parentIds);
+    legacySelections(modal, scope);
     runBulk(body, modal, scope, null, async active => {
+      const overlay = modal.closest("[data-base-modal-root]");
+      if (overlay && topGameModal() !== overlay) return;
+      const { changes, additions } = legacySelections(modal, scope);
       for (const { input, desired } of changes) {
         if (!active()) return;
         if (input.isConnected && input.checked === desired) { input.click(); await Promise.resolve(); }
@@ -521,13 +547,17 @@
         const control = row.querySelector('[role="checkbox"]') ?? row.firstElementChild;
         if (control && !control.matches(':disabled,[aria-disabled="true"]')) { control.click(); await Promise.resolve(); }
       }
-    });
+    }, modalReadyDelay);
   }
 
   for (const type of ["click", "change", "keydown"]) {
     document.addEventListener(type, event => {
       if (type === "keydown" && !["Enter", " "].includes(event.key)) return;
       if (event.target instanceof Element && event.target.closest("[data-ha4-training-scope]")) {
+        if (type === "click" && event.isTrusted && event.target.closest(legacyRowSelector)) {
+          const state = bulkChoices.get(event.target.closest(dialogSelector));
+          if (state) state.applied = true;
+        }
         document.dispatchEvent(new Event("hako-af:grid-rendered"));
       }
     }, true);
