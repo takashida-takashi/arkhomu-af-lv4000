@@ -44,10 +44,31 @@
     return typeof id === "string" && id.length > 0 || Number.isSafeInteger(id);
   }
 
+  function irreversibleMonsterRequest(url, body) {
+    switch (url) {
+      case "/api/mating/execute": return ["合成", [body?.parentAId, body?.parentBId]];
+      case "/api/mating/r6-execute": return ["特殊合成", body?.materialIds];
+      case "/api/mating/sacrifice": return ["素材として消費", body?.sacrificeIds];
+      case "/api/soul/soulify": return ["魂化", [body?.userMonsterId]];
+      case "/api/soul/soulify-batch": return ["魂化", body?.userMonsterIds];
+      case "/api/monsters/release": return ["解放", [body?.userMonsterId]];
+      case "/api/monsters/release-batch": return ["解放", body?.userMonsterIds];
+      default: return null;
+    }
+  }
+
   function observe(native) {
     if (typeof native !== "function" || wrapped.has(native)) return native;
     const proxy = new Proxy(native, {
       apply(target, thisArg, args) {
+        const operation = args[1]?.method === "POST" && irreversibleMonsterRequest(args[0], args[1].body);
+        if (operation && Array.isArray(operation[1]) && operation[1].length && operation[1].every(validId) &&
+            !document.dispatchEvent(new CustomEvent("hako-af:guard-monster-operation", {
+              cancelable: true, detail: JSON.stringify([operation[0], operation[1].map(String)])
+            }))) {
+          const statusMessage = "拡張育成ルートの警告で操作をキャンセルしました。";
+          return Promise.reject(Object.assign(new Error(statusMessage), { statusCode: 400, data: { statusMessage } }));
+        }
         const response = Reflect.apply(target, thisArg, args);
         if (args[0] === "/api/market/stats") {
           // Observe the data already returned to the marketplace. Return its original promise to the caller.

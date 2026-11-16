@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "はこホム AF Lv4000予測",
-  "version": "3.0.20",
-  "description": "AFの現在値とLv4000予測値を並べて表示し、読み込まれた一覧を絞り込みます。",
+  "name": "はこホム拡張",
+  "version": "3.0.21",
+  "description": "AFの予測・絞り込み、探索統計、通知、編成共有、ホムンクルスの育成を補助します。",
   "permissions": ["storage", "downloads"],
   "host_permissions": ["https://arkhomu.com/*"],
   "background": { "service_worker": "local-reload-worker.js" },

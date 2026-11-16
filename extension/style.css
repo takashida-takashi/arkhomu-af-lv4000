@@ -632,6 +632,17 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
 }
 [data-ha4="training-detail-route"] { color: #a8f3df; overflow-wrap: anywhere; }
 [data-ha4="training-detail-route"]:empty { display: none; }
+[data-ha4="training-edit-target"][hidden] { display: none; }
+[data-ha4="training-mother"][aria-pressed="true"] { border-color: #66d6ae; color: #b6f2df; }
+[data-ha4="training-bulk"] {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  margin: .35rem 0;
+  color: #daf7ed;
+  font-weight: 600;
+}
+[data-ha4="training-bulk"] input { accent-color: #72dcb3; }
 [data-ha4="training-progress"] { flex: 1 0 100%; text-align: start; border: 1px solid #624a83; border-radius: .4rem; background: #21192e; }
 [data-ha4="training-progress-title"] { padding: .4rem .55rem; color: #e9dbfa; font-weight: 700; cursor: pointer; }
 [data-ha4="training-progress-body"] { max-block-size: min(40vh, 25rem); overflow: auto; padding: .35rem .6rem .6rem; }

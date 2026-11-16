@@ -20,9 +20,10 @@
       const ids = new Set(routes.map(route => route.id));
       const bindings = (Array.isArray(saved.bindings) ? saved.bindings : []).filter(binding =>
         typeof binding?.monsterId === "string" && ids.has(binding.routeId));
-      return { routes, bindings };
+      const mothers = Array.isArray(saved.mothers) ? saved.mothers.filter(id => typeof id === "string" && id) : [];
+      return { routes, bindings, mothers };
     } catch { /* Invalid or unavailable local storage. */ }
-    return { routes: [], bindings: [] };
+    return { routes: [], bindings: [], mothers: [] };
   }
 
   function start(node, enabled, requestScan) {
@@ -41,7 +42,7 @@
         document.dispatchEvent(new Event("hako-af:watch-mating-results"));
       }
       data ??= load();
-      const payload = JSON.stringify(enabled() ? data : { routes: [], bindings: [] });
+      const payload = JSON.stringify(enabled() ? { ...data, enabled: true } : { routes: [], bindings: [], mothers: [], enabled: false });
       if (lastSent !== payload) {
         lastSent = payload;
         document.dispatchEvent(new CustomEvent("hako-af:training-routes", { detail: payload }));
@@ -76,10 +77,15 @@
       const data = load();
       const parents = new Set(result.parents);
       const inherited = new Set(data.bindings.filter(binding => parents.has(binding.monsterId)).map(binding => binding.routeId));
-      if (inherited.size !== 1) return;
-      const assigned = data.bindings.some(binding => binding.monsterId === result.child);
-      data.bindings = data.bindings.filter(binding => !parents.has(binding.monsterId));
-      if (!assigned) data.bindings.push({ monsterId: result.child, routeId: inherited.values().next().value });
+      const wasMother = data.mothers.some(id => parents.has(id));
+      if (!inherited.size && !wasMother) return;
+      if (inherited.size === 1) {
+        data.bindings = data.bindings.filter(binding => !parents.has(binding.monsterId));
+        if (!data.bindings.some(binding => binding.monsterId === result.child)) {
+          data.bindings.push({ monsterId: result.child, routeId: inherited.values().next().value });
+        }
+      }
+      data.mothers = [...new Set(data.mothers.filter(id => !parents.has(id)).concat(wasMother ? [result.child] : []))];
       persist(data);
     });
 
@@ -346,7 +352,7 @@
       }
     }
 
-    function scan({ routes, bindings }) {
+    function scan({ routes, bindings, mothers }) {
       for (const panel of document.querySelectorAll('[data-ha4="training-detail"]')) {
         if (!enabled() || !panel.parentElement?.matches(detailsSelector)) panel.remove();
       }
@@ -357,17 +363,40 @@
         let panel = anchor.querySelector(':scope > [data-ha4="training-detail"]');
         if (!panel) {
           panel = node("div", "training-detail");
-          const open = button(loadRouteLabel, () => {
+          const loadButton = button(loadRouteLabel, () => {
             document.dispatchEvent(new Event("hako-af:read-list"));
             const current = readTarget(anchor);
             if (current?.id) assign(current);
           });
-          open.setAttribute("aria-haspopup", "dialog");
-          panel.append(open, node("span", "training-detail-route"));
+          loadButton.setAttribute("aria-haspopup", "dialog");
+          const edit = button("設定中のルートを編集", () => {
+            const current = readTarget(anchor);
+            const { routes, bindings } = load();
+            const assigned = bindings.find(item => item.monsterId === current?.id);
+            const route = routes.find(item => item.id === assigned?.routeId);
+            if (route) open(route);
+          });
+          edit.dataset.ha4 = "training-edit-target";
+          const mother = button("世代上げ母体に指定", () => {
+            const current = readTarget(anchor);
+            if (!current?.id || !enabled()) return;
+            const data = load();
+            data.mothers = data.mothers.includes(current.id) ? data.mothers.filter(id => id !== current.id) : [...data.mothers, current.id];
+            persist(data);
+          });
+          mother.dataset.ha4 = "training-mother";
+          panel.append(loadButton, edit, mother, node("span", "training-detail-route"));
           anchor.append(panel);
         }
         const binding = bindings.find(item => item.monsterId === target.id);
         const route = binding && routes.find(item => item.id === binding.routeId);
+        const edit = panel.querySelector('[data-ha4="training-edit-target"]');
+        edit.hidden = !route;
+        const mother = panel.querySelector('[data-ha4="training-mother"]');
+        const designated = mothers.includes(target.id);
+        const motherText = designated ? "世代上げ母体の指定を解除" : "世代上げ母体に指定";
+        if (mother.textContent !== motherText) mother.textContent = motherText;
+        if (mother.getAttribute("aria-pressed") !== String(designated)) mother.setAttribute("aria-pressed", String(designated));
         const label = panel.querySelector('[data-ha4="training-detail-route"]');
         const text = route ? `設定中　${route.name}` : "";
         if (label.textContent !== text) label.textContent = text;

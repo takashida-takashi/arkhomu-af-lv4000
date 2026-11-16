@@ -182,6 +182,7 @@ if (buildPages) {
   const archive = fs.readFileSync(path.join(site, zipName));
   const archiveHash = createHash("sha256").update(archive).digest("hex");
   fs.writeFileSync(path.join(site, "index.html"), renderPage(zipName));
+  fs.cpSync(path.join(project, "guide"), path.join(site, "guide"), { recursive: true });
   fs.writeFileSync(path.join(site, scriptName), installer);
   fs.writeFileSync(path.join(safari, scriptName), header.replace(grantsMarker, installerGrants.join("\n")) + installerBody);
   fs.writeFileSync(path.join(site, metaName), migrationHeader + "\n");

@@ -523,6 +523,7 @@
     const app = root?.__vue_app__;
     if (!root?._vnode) return;
     const stores = app?.config?.globalProperties?.$pinia?._s;
+    trainingRoutes?.rememberOwned();
     const matingPage = /^\/(?:f\/)?mating(?:\/|$)/.test(location.pathname);
     let legacyMatingParents;
     const translate = key => app?.config?.globalProperties?.$t?.(key) ?? key;
@@ -572,13 +573,16 @@
       const props = instance?.props ?? vnode.props;
       const name = instance?.type?.__name ?? vnode.type?.__name;
       // The classic mating page labels exactly its two selected parents as unavailable (already set).
-      if (matingPage && name === "MonsterList" && instance.parent?.type?.__name === "mating" &&
+      if (matingPage && name === "MonsterList" && instance?.parent?.type?.__name === "mating" &&
           props?.unavailableText === "セット済" && Array.isArray(props.unavailableIds)) {
         legacyMatingParents = props.unavailableIds;
       }
       const titleModal = profileTitles && (titleModals.has(name) ? instance : parentTitleModal);
       if (titleModal && instance) readProfileTitles(titleModal, instance);
       const el = vnode.el ?? instance?.subTree?.el;
+      if (matingPage && el?.nodeType === 1 && typeof vnode.key === "string" && /^auto-[sp]:/.test(vnode.key)) {
+        trainingRoutes?.rememberLegacyAuto(el, vnode.key.slice(5));
+      }
       if (trainingRoutes?.accepts(name)) trainingRoutes.read(name, instance, props, el, translate, dependencies, readThrough);
       if (name === "FlexMonsterDetail" || name === "MonsterDetailPanel") {
         const target = partyShare?.bindMember(name, props, vnode, stores?.get("userMonsters")?.monsters, translate);

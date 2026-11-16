@@ -22,7 +22,7 @@ jobs:
           node-version: '22'
       - name: Check JavaScript and build the distribution files
         run: |
-          for script in extension/*.js scripts/*.js scripts/*.cjs; do
+          for script in extension/*.js scripts/*.js scripts/*.cjs guide/*.js; do
             node --check "$script"
           done
           node scripts/build-userscripts.cjs --pages
