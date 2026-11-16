@@ -9,8 +9,9 @@
   let cached;
   let readAt = 0;
 
-  function readMasters(buildId) {
-    if (cached?.buildId === buildId && Date.now() - readAt < 60_000) return Promise.resolve(cached);
+  function readMasters(buildId, requiredKind) {
+    if (cached?.buildId === buildId && Date.now() - readAt < 60_000 &&
+        (!requiredKind || cached[requiredKind]?.length)) return Promise.resolve(cached);
     return pending ??= new Promise((resolve, reject) => {
       const request = indexedDB.open("master-cache");
       request.onupgradeneeded = () => request.transaction.abort();

@@ -16,6 +16,7 @@
   const meetsMinimums = (values, minimums) => values.every((value, i) => value >= minimums[i]);
   const numberOr = (value, fallback) => Number.isFinite(value) ? value : fallback;
   const ratio = (value, fallback) => Math.max(0, Math.min(1, numberOr(value, fallback)));
+  const readMasters = globalThis.hakoAfTrainingSources?.readMasters;
 
   function firstTripMinutes(sum, high, rules, reduction, countryFactor) {
     const unit = rules.roundUnitMinutes > 0 ? numberOr(rules.roundUnitMinutes, 30) : 30;
@@ -231,6 +232,14 @@
     return Math.max(0, Math.floor(Number(item?.m_items?.rank) || 0));
   }
 
+  function usableFood(item) {
+    return Boolean(item?.id && item.m_items && item.m_items.used !== false);
+  }
+
+  function stockAmount(item) {
+    return Math.max(0, numberOr(Math.floor(Number(item.amount)), 0));
+  }
+
   function sortFoodCatalog(items, order) {
     if (order === "recent") {
       const acquired = item => Date.parse(item.acquired_at || item.updated_at || item.created_at) || 0;
@@ -284,6 +293,28 @@
       return followNative && Array.isArray(source) ? sortFoodCatalog(source, "rank") : source;
     }
 
+    async function catalogFoods(view, owned) {
+      const properties = view.instance.appContext?.config?.globalProperties;
+      const buildId = properties?.$config?.public?.buildId ?? properties?.$nuxt?.$config?.public?.buildId ??
+        globalThis.__NUXT__?.config?.public?.buildId;
+      const data = await readMasters?.(buildId, "items");
+      if (!data?.items?.length) return null;
+      const categories = new Set(loadedCategories ?? view.categories ?? foodCategories);
+      const foods = new Map();
+      const unowned = [];
+      for (const item of owned) {
+        if (usableFood(item) && item.item_id) foods.set(item.item_id, item);
+      }
+      const now = Date.now();
+      for (const master of data.items) {
+        if (!master?.id || foods.has(master.id) || master.used === false ||
+            Number(master.open_at) > now || !Array.isArray(master.categories) ||
+            !master.categories.some(category => categories.has(category))) continue;
+        unowned.push({ id: master.id, item_id: master.id, m_items: master, amount: 0 });
+      }
+      return [...foods.values(), ...sortFoodCatalog(unowned, "rank")];
+    }
+
     function timing(view, rules) {
       const { instance } = view;
       const time = view.time ??= nativeTime(instance, dependencies);
@@ -303,24 +334,22 @@
       return factor === null ? null : { reduction, factor };
     }
 
-    function model(view, { weights, minimums }, { maxRank, excluded }) {
+    function model(view, { weights, minimums }, { maxRank, excluded, includeMissing }, source) {
       const config = loadedConfig ?? view.config;
       if (!config) return null;
       const rules = config.expedition ?? {};
       const times = timing(view, rules);
       if (!times) return null;
       const { reduction, factor } = times;
-      const source = foodSource(view);
-      if (!Array.isArray(source)) return null;
       const foods = [];
       for (const item of source) {
-        if (!item?.id || !item.m_items || item.m_items.used === false || excluded.has(item.item_id)) continue;
+        if (!usableFood(item) || excluded.has(item.item_id)) continue;
         const rank = itemRank(item);
         if (maxRank && rank > maxRank) continue;
-        const amount = Math.floor(Number(item.amount));
+        const amount = includeMissing ? view.instance.props.slots.length * maxTrips : stockAmount(item);
         const values = stats.map(key => itemValue(item.m_items, key, config));
         const value = score(values, weights);
-        if (amount < 1 || !Number.isFinite(amount) ||
+        if (amount < 1 ||
             !(value > 0 || values.some((amount, i) => amount > 0 && minimums[i] > 0))) continue;
         foods.push({ item, label: foodLabel(item, view.translate), amount, value, values, rank });
       }
@@ -338,24 +367,66 @@
       })) };
     }
 
+    function planInventory(plan, source, includeMissing) {
+      const inventoryKey = item => includeMissing ? item.item_id : item.id;
+      const counts = new Map();
+      for (const { item } of plan.foods) {
+        const key = inventoryKey(item);
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+      const byKey = new Map();
+      for (const item of source) {
+        if (!usableFood(item)) continue;
+        const key = inventoryKey(item);
+        if (!counts.has(key)) continue;
+        if (!byKey.has(key)) byKey.set(key, []);
+        byKey.get(key).push(item);
+      }
+      const selected = [];
+      const supply = [];
+      for (const [key, count] of counts) {
+        const rows = byKey.get(key) ?? [];
+        const needed = count * plan.trips;
+        const owned = rows.reduce((sum, item) => sum + stockAmount(item), 0);
+        let unfilled = count;
+        for (const item of rows) {
+          const copies = Math.min(unfilled, Math.floor(stockAmount(item) / plan.trips));
+          for (let i = 0; i < copies; i++) selected.push(item);
+          unfilled -= copies;
+          if (!unfilled) break;
+        }
+        supply.push({ id: key, owned, needed, short: Math.max(0, needed - owned), unfilled });
+      }
+      return { selected, supply, canApply: selected.length === plan.foods.length };
+    }
+
     function foodLabel(item, translate) {
       const key = item.m_items?.name_key;
       const translated = key && translate(key);
       return translated && translated !== key ? translated : item.m_items?.name ?? item.item_id ?? String(item.id);
     }
 
-    document.addEventListener("hako-af:expedition-food-list", event => {
-      const view = views.get(event.target);
+    document.addEventListener("hako-af:expedition-food-list", async event => {
+      const anchor = event.target;
+      const view = views.get(anchor);
       if (!view) return;
-      const followNative = event.detail === "native";
+      let options;
+      try { options = JSON.parse(event.detail); } catch { return; }
+      if (!options) return;
+      const { order, includeMissing } = options;
+      const request = Symbol();
+      view.foodRequest = request;
+      const followNative = order === "native";
       const source = foodSource(view, followNative);
-      const ordered = !followNative && Array.isArray(source) ? sortFoodCatalog(source, event.detail) : source;
+      const foods = includeMissing && Array.isArray(source) ? await catalogFoods(view, source) : source;
+      if (!anchor.isConnected || views.get(anchor) !== view || view.foodRequest !== request) return;
+      const ordered = !followNative && Array.isArray(foods) ? sortFoodCatalog(foods, order) : foods ?? source;
       const catalog = new Map();
       for (const item of ordered ?? []) {
         if (!item?.item_id || !item.m_items || item.m_items.used === false) continue;
         catalog.set(item.item_id, { id: item.item_id, label: foodLabel(item, view.translate) });
       }
-      event.target.dispatchEvent(new CustomEvent("hako-af:expedition-food-catalog", {
+      anchor.dispatchEvent(new CustomEvent("hako-af:expedition-food-catalog", {
         bubbles: true, detail: JSON.stringify({ ready: Array.isArray(source), items: [...catalog.values()] })
       }));
     });
@@ -382,11 +453,18 @@
         const slots = view.instance.props.slots.length;
         const maxRank = Number.isInteger(input.maxRank) && input.maxRank > 0 ? input.maxRank : 0;
         const excluded = new Set(Array.isArray(input.excluded) ? input.excluded : []);
-        const data = model(view, criteria, { maxRank, excluded });
-        if (!data) return reply({ error: "遠征の所要時間または所持弁当を確認できませんでした。読み込み後にもう一度お試しください。" });
+        const includeMissing = input.includeMissing === true;
+        const owned = foodSource(view);
+        const loadError = "遠征の所要時間または所持弁当を確認できませんでした。読み込み後にもう一度お試しください。";
+        if (!Array.isArray(owned)) return reply({ error: loadError });
+        const source = includeMissing ? await catalogFoods(view, owned) : owned;
+        if (!current()) return;
+        if (!source) return reply({ error: "食料の図鑑データを確認できませんでした。図鑑の食料タブを開いてから、もう一度お試しください。" });
+        const data = model(view, criteria, { maxRank, excluded, includeMissing }, source);
+        if (!data) return reply({ error: loadError });
         const gate = input.repeat ? repeatBudget(repeatStatus) : 0;
         const { weights, minimums } = criteria;
-        const key = JSON.stringify([criteria, slots, input.minutes, gate, data.state]);
+        const key = JSON.stringify([criteria, slots, input.minutes, gate, includeMissing, data.state]);
         let plan = view.cached?.key === key ? view.cached.plan : null;
         if (!plan && minimums.some(Boolean)) {
           const best = await runSearch(maximize(data.foods, slots, input.minutes, gate, data.duration,
@@ -400,17 +478,17 @@
           ? "探索上限までに配分が見つかりませんでした。最低値の数や制限時間を調整してお試しください。"
           : "指定時間内に条件を満たす弁当の配分はありません。" });
         view.cached = { key, plan };
-        const result = { ...serialize(plan), slots };
+        const currentStock = foodSource(view);
+        if (!Array.isArray(currentStock)) return reply({ error: loadError });
+        const { selected, supply, canApply } = planInventory(plan, currentStock, includeMissing);
+        const result = { ...serialize(plan), slots, canApply, ...(includeMissing ? { supply } : {}) };
         const signature = JSON.stringify([criteria, input.minutes, gate, result]);
         if (!input.apply) return reply({ ...result, signature });
-        if (input.apply !== signature) return reply({ ...result, signature, changed: true });
+        if (!canApply || input.apply !== signature) return reply({ ...result, signature, changed: true });
         const { onInsert, onRemove } = view.instance.vnode.props ?? {};
         if (typeof onInsert !== "function" || typeof onRemove !== "function") {
           return reply({ error: "弁当欄に反映できませんでした。" });
         }
-        const currentItems = new Map(data.foods.map(food => [food.item.id, food.item]));
-        const selected = plan.foods.map(food => currentItems.get(food.item.id));
-        if (selected.some(item => !item)) return reply({ error: "弁当の所持状況が変わりました。再計算してください。" });
         const bentoSlots = view.instance.props.slots;
         for (const slot of bentoSlots) onRemove(slot.key);
         selected.forEach((item, i) => onInsert({ slotKey: bentoSlots[i].key, item }));

@@ -1409,12 +1409,13 @@ html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
 }
 [data-ha4="expedition-food-search"] { box-sizing: border-box; min-inline-size: 0; }
 [data-ha4="expedition-time"] { inline-size: 4.25rem; }
-[data-ha4="expedition-repeat"] { appearance: auto; accent-color: #b978f1; }
+[data-ha4="expedition-repeat"], [data-ha4="expedition-include-missing"] { appearance: auto; accent-color: #b978f1; }
 [data-ha4="expedition-button"] { cursor: pointer; background: #4a3064; }
 [data-ha4="expedition-button"]:disabled { cursor: wait; opacity: .65; }
 [data-ha4="expedition-outcome"]:not(:empty),
 [data-ha4="expedition-message"]:not(:empty) { margin-block-start: .5rem; }
 [data-ha4="expedition-total"], [data-ha4="expedition-elapsed"] { color: #a3f3dc; }
 [data-ha4="expedition-foods"] { margin: .25rem 0; padding-inline-start: 1.1rem; list-style: disc; }
+[data-ha4="expedition-food-shortage"] { color: #ffd890; font-weight: 700; }
 [data-ha4="expedition-repeat-hint"] { margin: .35rem 0; }
 [data-ha4="expedition-elapsed"] { margin-inline-start: .45rem; font-size: .85rem; }

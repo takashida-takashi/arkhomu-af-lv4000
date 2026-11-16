@@ -24,11 +24,12 @@
     try { stored = JSON.parse(localStorage.getItem(rulesKey)); } catch { /* Use the defaults. */ }
     let maxRank = Number.isInteger(stored?.maxRank) && stored.maxRank >= 1 && stored.maxRank <= rankNames.length ? stored.maxRank : 0;
     let foodOrder = Object.hasOwn(foodOrderOptions, stored?.foodOrder) ? stored.foodOrder : "native";
+    let includeMissing = stored?.includeMissing === true;
     const excluded = new Map(Array.isArray(stored?.excluded) ? stored.excluded.filter(item =>
       Array.isArray(item) && typeof item[0] === "string" && typeof item[1] === "string") : []);
 
     function saveFoodRules() {
-      try { localStorage.setItem(rulesKey, JSON.stringify({ maxRank, foodOrder, excluded: [...excluded] })); }
+      try { localStorage.setItem(rulesKey, JSON.stringify({ maxRank, foodOrder, includeMissing, excluded: [...excluded] })); }
       catch { /* Keep the current settings for this tab. */ }
     }
 
@@ -96,6 +97,9 @@
       message.setAttribute("role", "status");
       const outcome = node("div", "expedition-outcome");
       const repeatLabel = label("くり返しも含める", repeat, true);
+      const missing = node("input", "expedition-include-missing");
+      missing.type = "checkbox";
+      missing.checked = includeMissing;
       const foodRules = node("details", "expedition-food-rules");
       const cap = node("select", "expedition-stat");
       cap.append(new Option("指定なし", "0"));
@@ -120,12 +124,14 @@
       let foodReady = false;
       let revision = 0;
       controls.append(label("比較方法", stat), label("時間", hours, true), label("分以内", minutes, true),
-        repeatLabel, custom, foodRules, estimate);
+        repeatLabel, label("未所持・所持数不足も候補に含める", missing, true), custom, foodRules, estimate);
       panel.append(node("summary", "expedition-summary", name), controls, message, outcome);
       anchor.prepend(panel);
 
       function requestFoods() {
-        anchor.dispatchEvent(new CustomEvent("hako-af:expedition-food-list", { bubbles: true, detail: foodOrder }));
+        anchor.dispatchEvent(new CustomEvent("hako-af:expedition-food-list", {
+          bubbles: true, detail: JSON.stringify({ order: foodOrder, includeMissing })
+        }));
       }
 
       function renderFoodPicker() {
@@ -171,6 +177,15 @@
         saveFoodRules();
         forEachPlanner(planner => planner.rulesChanged());
       });
+      missing.addEventListener("input", event => {
+        event.stopPropagation();
+        includeMissing = missing.checked;
+        saveFoodRules();
+        forEachPlanner(planner => {
+          planner.rulesChanged();
+          planner.refreshOrder();
+        });
+      });
       addFood.addEventListener("click", () => {
         const item = foods?.get(foodChoice.value);
         if (item) setExcluded(item.id, item.label);
@@ -183,7 +198,7 @@
           return { error: "1分以上の時間を入力してください。" };
         }
         const data = { stat: stat.value, minutes: total, repeat: repeat.checked && !repeat.disabled,
-          maxRank, excluded: [...excluded.keys()] };
+          maxRank, excluded: [...excluded.keys()], includeMissing };
         if (stat.value !== "custom") return data;
         if (fields.some(({ weight, minimum }) => !weight.checkValidity() || !minimum.checkValidity())) {
           return { error: "重みには0以上の数値を、最低値には0以上の整数を入力してください。" };
@@ -237,6 +252,7 @@
           if (enabled() && panel.open && foodRules.open) requestFoods();
         },
         rulesChanged() {
+          missing.checked = includeMissing;
           renderFoodRules();
           invalidate();
         },
@@ -269,14 +285,26 @@
             groups.set(food.id, group);
           }
           const foods = node("ul", "expedition-foods");
-          for (const { label: food, count, value } of groups.values()) {
-            foods.append(node("li", "expedition-food",
-              `${food} ×${count}（1個あたり ${objective} +${format.format(value)}）`));
+          const supply = new Map(result.supply?.map(item => [item.id, item]));
+          for (const { itemId, label: food, count, value } of groups.values()) {
+            const row = node("li", "expedition-food",
+              `${food} ×${count}（1個あたり ${objective} +${format.format(value)}）`);
+            const stock = supply.get(itemId);
+            if (stock?.unfilled) {
+              const detail = stock.short
+                ? `（所持${format.format(stock.owned)}個／必要${format.format(stock.needed)}個）`
+                : "（所持数の内訳では、くり返し分を確保できません）";
+              const shortage = stock.short ? `あと${format.format(stock.short)}個` : "くり返し分が不足";
+              row.append(node("div", "expedition-food-shortage", shortage + detail));
+            }
+            foods.append(row);
           }
           outcome.append(foods);
-          if (result.trips > 1 || result.applied && !repeat.disabled) outcome.append(node("p", "expedition-repeat-hint",
+          if (result.canApply && (result.trips > 1 || result.applied && !repeat.disabled)) outcome.append(node("p", "expedition-repeat-hint",
             `出発前に標準の確認画面で ${result.trips}回 を選んでください。`));
-          if (!result.applied) {
+          if (!result.canApply) outcome.append(node("p", "expedition-repeat-hint",
+            "必要な食材がそろったら、もう一度計算して弁当にセットできます。"));
+          if (!result.applied && result.canApply) {
             const apply = button("この配分をセット");
             apply.addEventListener("click", () => request(result.signature));
             outcome.append(apply);
