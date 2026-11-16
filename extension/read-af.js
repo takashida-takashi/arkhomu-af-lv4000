@@ -34,7 +34,8 @@
   const classicScopes = {
     ArtifactEquipPanel: "inventory",
     ArtifactEnhancePanel: "enhance",
-    ArtifactDecomposePanel: "decompose"
+    ArtifactDecomposePanel: "decompose",
+    ArtifactGachaPanel: "gacha"
   };
   const tradeDialogs = new Set(["TradeOfferModal", "ProfileTradeOfferModal", "FlexTradeOfferDialog"]);
   const sortScopes = { "artifact-equip": "inventory", "artifact-enhance": "enhance", "artifact-decompose": "decompose",
@@ -595,7 +596,7 @@
         ? props?.monster : parentMonster;
       if (el?.nodeType === 1 && el.isConnected) {
         if (name === "FlexPartySlots" || name === "PartyFormationPanel") partyShare?.bind(name, props, el);
-        if (name === "FlexHallPostDetail" || props?.detail && el.matches(".fx-hall-detail")) {
+        if (name === "HallOfFameClassicPostDetail" || name === "FlexHallPostDetail" || props?.detail && el.matches(".fx-hall-detail")) {
           partyShare?.bindHall(props, el);
         }
         if (watchMarket) {
@@ -673,6 +674,14 @@
           bubbles: true, detail: JSON.stringify([kind, sortScope || scope])
         }));
         if (sortScope && el.dataset.ha4ListScope !== sortScope) el.dataset.ha4ListScope = sortScope;
+        if (name === "ArtifactGachaPanel" && props.active) {
+          configFromCache();
+          gachaSets?.readClassic(instance, el, stores?.get("userItems"), presets,
+            item => item._artifact && cachedPower(item._artifact), !!powerConfig);
+        }
+        if (name === "VirtualItemGrid" && scope === "gacha") {
+          gachaSets?.read(instance, el, stores?.get("userItems"), true);
+        }
         if (name === "FlexArtifactGrid" && props.labelledby === "fx-agacha-title") {
           gachaSets?.read(instance, el, stores?.get("userItems"));
         }
@@ -682,11 +691,11 @@
         if (gridScope === "trade" && name === "FlexArtifactGrid") el.dispatchEvent(new CustomEvent("hako-af:list-ui", {
           bubbles: true, detail: '["grid","trade"]'
         }));
-        if (scope && name === "GridPaginationControls") {
+        if (scope && scope !== "gacha" && name === "GridPaginationControls") {
           adjustClassicPager(instance, scope);
           pagers.push(instance);
         }
-        if (gridScope) {
+        if (gridScope && gridScope !== "gacha") {
           const layout = flexScope ? "flex" : "classic";
           const state = manageGrid(instance, gridScope, layout, decomposeState);
           const plan = planFor(gridScope);

@@ -16,7 +16,8 @@
   const FLEX_FILTER = ".fx-alist-controls";
   const FLEX_LISTS = ".fx-artifact__list,.fx-aenh,.fx-adec";
   const SCOPES = new Set(["inventory", "enhance", "decompose", "gacha"]);
-  const GACHA_INPUT = ".fx-agacha";
+  const GACHA_INPUT = ".fx-agacha,[data-ha4-gacha-root],#agacha-auto-set";
+  const gachaSetKey = "hakoAf4000:gacha-use-sets";
   const TRADE_ROOTS = '#fx-trade-artifact-controls,.fx-trade,[data-ha4-trade-controls],.fx-agrid,.virtual-item-grid';
   const titleSearch = 'input[aria-label="称号を探す"]';
   const MARKET_SORT = "#market-artifact-sort";
@@ -45,7 +46,7 @@
   let exploreAnalysis;
   let partyShare;
   let trainingRoutes;
-  const partyRoots = ".fx-party__panel,.fx-hall-detail,[data-party-pointer-slot],.fx-mdetail__hero,.fx-mdetail__head,.detail-pc-fonts,[data-ha4-share-member]";
+  const partyRoots = '.fx-party__panel,.fx-hall-detail,aside[aria-label="投稿の詳細"],[aria-labelledby="hall-classic-comments-title"],[data-party-pointer-slot],.fx-mdetail__hero,.fx-mdetail__head,.detail-pc-fonts,[data-ha4-share-member]';
   const trainingRoots = ".fx-mating,.fx-mati,.fx-tgrant,.fx-tgflow,[data-ha4-training-scope],[data-inherit-row]";
   let marketWatch;
   const modes = new Map();
@@ -79,6 +80,7 @@
   let standardTraits = [];
   let classicUI = [];
   let gridReports = new WeakMap();
+  const gachaControls = new Map();
   let pendingDetail = null;
   let frame = 0;
   let extras;
@@ -462,12 +464,11 @@
         if (type === "decompose" && active) protectBulkSelection(inventory);
         for (const item of items) currentCards.set(item.card, item);
       }
-      const gacha = gachaList && gridReports.get(grid)?.gacha;
+      const gacha = gachaList && gridReports.get(grid)?.scope === "gacha";
       if (gacha && isDisplayed(gachaList)) {
         const control = gachaList.querySelector(FLEX_FILTER) || gachaList.querySelector(".fx-afilter-bar");
         filterGroup("gacha", control || grid, control ? "inside" : "before", items,
           !!grid.querySelector(".fx-agrid__rows--virtual"), control || grid, control?.querySelector("select"), grid);
-        renderGachaInput(grid, gacha);
       }
     }
     for (const card of document.querySelectorAll(".fx-artifact__slot")) {
@@ -476,10 +477,8 @@
     }
   }
 
-  function renderGachaInput(grid, state) {
-    const owner = grid.closest(GACHA_INPUT)?.querySelector(".fx-agacha__auto");
-    if (!owner) return;
-    const { capacity, ready, busy, message, target, cartMode, cart } = state;
+  function renderGachaInput(owner, state) {
+    const { capacity, ready, busy, message, target } = state;
     if (capacity) {
       const { total, multiple, cart: inCart } = capacity;
       const count = new Intl.NumberFormat("ja-JP");
@@ -488,30 +487,35 @@
       adorn(owner, "gacha-capacity", `連続セットの追加候補 ${count.format(multiple)}個（${inCart ? "カート込み " : ""}${pulls}連分）${single}`,
         "素材数で換算しています。指定した合計パワーによって実際に作れるセット数は変わります。");
     }
-    let ui = gachaInputControls.get(grid);
+    let ui = gachaInputControls.get(owner);
     if (!ui) {
       const root = node("div", "gacha-set-controls");
-      const run = node("button", "extra-button", names.gachaSets);
-      const retry = node("button", "extra-button", "再計算");
+      const label = node("label", "gacha-set-label");
+      const toggle = node("input", "gacha-use-sets");
+      toggle.type = "checkbox";
+      label.append(toggle, names.gachaSets + "を使う");
+      toggle.addEventListener("change", () => {
+        extrasApi?.save(gachaSetKey, toggle.checked);
+        requestScan();
+      });
+      const retry = node("button", "extra-button", "計画をリセット");
       const status = node("span", "gacha-set-status");
       status.setAttribute("role", "status");
-      for (const [button, action] of [[run, "use"], [retry, "recalculate"]]) {
-        button.type = "button";
-        button.addEventListener("click", event => {
-          if (event.isTrusted) grid.dispatchEvent(new CustomEvent("hako-af:gacha-set", { bubbles: true, detail: action }));
-        });
-      }
-      root.append(run, retry, status);
-      ui = { root, run, retry, status };
-      gachaInputControls.set(grid, ui);
+      retry.type = "button";
+      retry.addEventListener("click", event => {
+        if (event.isTrusted) owner.dispatchEvent(new Event("hako-af:gacha-reset-plan", { bubbles: true }));
+      });
+      root.append(label, retry, status);
+      ui = { root, toggle, retry, status };
+      gachaInputControls.set(owner, ui);
     }
     if (ui.root.parentElement !== owner) owner.append(ui.root);
     decorated.add(ui.root);
-    ui.run.disabled = !ready;
-    ui.retry.hidden = !state.canRecalculate;
-    ui.retry.disabled = !ready;
-    const label = busy ? message : !target ? "合計パワーの条件を選ぶと拡張セットを使えます。" :
-      message || (cart ? "カートが空になると拡張セットを使えます。" : !cartMode ? "「カートに出し入れ」を選んでください。" : "");
+    ui.toggle.checked = extrasApi?.get(gachaSetKey) === true;
+    ui.retry.hidden = !ui.toggle.checked || !state.canRecalculate;
+    ui.retry.disabled = busy;
+    const label = ui.toggle.checked ? message || (!target ? "「合計パワー以上」の条件を選んでください。"
+      : !ready ? "投入候補の読み込みを待ち、カートに出し入れできる状態でお試しください。" : "") : "";
     if (ui.status.textContent !== label) ui.status.textContent = label;
   }
 
@@ -979,6 +983,7 @@
     standardTraits = [];
     classicUI = [];
     gridReports = new WeakMap();
+    gachaControls.clear();
     extras?.beforeRead();
     const trainingData = trainingRoutes?.update();
     marketWatch?.beforeRead();
@@ -1002,6 +1007,7 @@
     if (!extras || extras.enabled("inventory")) {
       ownedFlex();
       ownedClassic();
+      for (const [anchor, state] of gachaControls) renderGachaInput(anchor, state);
     } else {
       for (const type of SCOPES) {
         if (sentPlans.has(type)) setGridPlan(type, { enabled: false });
@@ -1095,6 +1101,10 @@
       // The regular list remains usable if the grid report is unavailable.
     }
   });
+  document.addEventListener("hako-af:gacha-controls", event => {
+    if (!(event.target instanceof Element)) return;
+    try { gachaControls.set(event.target, JSON.parse(event.detail)); } catch { /* Ignore invalid reports. */ }
+  });
   document.addEventListener("hako-af:power-ready", requestScan);
   document.addEventListener("hako-af:market-snapshot", () => {
     if (extras?.enabled("marketWatch") && /^\/market\/?$/.test(normalRoute())) requestScan();
@@ -1160,7 +1170,7 @@
   }, true);
   document.addEventListener("change", event => {
     if (event.target instanceof Element && (event.target.matches(MARKET_SORT) ||
-        event.target.closest(".fx-agacha__auto"))) requestScan();
+        event.target.closest(GACHA_INPUT))) requestScan();
   }, true);
 
   new MutationObserver(records => {

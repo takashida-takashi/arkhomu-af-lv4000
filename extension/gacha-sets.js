@@ -110,20 +110,21 @@
   }
 
   function start({ dependencies, readThrough, currentPlan, project }) {
-    const grids = new WeakMap();
+    const panels = new WeakMap();
     const roots = new WeakMap();
     const notify = () => document.dispatchEvent(new Event("hako-af:grid-rendered"));
     let retained;
     let staging;
 
-    function setup(grid, store) {
-      let parent = grid.parent;
-      while (parent && parent.type?.__name !== "FlexArtifactGacha") parent = parent.parent;
-      const source = grid.vnode.props?.items;
-      const candidates = dependencies(parent?.effect).find(ref => ref._value === source &&
+    function setup(panel, store, power, source) {
+      const refs = dependencies(panel.effect);
+      const candidates = refs.find(ref => Array.isArray(ref._value) && (!source || ref._value === source) &&
         /\.getSortedItems\(["']artifact-gacha["']\)/.test(String(ref.fn)) && typeof ref.dep?.trigger === "function");
-      if (!candidates || !Array.isArray(source) || typeof grid.props?.power !== "function") return;
-      const state = { grid, store, candidates, message: "" };
+      if (!candidates) return;
+      const classic = panel.type?.__name === "ArtifactGachaPanel";
+      const cartItems = classic ? refs.find(ref => Array.isArray(ref._value) &&
+        /Array\.from\(\w+\.value\)\.map\(\w+=>\w+\.value\.get\(\w+\)\)\.filter\(/.test(String(ref.fn))) : null;
+      const state = { classic, store, candidates, cartItems, power, message: "" };
       if (!readThrough(candidates, original => {
         const plan = currentPlan();
         if (!plan?.enabled || !Array.isArray(original)) {
@@ -133,37 +134,68 @@
         if (state.projection?.original !== original || state.projection.plan !== plan) {
           const report = plan.error
             ? { items: [], total: original.length, matched: 0, unknown: 0, metrics: [] }
-            : project(original, plan, grid.props.power);
+            : project(original, plan, state.power);
           state.projection = { original, plan, report };
         }
         return state.projection.report.items;
       })) return;
-      grids.set(grid, state);
+      panels.set(panel, state);
       if (currentPlan()?.enabled) candidates.dep.trigger();
       return state;
     }
 
     function controls(state) {
-      const root = state.el.closest(".fx-agacha");
-      const auto = root?.querySelector(".fx-agacha__auto");
-      const option = auto?.querySelector("select");
+      const root = state.root;
+      const option = root?.querySelector(state.classic ? "#agacha-auto-set" : ".fx-agacha__auto select");
+      const auto = state.classic ? option?.parentElement?.parentElement?.parentElement : option?.closest(".fx-agacha__auto");
       const target = Number(option?.value);
       const [, cart, limit] = root?.querySelector(".fx-agacha__dock-status .fx-number")?.textContent
         .match(/^(\d[\d,]*)\s*\/\s*(\d[\d,]*)$/) ?? [];
-      const cartMode = root?.querySelector('[aria-labelledby="fx-agacha-tap-label"] [aria-pressed="true"]')
+      const cartMode = state.classic || root?.querySelector('[aria-labelledby="fx-agacha-tap-label"] [aria-pressed="true"]')
         ?.textContent.trim() === "カートに出し入れ";
-      return { root, auto, target, cart: Number(cart?.replaceAll(",", "")), limit: Number(limit?.replaceAll(",", "")),
-        ready: !!(root && option && !option.disabled && state.store?.isArtifactsLoaded && cartMode) };
+      return { root, auto, target, cart: state.classic ? state.cartItems?.value.length : Number(cart?.replaceAll(",", "")),
+        limit: state.classic ? 5000 : Number(limit?.replaceAll(",", "")),
+        ready: !!(root?.isConnected && option && !option.disabled && state.store?.isArtifactsLoaded && cartMode &&
+          (state.classic ? state.cartItems && state.presets?.isReady && state.grid?.vnode.el?.isConnected && state.powerReady
+            : typeof state.grid?.props.dim === "function")) };
     }
 
-    function fits(state, item) {
+    function excludedItems(state) {
+      return state.classic
+        ? new Set([...(state.cartItems?.value ?? []).map(item => item.id),
+          ...(state.presets?.presets ?? []).flatMap(preset => preset.artifactIds ?? [])])
+        : new Set();
+    }
+
+    function fits(state, item, excluded) {
       return item?.id != null && !item._artifact?.is_equipped && !item._artifact?.is_favorite &&
-        !state.grid.props.dim(item) && !state.store?.isArtifactFavoriteUpdating?.(item.id);
+        !excluded.has(item.id) && (state.classic || !state.grid.props.dim(item)) &&
+        !state.store?.isArtifactFavoriteUpdating?.(item.id);
     }
 
     function eligible(state, multiple) {
-      return state.candidates.value.filter(item => fits(state, item) &&
+      const excluded = excludedItems(state);
+      return state.candidates.value.filter(item => fits(state, item, excluded) &&
         (!multiple || !(Number(item.m_items?.rank) >= 11)));
+    }
+
+    function inCart(state, item) {
+      return state.classic ? state.cartItems.value.some(row => row.id === item.id) : state.grid.props.dim(item);
+    }
+
+    function toggleCart(state, item) {
+      if (!state.classic) return state.grid.vnode.props?.onSelect?.(item);
+      // The classic grid receives the game's own cart-click handler in its scoped slot.
+      const slot = state.grid.vnode.children?.default?.({ item });
+      const pending = Array.isArray(slot) ? [...slot] : [slot];
+      while (pending.length) {
+        const vnode = pending.pop();
+        if (vnode?.props?.item === item && typeof vnode.props.onClick === "function") {
+          vnode.props.onClick();
+          return;
+        }
+        if (Array.isArray(vnode?.children)) pending.push(...vnode.children);
+      }
     }
 
     function keyFor(target) {
@@ -171,31 +203,42 @@
       return JSON.stringify(plan?.filterActive ? [target, plan.root, plan.useForecast] : [target]);
     }
 
-    async function useSets(state, recalculate) {
-      if (state.busy || staging || !state.el.isConnected || typeof state.grid.props.dim !== "function") return;
+    async function useSets(state, pulls) {
+      if (state.busy || staging) return;
       const initial = controls(state);
-      if (!initial.ready || initial.cart !== 0 || !(initial.target > 0) || !(initial.limit >= setSize)) return;
+      const fail = text => {
+        state.message = text;
+        state.messageKey = keyFor(initial.target);
+        notify();
+      };
+      if (!(initial.target > 0)) return fail("「合計パワー以上」の条件を選んでください。");
+      if (!initial.ready || !Number.isSafeInteger(initial.cart) || !(initial.limit >= setSize)) {
+        return fail("投入候補の読み込みを待ち、カートに出し入れできる状態でお試しください。");
+      }
+      if (initial.cart % setSize) return fail("途中の組を完成させるか、カートを空にしてください。");
+      const cartLimit = pulls === 1 ? initial.cart + setSize : pulls * setSize;
+      const limit = Math.floor((Math.min(cartLimit, initial.limit) - initial.cart) / setSize);
+      if (limit <= 0) return fail("指定の連数までセット済みです。");
       const key = keyFor(initial.target);
-      if (currentPlan()?.error) return;
-      const valid = () => state.el.isConnected && !currentPlan()?.error && keyFor(controls(state).target) === key;
+      if (currentPlan()?.error) return fail("拡張フィルタの条件を確認してください。");
+      const valid = () => state.root?.querySelector('[data-ha4="gacha-use-sets"]')?.checked &&
+        !currentPlan()?.error && keyFor(controls(state).target) === key;
       state.busy = true;
       state.messageKey = key;
       try {
-        if (recalculate || retained?.key !== key || Date.now() >= retained.until) {
+        if (retained?.key !== key || Date.now() >= retained.until) {
           state.message = "手持ちから組み合わせを計算中…";
           notify();
           await pause();
           const deadline = performance.now() + 2000;
-          const input = eligible(state, true).map(item => ({ id: item.id, power: Number(state.grid.props.power(item)) }))
+          const input = eligible(state, true).map(item => ({ id: item.id, power: state.power(item) }))
             .filter(item => Number.isFinite(item.power) && item.power >= 0);
           const result = await calculate(input, initial.target, deadline, valid);
           if (!valid()) return;
           retained = { ...result, key, until: Date.now() + 30 * 60_000 };
         }
-        if (staging || !valid() || !controls(state).ready || controls(state).cart !== 0) return;
+        if (staging || !valid() || !controls(state).ready || controls(state).cart !== initial.cart) return;
         const input = new Map(eligible(state, true).map(item => [item.id, item]));
-        const select = state.grid.vnode.props?.onSelect;
-        if (typeof select !== "function") return;
         const plan = retained;
         const groups = plan.groups.map(group => group.map(id => input.get(id))).filter(group => group.every(Boolean));
         const maximum = plan.groups.length === plan.upper
@@ -207,20 +250,22 @@
         let interrupted = false;
         let slice = performance.now();
         const stepDeadline = slice + 2000;
+        let excluded = excludedItems(state);
         for (const group of groups) {
-          if (added >= Math.floor(initial.limit / setSize) || performance.now() >= stepDeadline || !valid()) break;
+          if (added >= limit || performance.now() >= stepDeadline || !valid()) break;
           if (performance.now() - slice >= 8) {
             await pause();
             slice = performance.now();
             if (!valid() || !controls(state).ready) break;
+            excluded = excludedItems(state);
           }
-          if (!group.every(item => fits(state, item)) ||
-              group.reduce((total, item) => total + Number(state.grid.props.power(item)), 0) < initial.target) continue;
+          if (!group.every(item => fits(state, item, excluded)) ||
+              group.reduce((total, item) => total + state.power(item), 0) < initial.target) continue;
           const selected = [];
           try {
             for (const item of group) {
-              try { select(item); } finally {
-                if (state.grid.props.dim(item)) selected.push(item);
+              try { toggleCart(state, item); } finally {
+                if (inCart(state, item)) selected.push(item);
               }
               if (selected.at(-1) !== item) break;
             }
@@ -228,7 +273,7 @@
             interrupted = true;
           }
           if (selected.length !== setSize) {
-            for (const item of selected) select(item);
+            for (const item of selected) toggleCart(state, item);
             interrupted = true;
             break;
           }
@@ -245,50 +290,92 @@
       }
     }
 
+    document.addEventListener("hako-af:gacha-reset-plan", event => {
+      const state = roots.get(event.target);
+      if (!state || state.busy) return;
+      retained = null;
+      state.message = "次のセット時に組み合わせを計算します。";
+      notify();
+    });
+
     document.addEventListener("click", event => {
-      if (!staging?.contains(event.target)) return;
+      if (!event.isTrusted || !(event.target instanceof Element)) return;
+      if (staging?.contains(event.target)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+      const button = event.target.closest("button");
+      const state = button && roots.get(button.closest("[data-ha4-gacha-root]"));
+      if (!state?.root.querySelector('[data-ha4="gacha-use-sets"]')?.checked ||
+          !controls(state).auto?.contains(button)) return;
+      const label = button.textContent.trim();
+      const match = /^(10|100|500|1000)連(?:セット|まで)$/.exec(label);
+      const pulls = match ? Number(match[1]) : /^(?:1セット|セット)$/.test(label) ? 1 : 0;
+      if (!pulls) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-    }, true);
-
-    document.addEventListener("hako-af:gacha-set", event => {
-      const state = roots.get(event.target);
-      if (state) void useSets(state, event.detail === "recalculate").catch(() => {
+      void useSets(state, pulls).catch(() => {
         state.message = "拡張セットを完了できませんでした。カートの内容を確認してください。";
         notify();
       });
-    });
+    }, true);
+
+    function publish(state) {
+      const ui = controls(state);
+      if (!ui.auto) return;
+      if (!ui.root.hasAttribute("data-ha4-gacha-root")) ui.root.setAttribute("data-ha4-gacha-root", "");
+      roots.set(ui.root, state);
+      roots.set(ui.auto, state);
+      const items = state.candidates.value;
+      const report = state.projection?.report ?? { total: items.length, matched: 0, unknown: 0, metrics: [] };
+      if (!state.busy && state.store?.isArtifactsLoaded && (state.classic ? state.presets?.isReady && state.cartItems
+        : typeof state.grid?.props.dim === "function")) {
+        let total = 0;
+        let multiple = 0;
+        const excluded = excludedItems(state);
+        for (const item of items) {
+          if (!fits(state, item, excluded)) continue;
+          total++;
+          if (!(Number(item.m_items?.rank) >= 11)) multiple++;
+        }
+        state.capacity = { total, multiple, cart: Number.isFinite(ui.cart) ? ui.cart : 0 };
+      }
+      state.grid?.vnode.el?.dispatchEvent(new CustomEvent("hako-af:grid", { bubbles: true,
+        detail: JSON.stringify({ scope: "gacha", report }) }));
+      ui.auto.dispatchEvent(new CustomEvent("hako-af:gacha-controls", { bubbles: true, detail: JSON.stringify({
+        capacity: state.capacity, busy: state.busy || false, canRecalculate: retained?.key === keyFor(ui.target),
+        message: state.busy || state.messageKey === keyFor(ui.target) ? state.message : "",
+        target: ui.target > 0 ? ui.target : null, ready: ui.ready
+      }) }));
+    }
 
     return {
-      read(grid, el, store) {
-        const state = grids.get(grid) ?? setup(grid, store);
+      readClassic(panel, el, store, presets, power, powerReady) {
+        if (!panel.props.active || !el.querySelector("#agacha-auto-set")) return;
+        const state = panels.get(panel) ?? setup(panel, store, power);
         if (!state) return;
-        state.el = el;
-        roots.set(el, state);
-        const ui = controls(state);
-        if (!ui.auto) return;
-        const items = state.candidates.value;
-        const report = state.projection?.report ?? { total: items.length, matched: 0, unknown: 0, metrics: [] };
-        const ready = !state.busy && ui.ready && ui.cart === 0 && ui.target > 0 && !currentPlan()?.error;
-        if (!state.busy && store?.isArtifactsLoaded && typeof grid.props.dim === "function") {
-          let total = 0;
-          let multiple = 0;
-          for (const item of items) {
-            if (!fits(state, item)) continue;
-            total++;
-            if (!(Number(item.m_items?.rank) >= 11)) multiple++;
-          }
-          state.capacity = { total, multiple, cart: Number.isFinite(ui.cart) ? ui.cart : 0 };
+        state.root = el;
+        state.presets = presets;
+        if (state.powerReady !== powerReady) {
+          state.powerReady = powerReady;
+          state.projection = null;
+          if (currentPlan()?.enabled) state.candidates.dep.trigger();
         }
-        el.dispatchEvent(new CustomEvent("hako-af:grid", { bubbles: true, detail: JSON.stringify({
-          scope: "gacha", report, gacha: {
-            capacity: state.capacity, ready, busy: state.busy || false, canRecalculate: retained?.key === keyFor(ui.target),
-            message: state.busy || state.messageKey === keyFor(ui.target) ? state.message : "",
-            target: ui.target > 0 ? ui.target : null, cart: ui.cart, cartMode: ui.ready
-          }
-        }) }));
+        if (!state.grid?.vnode.el?.isConnected) publish(state);
       },
-      invalidate(grid) { grids.get(grid)?.candidates.dep.trigger(); }
+      read(grid, el, store, classic) {
+        let panel = grid.parent;
+        while (panel && panel.type?.__name !== (classic ? "ArtifactGachaPanel" : "FlexArtifactGacha")) panel = panel.parent;
+        if (!panel) return;
+        const state = panels.get(panel) ?? (!classic && typeof grid.props?.power === "function"
+          ? setup(panel, store, grid.props.power, grid.vnode.props?.items) : null);
+        if (!state) return;
+        state.root = classic ? state.root : el.closest(".fx-agacha");
+        state.grid = grid;
+        publish(state);
+      },
+      invalidate(instance) { panels.get(instance)?.candidates.dep.trigger(); }
     };
   }
 

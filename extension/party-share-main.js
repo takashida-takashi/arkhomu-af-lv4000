@@ -76,9 +76,10 @@
   }
 
   function bindHall(props, panel) {
-    const showcase = panel.querySelector(".fx-ppd");
-    const controls = [...panel.querySelectorAll(".fx-hall-detail__actions")]
-      .find(row => [...row.querySelectorAll("button")].some(button => button.textContent.trim().startsWith("コメント")));
+    const showcase = panel.querySelector(":scope > .fx-ppd,:scope > .grid.grid-cols-3");
+    const comment = [...panel.querySelectorAll(":scope > div > button")]
+      .find(button => /^コメント\s*[\d,]+$/.test(button.textContent.trim()));
+    const controls = comment?.parentElement;
     const actions = controls ?? showcase;
     const binding = { props, hall: true, actions, showcase };
     const previous = panels.get(panel);
@@ -232,10 +233,11 @@
         if (masters.isLoaded?.value !== true) return null;
         const skills = tools.learned();
         const settings = panel?.hall ? null : properties.$pinia?._s?.get("skillSettings");
-        const visibleSlots = panel?.hall ? panel.showcase.querySelectorAll(".fx-ppd__slots > li") : [];
+        const visibleSlots = panel?.hall ? panel.showcase.querySelectorAll(panel.showcase.matches(".fx-ppd")
+          ? ".fx-ppd__slots > li" : ":scope > div") : [];
         const slots = Array.from({ length: 6 }, (_, index) => party[index]
           ? monsterSnapshot(party[index], skills, masters, settings, properties.$t ?? (key => key),
-            visibleSlots[index]?.querySelector(".fx-ppd__member-name")?.textContent.trim()) : null);
+            visibleSlots[index]?.querySelector(".fx-ppd__member-name,.font-bold.truncate")?.textContent.trim()) : null);
         if (individual) return { version: 1, individual: true, name: slots[0].name.slice(0, 100), slots };
         if (panel.hall) {
           const source = post?.guild ? "殿堂・ギルド" : "殿堂";

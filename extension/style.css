@@ -604,6 +604,7 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
 [data-ha4="gacha-capacity"], [data-ha4="gacha-set-controls"] { grid-column: 1 / -1; flex-basis: 100%; }
 [data-ha4="gacha-capacity"] { display: block; font-weight: 650; color: #e3ccff; }
 [data-ha4="gacha-set-controls"] { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; }
+[data-ha4="gacha-set-label"] { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; }
 [data-ha4="gacha-set-status"] { color: #d2c5df; font-size: .85em; }
 [data-ha4="training-form"] { display: grid; gap: .6rem; padding: .7rem .9rem; }
 [data-ha4="training-field"] { display: grid; gap: .2rem; min-width: 0; }
