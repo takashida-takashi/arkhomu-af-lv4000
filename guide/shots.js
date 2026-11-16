@@ -32,7 +32,7 @@ const screenshots = {
   },
   "expedition-members": {
     title: "次の遠征メンバーを選ぶ",
-    filename: "expedition-members.jpg?v=masked",
+    filename: "expedition-members.jpg?v=roster",
     steps: [[27, 22, "所持ホムンクルスから次のメンバーを選ぶ"], [84, 96, "「次へ：弁当を選ぶ」を押す"]]
   },
   "expedition-plan": {
