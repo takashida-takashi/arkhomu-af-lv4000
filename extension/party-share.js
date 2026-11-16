@@ -45,6 +45,7 @@
           generation,
           bonus,
           portrait: /^[\w-]+$/.test(portrait) ? portrait : "",
+          rank6Unique: text(member.rank6Unique ?? "", 140) || undefined,
           attack: text(member.attack ?? "", 140),
           active: skills(member.active),
           passive: skills(member.passive)
@@ -62,24 +63,26 @@
     const slots = data.slots.map(member => member && [member.name, member.level, member.generation ?? null,
       member.bonus ? statLabels.map(([key]) => member.bonus[key] ?? null) : null, member.portrait, member.attack,
       skills(member.active), skills(member.passive)]);
-    return [2, data.name, data.individual === true, slots];
+    const uniques = data.slots.map(member => member?.rank6Unique ?? null);
+    return uniques.some(Boolean) ? [2, data.name, data.individual === true, slots, uniques] : [2, data.name, data.individual === true, slots];
   }
 
   function expandLink(data) {
     if (!Array.isArray(data)) return data;
-    const [version, name, individual, slots] = data;
+    const [version, name, individual, slots, uniques] = data;
     if (version !== 2 || !Array.isArray(slots) || slots.length !== 6) throw new Error("Invalid compact party");
+    if (uniques !== undefined && (!Array.isArray(uniques) || uniques.length !== slots.length)) throw new Error("Invalid unique skills");
     const skills = entries => {
       if (!Array.isArray(entries) || entries.length > 160) throw new Error("Invalid compact skills");
       return entries.map(entry => Array.isArray(entry) && entry.length === 1
         ? { name: entry[0], permanent: true } : { name: entry, permanent: false });
     };
-    return { version: 1, name, individual, slots: slots.map(member => {
+    return { version: 1, name, individual, slots: slots.map((member, index) => {
       if (member === null) return null;
       if (!Array.isArray(member) || member.length !== 8) throw new Error("Invalid compact member");
       const [name, level, generation, values, portrait, attack, active, passive] = member;
-      const bonus = Array.isArray(values) ? Object.fromEntries(statLabels.map(([key], index) => [key, values[index]])) : undefined;
-      return { name, level, generation, bonus, portrait, attack, active: skills(active), passive: skills(passive) };
+      const bonus = Array.isArray(values) ? Object.fromEntries(statLabels.map(([key], i) => [key, values[i]])) : undefined;
+      return { name, level, generation, bonus, portrait, attack, active: skills(active), passive: skills(passive), rank6Unique: uniques?.[index] };
     }) };
   }
 
@@ -335,7 +338,11 @@
           const actions = node("div", "party-member-actions");
           if (openTrainingTarget) {
             const train = makeButton(`${names.trainingRoutes}に取り込む`);
-            train.addEventListener("click", () => openTrainingTarget(member, data.individual ? null : position, data.name));
+            train.addEventListener("click", async () => {
+              train.disabled = true;
+              try { await openTrainingTarget(member, data.individual ? null : position, data.name, train); }
+              finally { train.disabled = false; }
+            });
             actions.append(train);
           }
           if (!data.individual) {

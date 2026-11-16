@@ -190,15 +190,24 @@
       const priority = id ? settings?.getPriority?.(id, entry.id, stored) ?? stored : stored;
       return !disabled.has(entry.id) && priority !== 0;
     });
+    const passive = skills.getPassiveSkills(member);
+    const effectiveRank = Math.max(1, Math.floor(Number(master?.rank ?? native.rank) || 1)) +
+      Math.max(0, Math.floor(Number(native.rank_up ?? monster.rank_up) || 0));
+    const uniqueId = [native.meta?.rank6_unique_skill, native.rank6_unique_skill_granted, monster.rank6_unique_skill_granted,
+      effectiveRank >= 6 ? (master ?? native).rank6_unique_skill : null]
+      .find(value => typeof value === "string" && value.trim())?.trim();
+    const uniqueEntry = active.find(entry => entry.id === uniqueId) ?? passive.find(entry => entry.id === uniqueId);
+    const uniqueMaster = uniqueEntry && (active.includes(uniqueEntry) ? masters.getActiveSkill(uniqueId) : masters.getPassiveSkill(uniqueId));
     return {
       name: displayName || label(master?.name_key ?? monster.name_key, String(master?.id ?? native.monster_id ?? native.master_id ?? "ホムンクルス")),
       level: Number(native.level ?? monster.level) || 0,
       generation: Number.isFinite(generation) && generation >= 0 ? generation : undefined,
       bonus: bonusParameters(monster, native),
       portrait: typeof art === "string" ? art : "",
+      rank6Unique: uniqueEntry ? label(uniqueEntry.name_key ?? uniqueMaster?.name_key, uniqueId) : undefined,
       attack: typeof attack === "string" ? label(masters.getActiveSkill(attack)?.name_key, attack) : "",
       active: describe(active, "skill", masters.getActiveSkill),
-      passive: describe(skills.getPassiveSkills(member), "passive", masters.getPassiveSkill)
+      passive: describe(passive, "passive", masters.getPassiveSkill)
     };
   }
 

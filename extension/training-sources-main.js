@@ -58,6 +58,22 @@
     return (name && name !== master.name_key ? name : master?.name ?? name) || master?.id;
   }
 
+  function rank6UniqueName(data, member, translate) {
+    const monsters = (data?.monsters ?? []).filter(isPublic);
+    const name = member.name?.normalize("NFKC");
+    const byName = monsters.filter(monster => {
+      const species = label(monster, translate)?.normalize("NFKC");
+      return species && (name === species || name?.endsWith(`(${species})`));
+    });
+    const byPortrait = member.portrait ? monsters.filter(monster =>
+      monster.image_file_name?.replace(/\.png$/i, "") === member.portrait) : [];
+    const monster = byName.length === 1 ? byName[0] : byPortrait.length === 1 ? byPortrait[0] : null;
+    const id = monster?.rank6_unique_skill;
+    if (!id) return;
+    const skill = data.skills?.find(skill => skill.id === id) ?? data.passives?.find(skill => skill.id === id);
+    return label(skill, translate) ?? id;
+  }
+
   function sourceIndex(data, needs, profile, translate, normalize) {
     if (!data) return new Map();
     const matching = new Set(needs.map(normalize));
@@ -141,5 +157,5 @@
     }));
   }
 
-  globalThis.hakoAfTrainingSources = { readMasters, sourceIndex };
+  globalThis.hakoAfTrainingSources = { readMasters, sourceIndex, rank6UniqueName };
 })();

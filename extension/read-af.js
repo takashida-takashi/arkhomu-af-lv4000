@@ -523,7 +523,8 @@
     const app = root?.__vue_app__;
     if (!root?._vnode) return;
     const stores = app?.config?.globalProperties?.$pinia?._s;
-    if (/^\/(?:f\/)?mating(?:\/|$)/.test(location.pathname)) trainingRoutes?.legacyMating();
+    const matingPage = /^\/(?:f\/)?mating(?:\/|$)/.test(location.pathname);
+    let legacyMatingParents;
     const translate = key => app?.config?.globalProperties?.$t?.(key) ?? key;
     let chatReplies;
     const getChatReplies = () => chatReplies ??= extras.indexChatReplies(stores?.get("chat"));
@@ -570,6 +571,11 @@
       const instance = vnode.component;
       const props = instance?.props ?? vnode.props;
       const name = instance?.type?.__name ?? vnode.type?.__name;
+      // The classic mating page labels exactly its two selected parents as unavailable (already set).
+      if (matingPage && name === "MonsterList" && instance.parent?.type?.__name === "mating" &&
+          props?.unavailableText === "セット済" && Array.isArray(props.unavailableIds)) {
+        legacyMatingParents = props.unavailableIds;
+      }
       const titleModal = profileTitles && (titleModals.has(name) ? instance : parentTitleModal);
       if (titleModal && instance) readProfileTitles(titleModal, instance);
       const el = vnode.el ?? instance?.subTree?.el;
@@ -754,6 +760,7 @@
         for (let i = vnode.children.length - 1; i >= 0; i--) pending.push([vnode.children[i], ...context]);
       }
     }
+    if (matingPage) trainingRoutes?.legacyMating(legacyMatingParents);
     if (estimateAnchors.size && enhanceDetail) {
       configFromCache();
       for (const anchor of estimateAnchors) extras.readEnhanceEstimate(anchor, enhanceDetail, gameConfig, stores?.get("userProfile"));

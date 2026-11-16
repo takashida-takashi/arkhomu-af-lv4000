@@ -9,6 +9,7 @@
   const matingComponents = new Set(["FlexMatingInherit", "MatingNewUiPanel"]);
   const grantComponents = new Set(["FlexTrainingSkillGrant", "FlexTrainingSkillGrantFlow"]);
   const grantLists = new Set(["fx-tgrant__rows", "fx-tgflow__rows"]);
+  const bothParentRoutes = "__parents__";
   const matingChoices = new WeakMap();
   const grantBindings = new WeakMap();
   const progressBindings = new WeakMap();
@@ -54,6 +55,20 @@
     } catch { /* Ignore malformed snapshots. */ }
   });
 
+  document.addEventListener("hako-af:read-training-unique", async event => {
+    const source = event.target;
+    let name = "";
+    try {
+      const member = JSON.parse(event.detail);
+      const properties = document.getElementById("__nuxt")?.__vue_app__?.config?.globalProperties;
+      const buildId = properties?.$config?.public?.buildId ?? properties?.$nuxt?.$config?.public?.buildId ??
+        globalThis.__NUXT__?.config?.public?.buildId;
+      const data = await trainingSources?.readMasters(buildId);
+      name = trainingSources?.rank6UniqueName(data, member, key => properties?.$t?.(key) ?? key) ?? "";
+    } catch { /* The editor can still open if the official data is unavailable. */ }
+    source.dispatchEvent(new CustomEvent("hako-af:training-unique", { detail: name }));
+  });
+
   function grantRoute(anchor, recipient) {
     if (!anchor) return null;
     const binding = targets.get(String(recipient));
@@ -73,20 +88,26 @@
     return route;
   }
 
-  function matingSkills(anchor, ctx, panel = anchor) {
+  function matingSkills(anchor, parentIds, panel = anchor) {
     let control = anchor.querySelector(':scope > [data-ha4="training-active-route"]');
     if (!routes.size) {
       control?.remove();
       matingChoices.delete(panel);
       return { skills: savedSkills, specific: false };
     }
-    const parentRoutes = new Set((ctx?.matingSlots ?? []).map(monster => targets.get(String(monsterId(monster)))?.routeId).filter(Boolean));
-    const inherited = parentRoutes.size === 1 ? parentRoutes.values().next().value :
-      routes.size === 1 ? routes.keys().next().value : "";
-    const choice = matingChoices.get(panel) ?? inherited ?? "";
-    const selected = routes.has(choice) ? choice : "";
-    const scope = { skills: routes.get(selected)?.skills ?? savedSkills, specific: !!selected };
-    const signature = JSON.stringify([selected, [...routes].map(([id, item]) => [id, item.name])]);
+    const parents = [...new Set((parentIds ?? []).filter(id => id != null && id !== "").map(String))].sort();
+    const parentRoutes = [...new Set(parents.map(id => targets.get(id)?.routeId).filter(id => routes.has(id)))];
+    const parentSignature = JSON.stringify(parents);
+    const previous = matingChoices.get(panel);
+    const combined = parentRoutes.length > 1;
+    const fallback = combined ? bothParentRoutes : parentRoutes[0] ?? (routes.size === 1 ? routes.keys().next().value : "");
+    const choice = previous?.parents === parentSignature ? previous.choice : undefined;
+    const selected = choice === "" || routes.has(choice) || (combined && choice === bothParentRoutes) ? choice : fallback;
+    const route = routes.get(selected);
+    const skills = selected === bothParentRoutes
+      ? new Set(parentRoutes.flatMap(id => [...routes.get(id).skills])) : route?.skills ?? savedSkills;
+    const scope = { skills, specific: !!route };
+    const signature = JSON.stringify([parentSignature, selected, combined, [...routes].map(([id, item]) => [id, item.name])]);
     if (control?.dataset.routeSignature === signature) return scope;
     control?.remove();
     control = document.createElement("label");
@@ -95,14 +116,16 @@
     control.textContent = "継承候補の強調";
     const select = document.createElement("select");
     select.setAttribute("aria-label", "継承候補の強調");
-    select.replaceChildren(new Option("保存した全ルート（選ぶ候補のみ）", ""), ...[...routes].map(([id, item]) => new Option(item.name, id)));
+    select.replaceChildren(new Option("保存した全ルート（選ぶ候補のみ）", ""));
+    if (combined) select.add(new Option("両親の育成ルート（選ぶ候補のみ）", bothParentRoutes));
+    for (const [id, item] of routes) select.add(new Option(item.name, id));
     select.value = selected;
     select.addEventListener("change", () => {
-      matingChoices.set(panel, select.value);
+      matingChoices.set(panel, { parents: parentSignature, choice: select.value });
       document.dispatchEvent(new Event("hako-af:grid-rendered"));
     });
     control.append(select);
-    if (!selected) control.append("外す候補を出すには育成ルートを1つ選んでください。");
+    if (!route) control.append("外す候補を出すには育成ルートを1つ選んでください。");
     anchor.prepend(control);
     return scope;
   }
@@ -144,7 +167,8 @@
     const rows = [...root.querySelectorAll(".fx-mati__row,[data-inherit-row]")].filter(row => row.getClientRects().length);
     const { ctx } = props;
     const anchor = root.matches(".fx-mati") ? root : rows[0]?.parentElement;
-    const scope = anchor && rows.length ? matingSkills(anchor, ctx, root) : null;
+    const parentIds = ctx?.matingSlots?.map(monster => monsterId(monster) ?? monster?.id);
+    const scope = anchor && rows.length ? matingSkills(anchor, parentIds, root) : null;
     if (!scope) {
       root.querySelector('[data-ha4="training-active-route"]')?.remove();
       return;
@@ -229,7 +253,7 @@
     }).catch(() => send({ unavailable: true }));
   }
 
-  function legacyMating() {
+  function legacyMating(parentIds) {
     const heading = [...document.querySelectorAll('[role="dialog"] h3,[data-base-modal-root] h3')]
       .find(el => el.textContent.trim() === "継承するスキル / パッシブを選択" && el.getClientRects().length);
     const modal = heading?.closest('[role="dialog"],[data-base-modal-root]');
@@ -238,7 +262,7 @@
     if (!rows.length) return;
     if (!modal.hasAttribute("data-ha4-training-scope")) modal.setAttribute("data-ha4-training-scope", "");
     const body = rows[0].closest(".p-3.flex.flex-col.h-full") ?? heading.closest("header")?.nextElementSibling ?? modal;
-    const scope = matingSkills(body);
+    const scope = matingSkills(body, parentIds);
     for (const row of rows) {
       const auto = row.classList.contains("bg-emerald-950/30");
       const name = row.querySelector("span.font-bold.break-words");

@@ -186,10 +186,29 @@
       show(root, form);
     }
 
-    function openMember(member, slot, party) {
+    function readSharedUnique(member, source) {
+      if (member.rank6Unique || !source) return Promise.resolve(member.rank6Unique);
+      return new Promise(resolve => {
+        const timer = setTimeout(() => {
+          source.removeEventListener("hako-af:training-unique", receive);
+          resolve("");
+        }, 2500);
+        function receive(event) {
+          clearTimeout(timer);
+          resolve(typeof event.detail === "string" ? event.detail : "");
+        }
+        source.addEventListener("hako-af:training-unique", receive, { once: true });
+        source.dispatchEvent(new CustomEvent("hako-af:read-training-unique", { bubbles: true,
+          detail: JSON.stringify({ name: member.name, portrait: member.portrait }) }));
+      });
+    }
+
+    async function openMember(member, slot, party, source) {
+      const unique = nameKey(await readSharedUnique(member, source) ?? "");
+      if (source && !source.getClientRects().length) return;
       const entries = [...member.active, ...member.passive];
       open({ name: slot == null ? member.name : `${party} ${slot}枠目 ${member.name}`.slice(0, 120),
-        ordinary: entries.filter(skill => !skill.permanent).map(skill => skill.name),
+        ordinary: entries.filter(skill => !skill.permanent && nameKey(skill.name) !== unique).map(skill => skill.name),
         permanent: entries.filter(skill => skill.permanent).map(skill => skill.name) });
     }
 
