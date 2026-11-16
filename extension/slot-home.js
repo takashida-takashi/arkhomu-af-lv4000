@@ -3,7 +3,6 @@
 
   const cabinetSelector = ".fx-slot-machine";
   const chatSelector = "#home-chat,.fx-home__chat";
-  const modalSelector = 'dialog[open],[role="dialog"][aria-modal="true"]';
   const homePaths = new Set(["/", "/f", "/f/"]);
   const onSlotPage = path => /^\/slot\/?$/.test(path);
   const desktopSize = () => matchMedia("(min-width: 900px) and (min-height: 580px)").matches;
@@ -16,6 +15,40 @@
   function start(enabled) {
     let entry;
     let view;
+
+    function fitCabinet({ cabinet, resize, measured, viewport }) {
+      const stage = cabinet.querySelector(".fx-slot-machine__stage");
+      const zoom = stage?.parentElement;
+      if (!zoom || zoom.classList.contains("fx-slot-machine__zoom--on") || !viewport.clientHeight) return;
+      const aspect = Number(cabinet.style.getPropertyValue("--fx-slot-aspect"));
+      if (!(aspect > 0)) return;
+
+      const notices = [...zoom.children].filter(element =>
+        element.matches('[data-ha4="slot-bonus-info"],.fx-slot-machine__error'));
+      const elements = new Set([zoom, ...notices]);
+      for (const element of measured) {
+        if (!elements.has(element)) {
+          resize.unobserve(element);
+          measured.delete(element);
+        }
+      }
+      for (const element of elements) {
+        if (!measured.has(element)) {
+          resize.observe(element);
+          measured.add(element);
+        }
+      }
+
+      const reservedHeight = notices.reduce((total, element) => {
+        if (!element.offsetHeight) return total;
+        const style = getComputedStyle(element);
+        return total + element.offsetHeight + parseFloat(style.marginTop) + parseFloat(style.marginBottom);
+      }, 0);
+      const width = `${Math.max(0, Math.floor(Math.min(zoom.clientWidth, (zoom.clientHeight - reservedHeight) * aspect)))}px`;
+      if (viewport.style.getPropertyValue("--ha4-slot-stage-width") !== width) {
+        viewport.style.setProperty("--ha4-slot-stage-width", width);
+      }
+    }
 
     function close() {
       if (!view) return;
@@ -55,12 +88,8 @@
         close();
         return;
       }
-      if (current.path !== path) {
-        current.floating = false;
-        current.path = path;
-      }
       const child = current.frame.contentDocument;
-      const { dock, resize, show } = current;
+      const { dock, resize, show, returnToCabinet } = current;
       const chat = home ? child?.querySelector(chatSelector) : null;
       if (current.chat !== chat) {
         if (current.chat) resize.unobserve(current.chat);
@@ -69,15 +98,22 @@
       }
 
       const rect = chat?.getBoundingClientRect();
-      const overlapsChat = desktopSize() && rect?.width >= 240 && rect.height >= 240 && rect.right > 0 &&
+      const desktop = desktopSize();
+      const overlapsChat = desktop && rect?.width >= 240 && rect.height >= 240 && rect.right > 0 &&
         rect.left < window.innerWidth && rect.bottom > 140 && rect.top < window.innerHeight - 140;
       dock.toggleAttribute("data-ha4-slot-over-chat", !!overlapsChat);
-      const floating = !overlapsChat && desktopSize() && current.floating;
-      dock.toggleAttribute("data-ha4-slot-collapsed", !overlapsChat && !floating);
-      show.hidden = !!overlapsChat || !desktopSize();
-      const label = floating ? "台をたたむ" : "台を表示";
+      const showingChat = overlapsChat && current.collapsed;
+      dock.toggleAttribute("data-ha4-slot-showing-chat", !!showingChat);
+      dock.hidden = !desktop;
+      dock.toggleAttribute("data-ha4-slot-collapsed", current.collapsed);
+      const label = current.collapsed ? "スロットを表示" : overlapsChat ? "チャットを表示" : "台をたたむ";
       if (show.textContent !== label) show.textContent = label;
-      show.setAttribute("aria-expanded", String(!!floating));
+      show.setAttribute("aria-expanded", String(!current.collapsed));
+      if (showingChat) {
+        if (returnToCabinet.parentElement !== chat) chat.prepend(returnToCabinet);
+      } else {
+        returnToCabinet.remove();
+      }
       if (overlapsChat) {
         const left = Math.max(0, rect.left);
         const top = Math.max(0, rect.top);
@@ -86,9 +122,7 @@
         dock.style.setProperty("--ha4-slot-width", `${Math.min(window.innerWidth, rect.right) - left}px`);
         dock.style.setProperty("--ha4-slot-height", `${Math.min(window.innerHeight, rect.bottom) - top}px`);
       }
-      const modal = child && Array.from(child.querySelectorAll(modalSelector))
-        .some(item => item.getClientRects().length && child.defaultView.getComputedStyle(item).visibility === "visible");
-      dock.classList.toggle("ha4-slot-home-obscured", !!modal);
+      fitCabinet(current);
     }
 
     function schedule(current) {
@@ -104,6 +138,8 @@
       frameObserver.disconnect();
       resize.disconnect();
       current.chat = null;
+      current.measured.clear();
+      resize.observe(current.viewport);
       current.frameEvents?.abort();
       const child = frame.contentDocument;
       if (child?.documentElement) {
@@ -112,7 +148,7 @@
         child.addEventListener("scroll", () => schedule(current), { capture: true, passive: true, signal });
         child.defaultView?.addEventListener("popstate", () => schedule(current), { signal });
         frameObserver.observe(child.documentElement, { childList: true, subtree: true, attributes: true,
-          attributeFilter: ["class", "hidden", "aria-modal", "open"] });
+          attributeFilter: ["class", "hidden"] });
         resize.observe(child.documentElement);
       }
       schedule(current);
@@ -130,46 +166,68 @@
       frame.title = "はこホムの操作画面";
       const dock = document.createElement("section");
       dock.dataset.ha4 = "slot-home-dock";
-      dock.setAttribute("data-ha4-slot-collapsed", "");
       dock.setAttribute("aria-label", "スロット");
       const toolbar = document.createElement("div");
+      toolbar.dataset.ha4 = "slot-home-toolbar";
       const show = document.createElement("button");
       show.type = "button";
       show.dataset.ha4 = "extra-button";
-      show.textContent = "台を表示";
+      show.textContent = "台をたたむ";
+      const returnToCabinet = document.createElement("button");
+      returnToCabinet.type = "button";
+      returnToCabinet.dataset.ha4 = "extra-button";
+      returnToCabinet.dataset.ha4SlotChatReturn = "";
+      returnToCabinet.textContent = "スロットを表示";
       const exit = document.createElement("button");
       exit.type = "button";
       exit.dataset.ha4 = "extra-button";
       exit.textContent = "スロット画面に戻る";
       toolbar.append(show, exit);
-      dock.append(toolbar);
+      const viewport = document.createElement("div");
+      viewport.dataset.ha4 = "slot-home-viewport";
+      dock.append(toolbar, viewport);
       shell.append(frame, dock);
 
       const events = new AbortController();
       const current = {
-        shell, frame, dock, cabinet, marker, root, inert: root.inert, events, returnFocus, show, floating: false,
-        cabinetObserver: new MutationObserver(() => { if (view === current && !cabinet.isConnected) close(); }),
+        shell, frame, dock, viewport, cabinet, marker, root, inert: root.inert, events, returnFocus, show, returnToCabinet,
+        collapsed: false,
+        cabinetObserver: new MutationObserver(() => {
+          if (view !== current) return;
+          if (cabinet.parentElement !== viewport) close();
+          else schedule(current);
+        }),
         frameObserver: new MutationObserver(() => schedule(current)),
         resize: new ResizeObserver(() => schedule(current)),
+        measured: new Set(),
         layoutFrame: 0
       };
       view = current;
       const { signal } = events;
       exit.addEventListener("click", close, { signal });
       show.addEventListener("click", () => {
-        current.floating = !current.floating;
+        current.collapsed = !current.collapsed;
         layout(current);
+        if (returnToCabinet.isConnected) returnToCabinet.focus();
+      }, { signal });
+      returnToCabinet.addEventListener("click", () => {
+        current.collapsed = false;
+        layout(current);
+        show.focus();
       }, { signal });
       window.addEventListener("resize", () => schedule(current), { passive: true, signal });
       frame.addEventListener("load", () => watchFrame(current), { signal });
       frame.src = "/";
       document.body.append(shell);
-      move(dock, cabinet);
-      current.cabinetObserver.observe(dock, { childList: true });
+      move(viewport, cabinet);
+      current.cabinetObserver.observe(viewport, { childList: true, subtree: true });
+      current.cabinetObserver.observe(cabinet, { attributeFilter: ["style"] });
+      current.resize.observe(viewport);
       document.documentElement.dataset.ha4SlotHomeActive = "";
       root.inert = true;
       returnFocus.hidden = true;
       exit.focus();
+      schedule(current);
     }
 
     return function refresh() {

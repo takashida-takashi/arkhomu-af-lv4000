@@ -848,38 +848,99 @@ html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
 [data-ha4="slot-home"] > iframe { display: block; width: 100%; height: 100%; border: 0; }
 [data-ha4="slot-home-dock"] {
   position: absolute;
-  inset: auto 8px 8px auto;
+  inset: 8px auto auto 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
   box-sizing: border-box;
-  width: min(38vw, 420px);
-  max-height: calc(100vh - 16px);
-  overflow: auto;
-  overscroll-behavior: contain;
+  width: min(var(--ha4-slot-width, 420px), 40vw);
+  height: calc(100% - 16px);
+  overflow: hidden;
   padding: 6px;
   background: #1c1628;
   border: 1px solid #674f82;
   border-radius: 9px;
   color: #f7edff;
 }
-[data-ha4="slot-home-dock"] > div:first-child { display: flex; flex-wrap: wrap; gap: 4px; }
-[data-ha4="slot-home-dock"]:not([data-ha4-slot-collapsed]) > div:first-child { margin-block-end: 5px; }
-[data-ha4="slot-home-dock"] .fx-slot-machine { min-width: 0; max-width: 100%; }
-[data-ha4="slot-home-dock"] .fx-slot-machine__head { display: none; }
+[data-ha4="slot-home-dock"][hidden] { display: none; }
+[data-ha4="slot-home-toolbar"] { display: flex; flex-wrap: wrap; gap: 4px; flex: 0 0 auto; }
+[data-ha4="slot-home-viewport"] { flex: 1 1 auto; min-width: 0; min-height: 0; }
+[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] .fx-slot-machine {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+}
+[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] .fx-slot-machine__layout {
+  display: grid;
+  grid-template: minmax(0, 1fr) auto / minmax(0, 1fr);
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+}
+[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] :is(.fx-slot-machine__head,.fx-slot-machine__side) { display: none; }
+[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] .fx-slot-machine__play {
+  display: block;
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] .fx-slot-machine__tools {
+  grid-area: 2 / 1;
+  min-width: 0;
+}
+[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] .fx-slot-machine__zoom:not(.fx-slot-machine__zoom--on) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+}
+[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] .fx-slot-machine__stage {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: var(--ha4-slot-stage-width, 100%);
+  height: auto;
+  aspect-ratio: var(--fx-slot-aspect);
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  max-height: none;
+}
 [data-ha4="slot-home-dock"][data-ha4-slot-over-chat] {
   inset: var(--ha4-slot-top) auto auto var(--ha4-slot-left);
   width: var(--ha4-slot-width);
   height: var(--ha4-slot-height);
-  max-height: none;
 }
-[data-ha4="slot-home-dock"][data-ha4-slot-collapsed] { width: max-content; overflow: hidden; }
-[data-ha4-slot-collapsed] .fx-slot-machine {
+[data-ha4="slot-home-dock"][data-ha4-slot-collapsed] { width: max-content; height: auto; }
+[data-ha4="slot-home-dock"][data-ha4-slot-showing-chat] { visibility: hidden; pointer-events: none; }
+[data-ha4="extra-button"][data-ha4-slot-chat-return] {
+  display: block;
+  flex: 0 0 auto;
+  width: fit-content;
+  margin: 5px 6px;
+}
+[data-ha4-slot-collapsed] [data-ha4="slot-home-viewport"] {
   position: absolute;
   inset-inline-start: 100%;
-  width: min(38vw, 420px);
-  max-width: none;
+  width: min(var(--ha4-slot-width, 420px), 40vw);
+  height: var(--ha4-slot-height, calc(100vh - 16px));
   visibility: hidden;
   pointer-events: none;
 }
-[data-ha4="slot-home-dock"].ha4-slot-home-obscured { visibility: hidden; }
 [data-ha4="slot-bonus-info"] {
   box-sizing: border-box;
   margin: 0 0 5px;
