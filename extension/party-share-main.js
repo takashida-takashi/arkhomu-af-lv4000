@@ -1,6 +1,8 @@
 (() => {
   "use strict";
 
+  if (globalThis.hakoAfFrameContext?.active === false) return;
+
   const panels = new WeakMap();
   const individuals = new WeakMap();
   const detailAnchors = new WeakMap();

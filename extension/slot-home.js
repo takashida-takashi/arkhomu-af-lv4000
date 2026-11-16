@@ -1,8 +1,11 @@
 (() => {
   "use strict";
 
+  if (window.top !== window) return;
+
   const cabinetSelector = ".fx-slot-machine";
   const chatSelector = "#home-chat,.fx-home__chat";
+  const modalSelector = 'dialog[open],[role="dialog"],[aria-modal="true"],[data-base-modal-root]';
   const homePaths = new Set(["/", "/f", "/f/"]);
   const onSlotPage = path => /^\/slot\/?$/.test(path);
   const desktopSize = () => matchMedia("(min-width: 900px) and (min-height: 580px)").matches;
@@ -89,7 +92,7 @@
         return;
       }
       const child = current.frame.contentDocument;
-      const { dock, resize, show, returnToCabinet } = current;
+      const { dock, shell, resize, show, returnToCabinet } = current;
       const chat = home ? child?.querySelector(chatSelector) : null;
       if (current.chat !== chat) {
         if (current.chat) resize.unobserve(current.chat);
@@ -97,9 +100,14 @@
         current.chat = chat;
       }
 
-      const rect = chat?.getBoundingClientRect();
       const desktop = desktopSize();
-      const overlapsChat = desktop && rect?.width >= 240 && rect.height >= 240 && rect.right > 0 &&
+      const modal = home && child && [...child.querySelectorAll(modalSelector)].some(element =>
+        element.getClientRects().length && child.defaultView.getComputedStyle(element).visibility === "visible");
+      const split = !!(desktop && path && (!home || modal));
+      shell.toggleAttribute("data-ha4-slot-split", split);
+      shell.toggleAttribute("data-ha4-slot-narrow", split && current.collapsed);
+      const rect = chat?.getBoundingClientRect();
+      const overlapsChat = desktop && !split && rect?.width >= 240 && rect.height >= 240 && rect.right > 0 &&
         rect.left < window.innerWidth && rect.bottom > 140 && rect.top < window.innerHeight - 140;
       dock.toggleAttribute("data-ha4-slot-over-chat", !!overlapsChat);
       const showingChat = overlapsChat && current.collapsed;
@@ -119,7 +127,7 @@
         const top = Math.max(0, rect.top);
         dock.style.setProperty("--ha4-slot-left", `${left}px`);
         dock.style.setProperty("--ha4-slot-top", `${top}px`);
-        dock.style.setProperty("--ha4-slot-width", `${Math.min(window.innerWidth, rect.right) - left}px`);
+        shell.style.setProperty("--ha4-slot-width", `${Math.min(window.innerWidth, rect.right) - left}px`);
         dock.style.setProperty("--ha4-slot-height", `${Math.min(window.innerHeight, rect.bottom) - top}px`);
       }
       fitCabinet(current);
@@ -148,7 +156,7 @@
         child.addEventListener("scroll", () => schedule(current), { capture: true, passive: true, signal });
         child.defaultView?.addEventListener("popstate", () => schedule(current), { signal });
         frameObserver.observe(child.documentElement, { childList: true, subtree: true, attributes: true,
-          attributeFilter: ["class", "hidden"] });
+          attributeFilter: ["class", "hidden", "open", "style", "aria-modal", "data-base-modal-root"] });
         resize.observe(child.documentElement);
       }
       schedule(current);
@@ -164,6 +172,7 @@
       shell.dataset.ha4 = "slot-home";
       const frame = document.createElement("iframe");
       frame.title = "はこホムの操作画面";
+      frame.dataset.ha4SlotHomeFrame = "";
       const dock = document.createElement("section");
       dock.dataset.ha4 = "slot-home-dock";
       dock.setAttribute("aria-label", "スロット");
@@ -201,7 +210,11 @@
           if (cabinet.parentElement !== viewport) close();
           else schedule(current);
         }),
-        frameObserver: new MutationObserver(() => schedule(current)),
+        frameObserver: new MutationObserver(records => {
+          if (records.some(record => record.attributeName !== "style" || record.target.matches(modalSelector))) {
+            schedule(current);
+          }
+        }),
         resize: new ResizeObserver(() => schedule(current)),
         measured: new Set(),
         layoutFrame: 0

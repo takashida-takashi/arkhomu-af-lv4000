@@ -110,7 +110,8 @@
     const enabled = key => settings.features[key] !== false;
     const refreshSlotHome = slotHome?.start(() => enabled("slotHome"));
     const desktop = globalThis.hakoAfDesktopUpdates;
-    const version = desktop?.version ?? globalThis.hakoAfUserscriptVersion;
+    const version = desktop?.version ?? globalThis.hakoAfUserscriptVersion ??
+      (globalThis.hakoAfFrameContext?.embedded ? chrome.runtime.getManifest().version : undefined);
     let currentDrops = null;
     let previousDrops;
     let currentBalance = null;
@@ -943,6 +944,14 @@
       quote.after(note);
       setTimeout(() => note.remove(), 4200);
     }));
+    window.addEventListener("storage", event => {
+      if (event.key !== configKey && event.key !== null) return;
+      if (!globalThis.hakoAfFrameContext?.embedded &&
+          !document.documentElement.hasAttribute("data-ha4-slot-home-active")) return;
+      Object.assign(settings, loadSettings());
+      tellMain();
+      requestScan();
+    });
     window.addEventListener("resize", requestScan, { passive: true });
     tellMain();
     return {

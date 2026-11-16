@@ -1,6 +1,8 @@
 (() => {
   "use strict";
 
+  if (window.top !== window) return;
+
   const version = chrome.runtime.getManifest().version;
   const archiveKey = "hakoAfDesktopUpdateArchive";
   const distribution = "https://takashida-takashi.github.io/arkhomu-af-lv4000/";

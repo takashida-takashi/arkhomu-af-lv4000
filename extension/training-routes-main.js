@@ -1,6 +1,8 @@
 (() => {
   "use strict";
 
+  if (globalThis.hakoAfFrameContext?.active === false) return;
+
   const matingComponents = new Set(["FlexMatingInherit", "MatingNewUiPanel"]);
   const grantComponents = new Set(["FlexTrainingSkillGrant", "FlexTrainingSkillGrantFlow"]);
   const grantLists = new Set(["fx-tgrant__rows", "fx-tgflow__rows"]);

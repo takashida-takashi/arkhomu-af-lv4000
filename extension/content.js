@@ -1,6 +1,8 @@
 (() => {
   "use strict";
 
+  if (globalThis.hakoAfFrameContext?.active === false) return;
+
   const { TARGET, normalize, levelFrom, valueFrom, ratio, projected, text } = globalThis.hakoAf4000;
   const { parameters, readEffects, optionFor, groups } = globalThis.hakoAfEffects;
   const { POWER, SUM, DROP, CONVERSION, sumRates, dropMetrics, metricValue, viewRule, orderItems } = globalThis.hakoAfListRules;

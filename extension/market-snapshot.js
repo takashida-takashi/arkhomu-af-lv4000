@@ -1,6 +1,8 @@
 (() => {
   "use strict";
 
+  if (globalThis.hakoAfFrameContext?.active === false) return;
+
   const key = Symbol.for("hako-af.market-prices");
   if (globalThis[key]) {
     globalThis.hakoAfMarketSnapshots = globalThis[key];

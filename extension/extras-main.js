@@ -1,6 +1,8 @@
 (() => {
   "use strict";
 
+  if (globalThis.hakoAfFrameContext?.active === false) return;
+
   const settingsEvent = "hako-af:extra-settings";
   const chatRow = "[data-chat-message-id]";
   const chatLog = ".fx-chat-room__log,[role='log'],.overflow-y-auto";

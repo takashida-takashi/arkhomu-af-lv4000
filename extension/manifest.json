@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "はこホム AF Lv4000予測",
-  "version": "3.0.11",
+  "version": "3.0.12",
   "description": "AFの現在値とLv4000予測値を並べて表示し、読み込まれた一覧を絞り込みます。",
   "permissions": ["storage", "downloads"],
   "host_permissions": ["https://arkhomu.com/*"],
@@ -12,12 +12,14 @@
     "run_at": "document_start"
   }, {
     "matches": ["https://arkhomu.com/*"],
-    "js": ["market-snapshot.js", "forecast.js", "artifact-effects.js", "list-rules.js", "hidden-titles.js", "extras-main.js", "party-share-main.js", "training-routes-main.js", "read-af.js"],
+    "all_frames": true,
+    "js": ["frame-context.js", "market-snapshot.js", "forecast.js", "artifact-effects.js", "list-rules.js", "hidden-titles.js", "extras-main.js", "party-share-main.js", "training-routes-main.js", "read-af.js"],
     "run_at": "document_start",
     "world": "MAIN"
   }, {
     "matches": ["https://arkhomu.com/*"],
-    "js": ["forecast.js", "artifact-effects.js", "list-rules.js", "filter-popup.js", "enhance-estimate.js", "explore-analysis.js", "market-watch.js", "update-check.js", "desktop-update.js", "slot-home.js", "extras.js", "party-share.js", "training-routes.js", "content.js"],
+    "all_frames": true,
+    "js": ["frame-context.js", "forecast.js", "artifact-effects.js", "list-rules.js", "filter-popup.js", "enhance-estimate.js", "explore-analysis.js", "market-watch.js", "update-check.js", "desktop-update.js", "slot-home.js", "extras.js", "party-share.js", "training-routes.js", "content.js"],
     "css": ["style.css"],
     "run_at": "document_idle"
   }]

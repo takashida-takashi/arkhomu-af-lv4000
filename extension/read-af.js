@@ -1,6 +1,8 @@
 (() => {
   "use strict";
 
+  if (globalThis.hakoAfFrameContext?.active === false) return;
+
   const { readEffects } = globalThis.hakoAfEffects;
   const extras = globalThis.hakoAfExtrasMain;
   const hiddenTitles = globalThis.hakoAfHiddenTitles;
