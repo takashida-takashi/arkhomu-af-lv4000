@@ -508,7 +508,7 @@
       for (const anchor of document.querySelectorAll(detailActions)) {
         if (detailLaunchers.has(anchor) || !anchor.getClientRects().length) continue;
         const individual = anchor.hasAttribute("data-ha4-share-member");
-        const button = makeButton(individual ? "この個体を共有" : "この編成を共有");
+        const button = makeButton(individual ? "この個体を共有" : "この編成を共有・育成に使う");
         button.setAttribute("aria-haspopup", "dialog");
         button.addEventListener("click", () => openNative(individual ? anchor : anchor.closest("[data-ha4-party-panel]"), individual));
         if (individual) anchor.append(button);

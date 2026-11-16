@@ -447,17 +447,17 @@
     }
 
     function refresh(entries, newCounts, result) {
-      const { active: hasConditions, matched, unknown: unknownCount, message, resultLabel, decomposeNotice } = result;
+      const { active: hasConditions, matched, unknown: unknownCount, message, resultLabel, decomposeNotice, selectionNotice } = result;
       matchingIds = result.matchingIds;
       keepShown.disabled = state.view !== "match" || !matchingIds.some(id => !state.kept.has(id));
       clearKept.disabled = !state.kept?.size;
       const caption = hasConditions ? `${names.filter}｜${resultLabel} ${matched}件` : names.filter;
       if (trigger.textContent !== caption) trigger.textContent = caption;
       if (status.textContent !== message) status.textContent = message;
-      notice.hidden = !decomposeNotice;
+      notice.hidden = !decomposeNotice && !selectionNotice;
       notice.textContent = decomposeNotice
         ? "残すチェックはこのタブ内の目印です。分解候補を表示して、ゲームの一括解体モードで対象を選んでください。"
-        : "";
+        : selectionNotice ?? "";
       unknown.wrapper.hidden = unknownCount === 0;
       counts = newCounts;
       const nextSignature = JSON.stringify(entries);

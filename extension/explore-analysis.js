@@ -6,6 +6,7 @@
   const jstOffset = 9 * 3600000;
   const dayInJst = time => Math.floor((time + jstOffset) / dayMs);
   const metrics = ["stocks", "af", "exp", "gold"];
+  const groups = { normal: "通常", clover: "クローバー有効" };
   const integer = new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 2 });
   const average = new Intl.NumberFormat("ja-JP", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const secondsFormat = new Intl.NumberFormat("ja-JP", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -29,6 +30,13 @@
     return target;
   }
 
+  function addGroups(totals, samples) {
+    for (const group of Object.keys(groups)) {
+      if (samples?.[group]?.stocks > 0) totals[group] = add(totals[group] ?? empty(), samples[group]);
+    }
+    return totals;
+  }
+
   let opening;
   function openHistory() {
     opening ??= new Promise((resolve, reject) => {
@@ -47,7 +55,7 @@
     return opening;
   }
 
-  async function updateHistory({ owner, id, at }, sample) {
+  async function updateHistory({ owner, id, at }, samples) {
     const db = await openHistory();
     const today = dayInJst(Date.now());
     const cutoff = today - 29;
@@ -69,12 +77,12 @@
       let all, recent;
       function loaded() {
         if (--waiting) return;
-        all = allData.result ?? empty();
-        if (sample && !seenData.result && at > (all.resetAt ?? 0) && day >= cutoff && day <= today) {
+        all = allData.result ?? {};
+        if (samples && !seenData.result && at > (all.resetAt ?? 0) && day >= cutoff && day <= today) {
           // The shared transaction makes recording the same run in two tabs idempotent.
           seen.add({ owner, day }, runKey);
-          totals.put(add(dayData.result ?? empty(), sample), dayKey);
-          add(all, sample);
+          totals.put(addGroups(dayData.result ?? {}, samples), dayKey);
+          addGroups(all, samples);
         }
         if (all.prunedDay !== today) {
           totals.delete(expiredRange);
@@ -87,9 +95,9 @@
           };
           all.prunedDay = today;
         }
-        if (all.count || all.resetAt) totals.put(all, totalKey);
+        if (all.normal || all.clover || all.resetAt || all.count) totals.put(all, totalKey);
         const days = totals.getAll(recentRange);
-        days.onsuccess = () => { recent = days.result.reduce(add, empty()); };
+        days.onsuccess = () => { recent = days.result.reduce(addGroups, {}); };
       }
       allData.onsuccess = dayData.onsuccess = seenData.onsuccess = loaded;
       tx.oncomplete = () => resolve({ recent, all });
@@ -105,7 +113,7 @@
       const totals = tx.objectStore("totals");
       totals.delete(IDBKeyRange.bound([owner, 0], [owner, Number.MAX_SAFE_INTEGER]));
       // Keep the cutoff and recent run IDs so an already open or replayed result stays out of the new totals.
-      totals.put({ ...empty(), resetAt: Math.max(now, at) }, [owner, "all"]);
+      totals.put({ resetAt: Math.max(now, at) }, [owner, "all"]);
       tx.oncomplete = resolve;
       tx.onabort = () => reject(tx.error);
     });
@@ -117,7 +125,7 @@
     const resetting = new WeakSet();
     const changes = typeof BroadcastChannel === "function" ? new BroadcastChannel("hako-af-explore-analysis") : null;
     changes?.addEventListener("message", event => {
-      if (typeof event.data === "string" && panel?.data?.identity?.owner === event.data) renderHistory(panel);
+      if (typeof event.data === "string" && panel?.data?.identity?.owner === event.data) loadHistory(panel);
     });
 
     function createPanel(target, mode) {
@@ -153,11 +161,18 @@
       const footer = node("div", "explore-analysis-footer");
       footer.append(note);
       const active = { root, elapsed: elapsedCells[0], cells, winCells, note, mode };
+      root.append(node("summary", "explore-analysis-title", title));
       if (!guild) {
+        const label = node("label", "explore-analysis-group", "集計対象");
+        active.group = document.createElement("select");
+        for (const [value, caption] of Object.entries(groups)) active.group.add(new Option(caption, value));
+        label.append(active.group);
+        root.append(label);
+        active.group.addEventListener("change", () => renderHistory(active));
         active.reset = resetButton(footer, "統計をリセット", () => active.data.identity, note);
         active.reset.disabled = true;
       }
-      root.append(node("summary", "explore-analysis-title", title), table, footer);
+      root.append(table, footer);
       target.after(root);
       return active;
     }
@@ -188,26 +203,45 @@
       }
     }
 
-    function renderHistory(active, notice) {
+    function renderHistory(active) {
+      const { samples, mixed, estimated } = active.data;
+      const group = active.group.value;
+      const recent = active.history?.recent[group] ?? empty();
+      const all = active.history?.all[group] ?? empty();
+      render(active, 0, samples?.[group]);
+      render(active, 1, recent);
+      render(active, 2, all);
+      const split = mixed?.cloverStocks != null
+        ? `今回の内訳 通常 ${integer.format(mixed.normalStocks)} / クローバー ${integer.format(mixed.cloverStocks)} ストック` : "";
+      const excluded = mixed && !samples ? "通常・クローバーの報酬内訳が不足しているため集計対象外"
+        : active.data.unclassified ? "今回のクローバー使用状況が不明のため集計対象外" : "";
+      const count = active.history
+        ? `集計した結果 ${integer.format(recent.count)}件（直近30日） / ${integer.format(all.count)}件（累計）` : "";
+      const coverage = all.battleSamples < all.count ? "勝率は戦績を記録できた結果から集計" : "";
+      active.note.textContent = [split, excluded, estimated && "戦闘回数からストックを換算", active.notice, count, coverage]
+        .filter(Boolean).join(" · ");
+    }
+
+    function loadHistory(active, notice) {
       const request = ++revision;
-      const { identity, current } = active.data;
-      const note = (...parts) => { active.note.textContent = [active.method, ...parts].filter(Boolean).join(" · "); };
-      render(active, 1);
-      render(active, 2);
+      const { identity, samples } = active.data;
+      active.notice = notice;
       active.reset.disabled = !identity || resetting.has(active.reset);
       if (!identity) {
-        note("今回の結果を端末の履歴に紐づけられませんでした");
+        active.notice = "今回の結果を端末の履歴に紐づけられませんでした";
+        active.history = null;
+        renderHistory(active);
         return;
       }
-      updateHistory(identity, current?.stocks > 0 ? current : null).then(({ recent, all }) => {
+      renderHistory(active);
+      updateHistory(identity, samples).then(history => {
         if (request !== revision) return;
-        render(active, 1, recent);
-        render(active, 2, all);
-        const count = `集計した結果 ${integer.format(recent.count)}件（直近30日） / ${integer.format(all.count)}件（累計）`;
-        const coverage = (all.battleSamples ?? 0) < all.count ? "勝率は戦績を記録できた結果から集計" : "";
-        note(notice, count, coverage);
+        active.history = history;
+        renderHistory(active);
       }).catch(() => {
-        if (request === revision) note("このブラウザで探索履歴を保存できませんでした");
+        if (request !== revision) return;
+        active.notice = "このブラウザで探索履歴を保存できませんでした";
+        renderHistory(active);
       });
     }
 
@@ -216,14 +250,14 @@
         status.textContent = "ゲームのアカウント情報を読み込んでから再度お試しください";
         return;
       }
-      if (resetting.has(button) || !window.confirm("このブラウザの通常探索の統計（直近30日・累計）をリセットしますか？\n画面には今回の結果が残ります。")) return;
+      if (resetting.has(button) || !window.confirm("通常・クローバー両方の探索統計（直近30日・累計）をリセットしますか？\n画面には今回の結果が残ります。")) return;
       resetting.add(button);
       button.disabled = true;
       try {
         await resetHistory(identity);
         changes?.postMessage(identity.owner);
         status.textContent = "統計をリセットしました";
-        if (panel?.data.identity?.owner === identity.owner) renderHistory(panel, "統計をリセットしました");
+        if (panel?.data.identity?.owner === identity.owner) loadHistory(panel, "統計をリセットしました");
       } catch {
         status.textContent = "探索統計をリセットできませんでした";
       } finally {
@@ -271,6 +305,7 @@
       if (signature === event.detail) return;
       signature = event.detail;
       revision++;
+      const previous = panel.data;
       panel.data = data;
       updateDisclosure(panel, data.hasDrops);
       panel.elapsed.textContent = formatElapsed(data.elapsedMs);
@@ -282,8 +317,11 @@
           (data.current?.stocks > 0 ? `${data.guildBattlesPerStock}戦を1ストックとして換算` : unavailable);
         return;
       }
-      panel.method = data.estimated ? "戦闘回数からストックを換算" : "";
-      renderHistory(panel);
+      if (!previous || previous.identity?.id !== data.identity?.id || previous.identity?.owner !== data.identity?.owner) {
+        if (previous?.identity?.owner !== data.identity?.owner) panel.history = null;
+        panel.group.value = data.samples?.clover && !data.samples.normal ? "clover" : "normal";
+      }
+      loadHistory(panel);
     });
 
     function finishScan() {

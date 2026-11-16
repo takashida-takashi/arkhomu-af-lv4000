@@ -8,7 +8,7 @@
 
   const features = {
     detail: `${names.forecast}（AF詳細・コピー）`,
-    inventory: `${filterAndSort}（装備・強化・分解）`,
+    inventory: `${filterAndSort}（装備・強化・分解・AFガチャ）`,
     enhanceEstimate: `${names.enhanceEstimate}（AFのLv4000到達）`,
     market: `${filterAndSort}（フリマ・オークション・個人間取引）`,
     marketWatch: `${names.marketWatch}（フリマ最安値）`,

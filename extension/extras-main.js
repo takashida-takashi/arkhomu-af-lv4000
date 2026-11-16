@@ -16,7 +16,10 @@
   const exploreCounts = new WeakMap();
   const exploreTimingKey = "hakoAf4000:explore-timing";
   const previousExploreResults = new WeakMap();
-  const exploreElapsed = new WeakMap();
+  const exploreObservations = new WeakMap();
+  const cloverSamples = new WeakMap();
+  const cloverResourcesAtStart = new WeakMap();
+  const lastCloverConsumption = new WeakMap();
   let exploreTiming = { pending: {}, finished: {} };
   try {
     const saved = JSON.parse(sessionStorage.getItem(exploreTimingKey));
@@ -613,28 +616,82 @@
     if (boss && exploreParty(stores?.get("guildDungeon")?.session?.partyIndex) !== party) return;
     const start = { at, tick, owner: String(owner), kind: boss ? "boss" : "step",
       previousKey: exploreRunKey(saved?.result, saved?.savedAt) };
+    const resources = stores.get("userProfile")?.profile?.resources;
+    if (!boss && resources && typeof resources === "object") {
+      const rawCharges = amountOf(resources.lucky_clover_charges ?? 0);
+      const previous = lastCloverConsumption.get(resources);
+      start.cloverBefore = previous?.rawCharges === rawCharges ? previous.remaining : rawCharges;
+      cloverResourcesAtStart.set(start, { resources, rawCharges });
+    }
     if (saved?.result) previousExploreResults.set(start, saved.result);
     exploreTiming.pending[party] = start;
     saveExploreTiming();
   }, true);
 
-  function measureExploreTime(anchor, result, party, owner, at, kind) {
-    if (exploreElapsed.has(result)) return exploreElapsed.get(result);
+  function observeExploreRun(anchor, result, party, owner, at, kind) {
+    if (exploreObservations.has(result)) return exploreObservations.get(result);
     if (party == null || owner == null) return;
     const account = String(owner);
     const key = exploreRunKey(result, at);
     const finished = exploreTiming.finished[party];
-    if (key && finished?.key === key && finished.owner === account) return finished.milliseconds;
+    if (key && finished?.key === key && finished.owner === account) return finished;
     const start = exploreTiming.pending[party];
     if (!start || start.owner !== account || start.kind !== kind || previousExploreResults.get(start) === result ||
         (key && start.previousKey === key) || (at && at < start.at) || !anchor.getClientRects().length) return;
     const milliseconds = Math.round(performance.timeOrigin + performance.now() - start.tick);
     if (!Number.isFinite(milliseconds) || milliseconds < 0) return;
     delete exploreTiming.pending[party];
-    if (key) exploreTiming.finished[party] = { owner: account, key, milliseconds };
+    const observation = { owner: account, key, milliseconds, cloverBefore: start.cloverBefore };
+    const cloverSource = cloverResourcesAtStart.get(start);
+    const wins = amountOf(result.summary?.battleWin);
+    if (cloverSource && start.cloverBefore > 0 && Number.isSafeInteger(wins) && !result.dungeon?.is_random &&
+        !result.dungeon?.is_guild && !result.guildSessionId) {
+      // Repeated exploration can start while the game's profile cache still contains the pre-run count.
+      lastCloverConsumption.set(cloverSource.resources, { rawCharges: cloverSource.rawCharges,
+        remaining: Math.max(0, start.cloverBefore - wins) });
+    }
+    if (key) exploreTiming.finished[party] = observation;
     saveExploreTiming();
-    exploreElapsed.set(result, milliseconds);
-    return milliseconds;
+    exploreObservations.set(result, observation);
+    return observation;
+  }
+
+  function classifyExplore(result, sample, charges) {
+    if (result.dungeon?.is_random || charges === 0) return { samples: { normal: sample } };
+    if (!Number.isSafeInteger(charges) || !Number.isSafeInteger(sample.wins)) return { unclassified: true };
+    if (charges > sample.wins) return { samples: { clover: sample } };
+    const { stocks, wins, losses } = sample;
+    const battles = Array.isArray(result.events) ? result.events.filter(event => event?.type === "encount") : [];
+    const fullLog = battles.length === stocks && battles.length === wins + losses &&
+      battles.filter(event => event.result === "win").length === wins &&
+      battles.filter(event => event.result === "lose").length === losses && !(result.statisticalAttempts > 0);
+    let cloverStocks = null;
+    if (stocks === wins) cloverStocks = charges;
+    else if (fullLog) {
+      let remaining = charges;
+      cloverStocks = battles.findIndex(event => event.result === "win" && --remaining === 0) + 1;
+    }
+    if (cloverStocks === stocks) return { samples: { clover: sample } };
+    const mixed = { cloverStocks, normalStocks: cloverStocks == null ? null : stocks - cloverStocks };
+    if (!fullLog || !(cloverStocks > 0)) return { mixed };
+
+    const sections = [battles.slice(0, cloverStocks), battles.slice(cloverStocks)];
+    const totals = sections.map(section => {
+      const data = { stocks: section.length, wins: 0, losses: 0, af: 0, exp: 0, gold: 0 };
+      const items = [];
+      for (const event of section) {
+        data[event.result === "win" ? "wins" : "losses"]++;
+        data.exp += amountOf(event.rewards?.exp) ?? 0;
+        data.gold += amountOf(event.rewards?.gold) ?? 0;
+        if (Array.isArray(event.rewards?.items)) items.push(...event.rewards.items);
+      }
+      data.af = countExploreArtifacts(items);
+      return data;
+    });
+    const [clover, normal] = totals;
+    // Spot rewards or abbreviated logs can contribute to the summary without a per-battle breakdown.
+    if (!["af", "exp", "gold"].every(key => clover[key] + normal[key] === sample[key])) return { mixed };
+    return { samples: { normal, clover }, mixed };
   }
 
   function readExploreAnalysis(anchor, props, drops, stores, config, hasDrops) {
@@ -650,8 +707,10 @@
     const at = saved?.result === result && amountOf(saved.savedAt);
     const party = exploreParty(current.partyIndex ?? (saved?.result === result ? saved.partyIndex : null) ??
       new URLSearchParams(location.search).get("party"));
-    const elapsedMs = current.ownerUserId == null || String(current.ownerUserId) === String(owner)
-      ? measureExploreTime(anchor, result, party, owner, at, current.kind) : undefined;
+    if (!anchor.getClientRects().length) return;
+    const observation = current.ownerUserId == null || String(current.ownerUserId) === String(owner)
+      ? observeExploreRun(anchor, result, party, owner, at, current.kind) : undefined;
+    const elapsedMs = observation?.milliseconds;
     if (guild && (result.guildPractice || current.kind === "boss")) {
       if (elapsedMs != null) publish(anchor, "hako-af:explore-analysis", {
         mode, hasDrops, elapsedMs, timingOnlyNote: result.guildPractice ? "試走（ストック消費なし）" : "ギルダンのボス戦（ストック消費なし）"
@@ -702,8 +761,14 @@
       });
       return;
     }
+    const sample = { stocks: used, af: af ?? countExploreArtifacts(items), exp, gold, ...battleResults };
+    let clover = cloverSamples.get(result);
+    if (!guild && !clover) {
+      clover = classifyExplore(result, sample, observation?.cloverBefore);
+      cloverSamples.set(result, clover);
+    }
     publish(anchor, "hako-af:explore-analysis", {
-      mode, identity, hasDrops, elapsedMs, current: { stocks: used, af: af ?? countExploreArtifacts(items), exp, gold, ...battleResults },
+      mode, identity, hasDrops, elapsedMs, ...(guild ? { current: sample } : clover),
       estimated: normalStockEstimate > 0,
       guildBattlesPerStock: guildStockEstimate > 0 ? battlesPerStock : undefined
     });

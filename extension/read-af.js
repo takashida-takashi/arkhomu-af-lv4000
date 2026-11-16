@@ -37,7 +37,8 @@
     ArtifactDecomposePanel: "decompose"
   };
   const tradeDialogs = new Set(["TradeOfferModal", "ProfileTradeOfferModal", "FlexTradeOfferDialog"]);
-  const sortScopes = { "artifact-equip": "inventory", "artifact-enhance": "enhance", "artifact-decompose": "decompose", "trade-offer": "trade" };
+  const sortScopes = { "artifact-equip": "inventory", "artifact-enhance": "enhance", "artifact-decompose": "decompose",
+    "artifact-gacha": "gacha", "trade-offer": "trade" };
   const marketRow = ".overflow-y-auto.custom-scrollbar > div";
   const auctionRow = 'div[role="button"][tabindex="0"].min-h-11.border-b';
   const flexLabels = {
@@ -96,7 +97,7 @@
     return Math.round(value * scale) / scale;
   }
 
-  function rawProjection(source, plan, powerOf, decomposeState) {
+  function rawProjection(source, plan, powerOf, decomposeState, allowMissingRates = false) {
     const rule = viewRule(plan);
     const records = [];
     const metrics = new Set();
@@ -109,7 +110,7 @@
       const id = original?.id;
       const raw = snapshot(original?._artifact, decomposeState, id);
       const values = raw ? readEffects(raw) : new Map();
-      const sum = sumRates(values);
+      const sum = raw && sumRates(values, allowMissingRates);
       if (sum) values.set(SUM, sum);
       if (raw && powerOf) {
         const power = powerOf(original);
@@ -300,6 +301,11 @@
     } });
     return true;
   }
+
+  const gachaSets = globalThis.hakoAfGachaSets?.start({
+    dependencies, readThrough, currentPlan: () => planFor("gacha"),
+    project: (items, plan, power) => rawProjection(items, plan, power, null, true)
+  });
 
   function readProfileTitles(modal, instance) {
     const enabled = extras?.hiddenTitlesEnabled();
@@ -589,7 +595,9 @@
         ? props?.monster : parentMonster;
       if (el?.nodeType === 1 && el.isConnected) {
         if (name === "FlexPartySlots" || name === "PartyFormationPanel") partyShare?.bind(name, props, el);
-        if (name === "FlexHallPostDetail") partyShare?.bindHall(props, el);
+        if (name === "FlexHallPostDetail" || props?.detail && el.matches(".fx-hall-detail")) {
+          partyShare?.bindHall(props, el);
+        }
         if (watchMarket) {
           if (name === "market") {
             marketWatchRoot = el;
@@ -665,6 +673,9 @@
           bubbles: true, detail: JSON.stringify([kind, sortScope || scope])
         }));
         if (sortScope && el.dataset.ha4ListScope !== sortScope) el.dataset.ha4ListScope = sortScope;
+        if (name === "FlexArtifactGrid" && props.labelledby === "fx-agacha-title") {
+          gachaSets?.read(instance, el, stores?.get("userItems"));
+        }
         const flexScope = name === "FlexArtifactGrid" && (scope === "trade" ? scope : flexLabels[instance?.props?.labelledby]);
         const gridScope = name === "VirtualItemGrid"
           ? scope ?? (el.closest("[data-artifact-equip-inventory]") ? "inventory" : null) : flexScope;
@@ -782,6 +793,7 @@
       visited.add(vnode);
       const instance = vnode.component;
       const state = methods.get(instance);
+      if (scope === "gacha") gachaSets?.invalidate(instance);
       if (state?.scope === scope) {
         if (!state.pager) state.reset ||= !!reset;
         instance.proxy?.$forceUpdate();

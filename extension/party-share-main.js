@@ -72,16 +72,19 @@
 
   function partyOf(panel) {
     if (!panel?.hall) return panel?.props.party;
-    return panel.props.detail?.canView === true ? panel.props.detail.party?.members : null;
+    return panel.props.detail?.canView ? panel.props.detail.party?.members : null;
   }
 
   function bindHall(props, panel) {
-    const actions = panel.querySelector(".fx-ppd");
-    const binding = { props, hall: true, actions };
+    const showcase = panel.querySelector(".fx-ppd");
+    const controls = [...panel.querySelectorAll(".fx-hall-detail__actions")]
+      .find(row => [...row.querySelectorAll("button")].some(button => button.textContent.trim().startsWith("コメント")));
+    const actions = controls ?? showcase;
+    const binding = { props, hall: true, actions, showcase };
     const previous = panels.get(panel);
     if (previous?.actions && previous.actions !== actions) previous.actions.removeAttribute("data-ha4-party-hall-actions");
     const party = partyOf(binding);
-    if (!actions || !Array.isArray(party) || !party.some(Boolean)) {
+    if (!showcase || !Array.isArray(party) || !party.some(Boolean)) {
       actions?.removeAttribute("data-ha4-party-hall-actions");
       panel.removeAttribute("data-ha4-party-panel");
       panels.delete(panel);
@@ -229,7 +232,7 @@
         if (masters.isLoaded?.value !== true) return null;
         const skills = tools.learned();
         const settings = panel?.hall ? null : properties.$pinia?._s?.get("skillSettings");
-        const visibleSlots = panel?.hall ? panel.actions.querySelectorAll(".fx-ppd__slots > li") : [];
+        const visibleSlots = panel?.hall ? panel.showcase.querySelectorAll(".fx-ppd__slots > li") : [];
         const slots = Array.from({ length: 6 }, (_, index) => party[index]
           ? monsterSnapshot(party[index], skills, masters, settings, properties.$t ?? (key => key),
             visibleSlots[index]?.querySelector(".fx-ppd__member-name")?.textContent.trim()) : null);

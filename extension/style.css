@@ -600,6 +600,11 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
 [data-ha4="party-share"]:has([data-ha4="party-individual"]) { width: min(500px, calc(100vw - 20px)); }
 [data-ha4="party-member-actions"] { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .6rem; }
 .ha4-hall-share { justify-self: start; align-self: start; }
+[data-ha4-skin-sort] > [data-ha4-skin-acquired] { order: 1; }
+[data-ha4="gacha-capacity"], [data-ha4="gacha-set-controls"] { grid-column: 1 / -1; flex-basis: 100%; }
+[data-ha4="gacha-capacity"] { display: block; font-weight: 650; color: #e3ccff; }
+[data-ha4="gacha-set-controls"] { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; }
+[data-ha4="gacha-set-status"] { color: #d2c5df; font-size: .85em; }
 [data-ha4="training-form"] { display: grid; gap: .6rem; padding: .7rem .9rem; }
 [data-ha4="training-field"] { display: grid; gap: .2rem; min-width: 0; }
 [data-ha4="training-skill-fields"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
@@ -1091,6 +1096,8 @@ html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
 [data-ha4="explore-analysis"]:not([open]) { width: fit-content; padding: .25rem .55rem; }
 [data-ha4="explore-analysis-title"] { cursor: pointer; text-align: start; font-weight: 700; color: #e4c7ff; }
 [data-ha4="explore-analysis"][open] > [data-ha4="explore-analysis-title"] { margin-bottom: .3rem; }
+[data-ha4="explore-analysis-group"] { display: flex; align-items: center; gap: .5rem; margin: .2rem 0 .45rem; }
+[data-ha4="explore-analysis-group"] select { background: #181422; border: 1px solid #665078; border-radius: 4px; color: #f1e5ff; padding: .2rem .45rem; }
 [data-ha4="explore-analysis-table"] :is(th, td) { padding: .3rem .32rem; border-bottom: 1px solid #463754; }
 [data-ha4="explore-analysis-table"] :is(th, td):first-child { text-align: start; }
 [data-ha4="explore-analysis-table"] :is(th, td):not(:first-child) { text-align: end; }

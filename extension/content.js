@@ -15,7 +15,8 @@
   const FLEX_GRID = ".fx-agrid";
   const FLEX_FILTER = ".fx-alist-controls";
   const FLEX_LISTS = ".fx-artifact__list,.fx-aenh,.fx-adec";
-  const SCOPES = new Set(["inventory", "enhance", "decompose"]);
+  const SCOPES = new Set(["inventory", "enhance", "decompose", "gacha"]);
+  const GACHA_INPUT = ".fx-agacha";
   const TRADE_ROOTS = '#fx-trade-artifact-controls,.fx-trade,[data-ha4-trade-controls],.fx-agrid,.virtual-item-grid';
   const titleSearch = 'input[aria-label="称号を探す"]';
   const MARKET_SORT = "#market-artifact-sort";
@@ -31,7 +32,7 @@
   const ROOTS = [
     DETAIL, CLASSIC_GRID, CLASSIC_EQUIP, FLEX_LISTS, ".fx-artifact__slot-grid",
     ".fx-agrid", FLEX_FILTER, MARKET_SORT, AUCTION_ENTRY, AUCTION_SORT, AUCTION_LIST,
-    '.artifact-name', '.min-h-\\[36px\\]', '[data-ha4-list-scope]', TRADE_ROOTS
+    '.artifact-name', '.min-h-\\[36px\\]', '[data-ha4-list-scope]', TRADE_ROOTS, GACHA_INPUT
   ].join(",");
   const LIST_ATTRIBUTE_ROOTS = [FLEX_LISTS, CLASSIC_GRID, CLASSIC_EQUIP, "[data-base-modal-root]", ".fx-alist-controls",
     "[data-ha4-list-scope]", "[data-ha4-list-scope] button[aria-expanded]"].join(",");
@@ -61,6 +62,9 @@
   const rememberedOrder = new WeakMap();
   const nativeChoices = new Map();
   const keepControls = new WeakMap();
+  const gachaInputControls = new WeakMap();
+  const skinSortControls = new WeakMap();
+  const skinSortKey = "hakoAf4000:skin-unowned-first";
   const currentCards = new Map();
   const detailSnapshots = new WeakMap();
   const forecastCopyButtons = new WeakMap();
@@ -396,7 +400,7 @@
     }
   }
 
-  function listRecord(card, nameEl, powerEl, placement, id = null) {
+  function listRecord(card, nameEl, powerEl, placement, id = null, allowMissingRates = false) {
     const name = plain(nameEl);
     let level = levelFrom(name);
     const snapshot = listSnapshots.get(card);
@@ -407,7 +411,7 @@
     if (snapshot) {
       level = snapshot.level;
       for (const [key, value] of readEffects(snapshot)) metrics.set(key, value);
-      const sum = sumRates(metrics);
+      const sum = sumRates(metrics, allowMissingRates);
       if (sum) metrics.set(SUM, sum);
     }
     const cached = snapshot ? null : id ? ownedStats.get(id) : classicStats.get(card);
@@ -438,13 +442,14 @@
   function ownedFlex() {
     for (const grid of document.querySelectorAll(FLEX_GRID)) {
       const inventory = grid.closest(FLEX_LISTS);
+      const gachaList = grid.closest(".fx-agacha__list");
       const items = [];
       for (const card of grid.querySelectorAll(".fx-agrid__cell")) {
         const button = card.querySelector(".fx-item-cell--artifact");
         const p = card.querySelector(".fx-agrid__power");
         if (!button || !p) continue;
         const id = inventory?.matches(".fx-artifact__list") ? button.getAttribute("data-fx-drag-id") : null;
-        items.push(listRecord(card, button.querySelector(".fx-item-cell__name"), p, "inline", id));
+        items.push(listRecord(card, button.querySelector(".fx-item-cell__name"), p, "inline", id, !!gachaList));
       }
       for (const item of items) renderListValue(item);
       if (inventory && isDisplayed(inventory)) {
@@ -457,10 +462,85 @@
         if (type === "decompose" && active) protectBulkSelection(inventory);
         for (const item of items) currentCards.set(item.card, item);
       }
+      const gacha = gachaList && gridReports.get(grid)?.gacha;
+      if (gacha && isDisplayed(gachaList)) {
+        const control = gachaList.querySelector(FLEX_FILTER) || gachaList.querySelector(".fx-afilter-bar");
+        filterGroup("gacha", control || grid, control ? "inside" : "before", items,
+          !!grid.querySelector(".fx-agrid__rows--virtual"), control || grid, control?.querySelector("select"), grid);
+        renderGachaInput(grid, gacha);
+      }
     }
     for (const card of document.querySelectorAll(".fx-artifact__slot")) {
       const p = card.querySelector(".fx-artifact__power");
       if (p) renderListValue(listRecord(card, card.querySelector(".fx-item-cell--artifact .fx-item-cell__name"), p, "inline"));
+    }
+  }
+
+  function renderGachaInput(grid, state) {
+    const owner = grid.closest(GACHA_INPUT)?.querySelector(".fx-agacha__auto");
+    if (!owner) return;
+    const { capacity, ready, busy, message, target, cartMode, cart } = state;
+    if (capacity) {
+      const { total, multiple, cart: inCart } = capacity;
+      const count = new Intl.NumberFormat("ja-JP");
+      const pulls = count.format(Math.floor((multiple + inCart) / 5));
+      const single = total !== multiple ? ` · 単発の候補 ${count.format(total)}個` : "";
+      adorn(owner, "gacha-capacity", `連続セットの追加候補 ${count.format(multiple)}個（${inCart ? "カート込み " : ""}${pulls}連分）${single}`,
+        "素材数で換算しています。指定した合計パワーによって実際に作れるセット数は変わります。");
+    }
+    let ui = gachaInputControls.get(grid);
+    if (!ui) {
+      const root = node("div", "gacha-set-controls");
+      const run = node("button", "extra-button", names.gachaSets);
+      const retry = node("button", "extra-button", "再計算");
+      const status = node("span", "gacha-set-status");
+      status.setAttribute("role", "status");
+      for (const [button, action] of [[run, "use"], [retry, "recalculate"]]) {
+        button.type = "button";
+        button.addEventListener("click", event => {
+          if (event.isTrusted) grid.dispatchEvent(new CustomEvent("hako-af:gacha-set", { bubbles: true, detail: action }));
+        });
+      }
+      root.append(run, retry, status);
+      ui = { root, run, retry, status };
+      gachaInputControls.set(grid, ui);
+    }
+    if (ui.root.parentElement !== owner) owner.append(ui.root);
+    decorated.add(ui.root);
+    ui.run.disabled = !ready;
+    ui.retry.hidden = !state.canRecalculate;
+    ui.retry.disabled = !ready;
+    const label = busy ? message : !target ? "合計パワーの条件を選ぶと拡張セットを使えます。" :
+      message || (cart ? "カートが空になると拡張セットを使えます。" : !cartMode ? "「カートに出し入れ」を選んでください。" : "");
+    if (ui.status.textContent !== label) ui.status.textContent = label;
+  }
+
+  function renderSkinSort() {
+    if (!/^\/encyclopedia\/?$/.test(normalRoute())) return;
+    const title = [...document.querySelectorAll("#__nuxt section p")]
+      .find(element => nativeText(element) === "スキン一覧");
+    const header = title?.parentElement;
+    const grid = header?.parentElement?.querySelector(":scope > .grid.custom-scrollbar");
+    if (!grid) return;
+    let button = skinSortControls.get(grid);
+    if (!button) {
+      button = node("button", "extra-button", names.skinSort);
+      button.type = "button";
+      button.addEventListener("click", () => {
+        extrasApi?.save(skinSortKey, extrasApi.get(skinSortKey) !== true);
+        requestScan();
+      });
+      skinSortControls.set(grid, button);
+    }
+    if (button.parentElement !== header) header.append(button);
+    decorated.add(button);
+    const enabled = extrasApi?.get(skinSortKey) === true;
+    button.setAttribute("aria-pressed", String(enabled));
+    button.title = "未入手のスキンを先に表示";
+    grid.toggleAttribute("data-ha4-skin-sort", enabled);
+    for (const card of grid.querySelectorAll(":scope > article")) {
+      card.toggleAttribute("data-ha4-skin-acquired", enabled &&
+        [...card.children].some(child => child.tagName === "SPAN" && nativeText(child) === "入手済"));
     }
   }
 
@@ -635,11 +715,14 @@
     }
     if (type === "decompose") state.kept ??= new Set();
     modes.set(type, state);
-    const onChange = type === "explore" ? () => {
-      const { root, useForecast, showUnknown, sortKey, sortDirection } = state;
-      extrasApi?.save("hakoAf4000:explore-filter", { root, useForecast, showUnknown, sortKey, sortDirection });
+    const onChange = () => {
+      if (type === "explore") {
+        const { root, useForecast, showUnknown, sortKey, sortDirection } = state;
+        extrasApi?.save("hakoAf4000:explore-filter", { root, useForecast, showUnknown, sortKey, sortDirection });
+      }
+      if (type === "gacha") setGridPlan(type, listPlan(type, state));
       requestScan();
-    } : requestScan;
+    };
     return { ...globalThis.hakoAfFilterPopup(state, onChange, globalThis.hakoAfPresetStorage), state };
   }
 
@@ -794,6 +877,26 @@
     decorated.add(control.el);
   }
 
+  function listPlan(type, state) {
+    const native = nativeChoices.get(type);
+    const sort = state.sortKey
+      ? { key: state.sortKey, direction: state.sortDirection, forecast: state.useForecast }
+      : native?.metric && (native.key === NATIVE_SUM || state.nativeForecast)
+        ? { ...native.metric, forecast: !!state.nativeForecast }
+        : null;
+    const plan = {
+      root: state.root, view: state.view, useForecast: state.useForecast, showUnknown: type !== "gacha" && state.showUnknown,
+      kept: state.kept ? [...state.kept] : [], sort
+    };
+    const { active, discard, checked, error } = viewRule(plan);
+    plan.enabled = active || discard || checked || !!sort || type === "gacha" && !!error;
+    if (type === "gacha") {
+      plan.filterActive = active;
+      if (error) plan.error = error;
+    }
+    return plan;
+  }
+
   function filterGroup(type, anchor, position, items, virtual, holder = anchor, nativeSort, grid) {
     let panel = panels.get(anchor);
     if (!panel) {
@@ -805,22 +908,13 @@
     if (position === "before" && anchor.previousElementSibling !== element) anchor.before(element);
     if (position === "inside" && element.parentElement !== holder) holder.append(element);
     configureNativeSort(nativeSort, type, state);
-    const native = nativeChoices.get(type);
-    const sort = state.sortKey
-      ? { key: state.sortKey, direction: state.sortDirection, forecast: state.useForecast }
-      : native?.metric && (native.key === NATIVE_SUM || state.nativeForecast)
-        ? { ...native.metric, forecast: !!state.nativeForecast }
-        : null;
-    const plan = {
-      root: state.root, view: state.view, useForecast: state.useForecast, showUnknown: state.showUnknown,
-      kept: state.kept ? [...state.kept] : [], sort
-    };
-    const rule = viewRule(state);
+    const plan = listPlan(type, state);
+    const { sort } = plan;
+    const rule = viewRule(plan);
     const { active, error, discard, checked } = rule;
-    plan.enabled = active || discard || checked || !!sort;
     const gridData = gridReports.get(grid);
     setGridPlan(type, plan);
-    const report = plan.enabled ? gridData?.report : null;
+    const report = plan.enabled || type === "gacha" ? gridData?.report : null;
     let matched = 0;
     let unknown = 0;
     let protectedCount = 0;
@@ -844,7 +938,7 @@
     if (report) ({ matched, unknown, protectedCount, keptCount } = report);
     const total = report?.total ?? items.length;
     const scope = gridData ? "読み込み済みの一覧" : virtual ? "読み込み済みの表示範囲" : "このページ";
-    const unknownStatus = unknown ? ` · 判定できないAF ${unknown}件（${state.showUnknown && !discard && !checked ? "表示中" : "非表示"}）` : "";
+    const unknownStatus = unknown ? ` · 判定できないAF ${unknown}件（${plan.showUnknown && !discard && !checked ? "表示中" : "非表示"}）` : "";
     const protectedStatus = protectedCount ? ` · 分解できないAF ${protectedCount}件` : "";
     const keptStatus = keptCount ? ` · 残すチェック ${keptCount}件` : "";
     const resultLabel = checked ? "チェック済み" : discard ? "分解候補" : "一致";
@@ -857,9 +951,10 @@
       for (const key of metrics.keys()) counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     panel.refresh(listOptions(items, nativeSort, conditionRows(state.root), type, report, state.sortKey), counts, {
-      active: active || checked, matched, unknown: discard || checked ? 0 : unknown, message, resultLabel,
+      active: active || checked, matched, unknown: discard || checked || type === "gacha" ? 0 : unknown, message, resultLabel,
       matchingIds: virtual && !gridData ? [] : report?.matchingIds ?? matchingIds,
-      decomposeNotice: type === "decompose" && (active || discard || checked || state.kept.size > 0)
+      decomposeNotice: type === "decompose" && (active || discard || checked || state.kept.size > 0),
+      selectionNotice: type === "gacha" ? "絞り込み条件は標準の自動セットと拡張セットの追加候補にも反映されます。" : ""
     });
     return active || discard || checked || !!state.kept?.size;
   }
@@ -889,12 +984,14 @@
     marketWatch?.beforeRead();
     if (extras?.enabled("daily")) document.dispatchEvent(new Event("hako-af:read-balance"));
     if (extras?.enabled("home")) document.dispatchEvent(new Event("hako-af:read-home"));
-    if (["/market", "/explore-result", "/guild", "/guild-raid-result", "/base", "/items", "/slot", "/mating", "/monsters"].includes(normalRoute()) ||
+    if (["/market", "/explore-result", "/guild", "/guild-raid-result", "/base", "/items", "/slot", "/mating", "/monsters", "/hall-of-fame"].includes(normalRoute()) ||
+        document.querySelector(GACHA_INPUT) ||
         (isOwnProfile() && document.querySelector(titleSearch)) || document.querySelector(extrasRoots) ||
         document.querySelector(`${FLEX_LISTS},${CLASSIC_GRID},${MARKET_SORT},[data-base-modal-root],${TRADE_ROOTS},${partyRoots},${trainingRoots}`)) {
       document.dispatchEvent(new Event("hako-af:read-list"));
     }
     partyShare?.scan();
+    renderSkinSort();
     trainingRoutes?.scan(trainingData);
     finishEstimateScan?.();
     exploreAnalysis?.finishScan();
@@ -1062,7 +1159,8 @@
         ["/mating", "/monsters"].includes(normalRoute()) && event.target.closest("#__nuxt"))) requestScan();
   }, true);
   document.addEventListener("change", event => {
-    if (event.target instanceof Element && event.target.matches(MARKET_SORT)) requestScan();
+    if (event.target instanceof Element && (event.target.matches(MARKET_SORT) ||
+        event.target.closest(".fx-agacha__auto"))) requestScan();
   }, true);
 
   new MutationObserver(records => {
@@ -1090,6 +1188,10 @@
           }
           continue;
         }
+        if (target?.closest(GACHA_INPUT) && ["aria-pressed", "disabled"].includes(record.attributeName)) {
+          requestScan();
+          break;
+        }
         if (target?.matches(LIST_ATTRIBUTE_ROOTS) &&
             (target.closest(ROOTS) || target.querySelector(ROOTS))) {
           requestScan();
@@ -1100,7 +1202,7 @@
       const observed = `${ROOTS},${extrasRoots},${partyRoots},${trainingRoots},#__nuxt footer`;
       if (slotPrompt || target?.closest(observed) || (isOwnProfile() && (target?.querySelector(titleSearch) ||
           gameChanges.some(n => n.nodeType === 1 && (n.matches(titleSearch) || n.querySelector(titleSearch))))) ||
-          (["/explore-result", "/guild", "/guild-raid-result", "/base", "/items", "/slot", "/mating", "/monsters"].includes(normalRoute()) && target?.closest("#__nuxt")) ||
+          (["/explore-result", "/guild", "/guild-raid-result", "/base", "/items", "/slot", "/mating", "/monsters", "/hall-of-fame", "/encyclopedia"].includes(normalRoute()) && target?.closest("#__nuxt")) ||
           gameChanges.some(n => n.nodeType === 1 &&
         (n.matches(observed) || n.querySelector(observed)))) {
         requestScan();
@@ -1109,7 +1211,7 @@
     }
   }).observe(document.documentElement, {
     subtree: true, childList: true, characterData: true,
-    attributes: true, attributeFilter: ["style", "hidden", "aria-expanded", "aria-hidden", "aria-checked"]
+    attributes: true, attributeFilter: ["style", "hidden", "aria-expanded", "aria-hidden", "aria-checked", "aria-pressed", "disabled"]
   });
   exploreAnalysis = globalThis.hakoAfExploreAnalysis?.start(node, id => extras?.enabled(id));
   trainingRoutes = globalThis.hakoAfTrainingRoutes?.start(node, () => extras?.enabled("trainingRoutes"), requestScan);
