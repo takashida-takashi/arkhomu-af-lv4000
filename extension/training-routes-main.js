@@ -341,12 +341,16 @@
       control.after(label);
     }
     const input = label.firstElementChild;
-    if (!input.checked || state.applied) return;
-    state.applied = true;
-    queueMicrotask(() => {
+    if (!input.checked || state.scheduled || state.applied) return;
+    state.scheduled = true;
+    // The classic dialog initializes its native selection on opening. Apply after its first layout.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      state.scheduled = false;
       const active = () => input.isConnected && input.checked && bulkChoices.get(panel) === state && !!panel.getClientRects().length;
-      if (active()) void apply(active);
-    });
+      if (!active()) return;
+      state.applied = true;
+      void apply(active);
+    }));
   }
 
   const visibleSkill = label => !!label && !/^[？?]/.test(label);
@@ -529,12 +533,19 @@
     }, true);
   }
 
-  function prioritize(instance, items, matches, signature, onPrioritize, dependencies, readThrough) {
+  function prioritize(instance, listNode, items, matches, signature, onPrioritize, dependencies, readThrough) {
     let state = grantBindings.get(instance);
     if (!state && matches && Array.isArray(items)) {
       // Both standard layouts derive the page from the same full computed list.
       // Project that list before the slice and the virtualizer consume it.
-      const ref = dependencies(instance.effect).find(source => source._value === items);
+      let owner = listNode?.component?.parent;
+      let ref;
+      while (owner && !ref) {
+        ref = dependencies(owner.effect).find(source => source._value === items);
+        if (owner === instance) break;
+        owner = owner.parent;
+      }
+      ref ??= dependencies(instance.effect).find(source => source._value === items);
       if (!ref?.dep?.trigger) return;
       state = { ref };
       if (!readThrough(ref, native => {
@@ -559,15 +570,18 @@
 
   function grant(instance, root, translate, dependencies, readThrough) {
     const classic = instance.type?.__name === "TrainingSkillGrantPanel";
-    let list, picker, pager, classicList;
+    let listNode, list, picker, pager;
     for (const vnode of walk(instance.subTree, true)) {
       const name = componentName(vnode);
       const props = vnode.component?.props ?? vnode.props;
-      if (name === "FlexVirtualList" && grantLists.has(props?.listClass)) list = props;
+      if (name === "FlexVirtualList" && grantLists.has(props?.listClass)) {
+        list = props;
+        listNode = vnode;
+      }
       if (classic && name === "VirtualItemList" && Number(props?.estimateSize) === 42 &&
           element(vnode)?.closest('[data-ha4-training-scope]') === root) {
         list = props;
-        classicList = vnode;
+        listNode = vnode;
       }
       if (classic ? name === "MonsterList" && props?.showAllStorageScope === "training-skill-grant" : name === "FlexMonsterList") picker = props;
       if (list && name === "FlexPager" && element(vnode)?.closest('.fx-tgflow__pane--skills,.fx-tgrant__browser')) {
@@ -589,13 +603,13 @@
       return route.permanent.has(nameKey(skill.name_key ? translate(skill.name_key) : skill.name ?? skill.id));
     } : null;
     const signature = matches ? JSON.stringify([id, [...route.permanent], [...acquired]]) : null;
-    prioritize(instance, list?.items, matches, signature, () => {
-      classicList?.component?.exposed?.scrollToIndex?.(0);
+    prioritize(instance, listNode, list?.items, matches, signature, () => {
+      if (classic) listNode?.component?.exposed?.scrollToIndex?.(0);
       if (pager?.props?.page > 1) pager.props.onChange?.(1);
     }, dependencies, readThrough);
 
     if (classic) {
-      const visible = element(classicList ?? {})?.querySelectorAll(":scope > div > [data-index]") ?? [];
+      const visible = element(listNode ?? {})?.querySelectorAll(":scope > div > [data-index]") ?? [];
       mark(visible, new Set([...visible].filter(el => matches?.(list.items[Number(el.dataset.index)]))));
       return;
     }

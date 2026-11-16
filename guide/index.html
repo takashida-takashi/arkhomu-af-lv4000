@@ -14,7 +14,7 @@
   <main class="shell">
     <header class="intro">
       <h1>はこホム拡張の使い方</h1>
-      <p>やりたいことを選ぶと、ボタンの位置と操作の順番が分かります。画面例は押すと拡大できます。</p>
+      <p>やりたいことを選ぶと、ボタンの位置と操作の順番が分かります。ゲーム画面の画像は押すと拡大でき、原寸でも開けます。</p>
       <nav aria-label="目次">
         <a href="#setup">導入・更新</a><a href="#af">AF比較・分解</a><a href="#explore">探索</a><a href="#training">編成・育成</a><a href="#notices">ホーム通知</a><a href="#other">その他</a>
       </nav>
@@ -58,7 +58,7 @@
 
     <section id="training" aria-labelledby="training-title">
       <h2 id="training-title">編成を受け取り、育成に使う</h2>
-      <figure data-shot="party-share"></figure>
+      <div class="pair"><figure data-shot="party-share"></figure><figure data-shot="party-import"></figure></div>
       <ol class="flow"><li>パーティ・個体詳細・殿堂から<br><b>編成や個体を共有</b></li><li>リンクを開き、使いたい枠の<br><b>「拡張育成ルートに取り込む」</b></li><li><b>通常・永久スキルを確認して保存</b><br>新規ルートは拡張設定から作成</li><li>育てる個体を開き<br><b>「拡張育成ルートを読み込む」</b></li></ol>
       <div class="pair">
         <figure data-shot="training-editor"></figure>
@@ -69,6 +69,7 @@
       <p class="hint">一括選択は初期設定でオンです。ゲームの枠・ポイント・スキルロックに従って選択します。両親に別々のルートがある場合は、使いたい親のルートを選んでから確認してください。</p>
       <h3>世代上げの継承を短縮する</h3>
       <ol class="flow"><li>個体詳細で<br><b>「世代上げ母体に指定」</b></li><li>合成の親を<br><b>母体1体と世代1000未満の素材1体</b>にする</li><li>候補詳細の<br><b>「このホムンクルスを継承生成する」</b>を押す</li><li>合成結果を確認<br><b>生まれた個体に母体指定を引き継ぐ</b></li></ol>
+      <figure data-shot="mating-start"></figure>
       <p class="hint">Flexレイアウトでは候補詳細の「この子を選ぶ」から進めます。母体同士の合成や高世代の素材消費、母体・高世代個体の魂化・解放では続行するかを確認します。ゲーム側のお気に入り同士の確認が出た場合は、画面で選択してください。</p>
     </section>
 
@@ -82,6 +83,7 @@
     <section id="other" aria-labelledby="other-title">
       <h2 id="other-title">その他の機能</h2>
       <div class="pair"><figure data-shot="estimate"></figure><figure data-shot="gacha"></figure></div>
+      <p class="hint">拡張ガチャ結果をオンにすると、AFガチャ・スーパーガチャで公開したAFのカードにPWとAF変換率＋ドロップ率合計が表示されます。</p>
       <div class="cards compact">
         <article><h3>フリマの価格追跡</h3><ol class="steps"><li>フリマで通常アイテム・永久スキルを選ぶ</li><li>「最安値を追跡」を押す</li><li>「拡張価格追跡」で履歴を確認</li></ol></article>
         <article><h3>控えの配置を保存</h3><ol class="steps"><li>ホムンクルス詳細のスキルを開く</li><li>プリセット名を入れ「現在の控えを保存」</li><li>読み込んだ差分を見て控えボタンで切替</li></ol></article>
@@ -92,7 +94,7 @@
       </div>
     </section>
   </main>
-  <footer class="shell"><a href="../">← はこホム拡張の配布ページ</a><span>画面例には検証用の編成・アイテムを使用しています。</span></footer>
+  <footer class="shell"><a href="../">← はこホム拡張の配布ページ</a><span>画像はゲーム内を撮影し、操作箇所を切り出しています。一部の名前や残高を伏せています。</span></footer>
   <script src="./shots.js" defer></script>
 </body>
 </html>

@@ -65,6 +65,7 @@ figure:empty { display: none; }
 }
 .zoom::backdrop { background: #100b17de; }
 .zoom > button { display: block; margin: 0 0 .65rem auto; padding: .25rem .65rem; font: inherit; }
+.zoom > a { display: inline-block; margin-top: .75rem; }
 figure[data-shot="settings"] { max-width: 28rem; margin-inline: auto; }
 footer { color: var(--muted); border-top: 1px solid var(--line); font-size: .85rem; margin-top: 2.5rem; }
 @media (max-width: 48rem) {
