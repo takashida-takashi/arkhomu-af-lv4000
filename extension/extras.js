@@ -14,6 +14,7 @@
     marketWatch: `${names.marketWatch}（フリマ最安値）`,
     explore: `${names.explore}（${filterAndSort}・ページ表示）`,
     exploreAnalysis: `${names.exploreAnalysis}（獲得量・勝率・経過時間）`,
+    expedition: `${names.expedition}（弁当の配分・経過時間）`,
     hiddenTitles: `${names.hiddenTitles}（未取得の隠し称号）`,
     gacha: `${names.gacha}（AFガチャ・スーパーガチャの性能表示）`,
     skillPresets: `${names.skillPresets}（ホムンクルスの使用中・控え）`,
@@ -113,7 +114,11 @@
     const enabled = key => settings.features[key] !== false;
     const refreshSlotHome = slotHome?.start(() => enabled("slotHome"));
     const desktop = globalThis.hakoAfDesktopUpdates;
+    const manualUserscript = globalThis.hakoAfUserscriptManualUpdate;
     const version = desktop?.version ?? globalThis.hakoAfUserscriptVersion ?? globalThis.hakoAfDesktopVersion;
+    let userscriptUpdateStatus = { text: "", busy: false, error: false };
+    let userscriptUpdateReady;
+    let updateHistory = {};
     let currentDrops = null;
     let previousDrops;
     let currentBalance = null;
@@ -410,9 +415,12 @@
             save(autoUpdateKey, autoUpdate.checked);
             document.dispatchEvent(new Event("hako-af:auto-update-changed"));
           });
+          updates.append(node("p", "update-last-installed"), node("p", "update-last-check"));
+          refreshUpdateHistory();
+          document.dispatchEvent(new Event("hako-af:read-update-history"));
           updates.append(node("p", "extra-note", desktop
-            ? "24時間に1回確認し、新版は同じ名前の更新ZIPに上書き保存します。現在の拡張機能フォルダーに上書き展開して、はこホムのタブを再読み込みします。新版が読み込まれると、拡張が保存したZIPは削除されます。"
-            : "はこホムを表示している間に24時間に1回確認し、次にページが読み込まれるときに反映します。"));
+            ? "はこホムを表示している間に2時間に1回確認し、新版は同じ名前の更新ZIPに上書き保存します。現在の拡張機能フォルダーに上書き展開して、はこホムのタブを再読み込みします。新版が読み込まれると、拡張が保存したZIPは削除されます。"
+            : "はこホムを表示している間に2時間に1回確認し、次にページが読み込まれるときに反映します。"));
         }
         if (desktop) {
           const status = node("p", "extra-note");
@@ -771,7 +779,7 @@
     }
 
     function refreshVersionControl(control) {
-      const { text, busy, error } = desktop.status();
+      const { text, busy, error } = desktop?.status() ?? userscriptUpdateStatus;
       const trigger = control.querySelector("button");
       const status = control.querySelector('[data-ha4="update-version-status"]');
       trigger.disabled = busy;
@@ -780,12 +788,12 @@
     }
 
     function versionControl(caption, kind) {
-      if (!desktop?.checkNow) return node("span", kind, caption);
+      if (!desktop?.checkNow && !manualUserscript) return node("span", kind, caption);
       const control = node("span", kind);
       control.dataset.ha4VersionCheck = "";
       const trigger = makeButton(caption, "update-version-button");
       trigger.title = "配布版の更新を確認する";
-      trigger.addEventListener("click", desktop.checkNow);
+      if (desktop?.checkNow) trigger.addEventListener("click", desktop.checkNow);
       const status = node("small", "update-version-status");
       status.setAttribute("role", "status");
       control.append(trigger, status);
@@ -793,9 +801,46 @@
       return control;
     }
 
-    document.addEventListener("hako-af:desktop-update-status", () => {
+    function refreshVersionControls() {
       for (const control of document.querySelectorAll("[data-ha4-version-check]")) refreshVersionControl(control);
+    }
+
+    function refreshUpdateHistory() {
+      const applied = settingsDialog?.querySelector('[data-ha4="update-last-installed"]');
+      const checked = settingsDialog?.querySelector('[data-ha4="update-last-check"]');
+      const date = at => Number.isFinite(at) && at > 0 && at <= 8.64e15
+        ? `${balanceDate.format(at).replaceAll("-", "/")} ${balanceTime.format(at)} JST` : "";
+      const { installed, check } = updateHistory;
+      const appliedAt = date(installed?.at);
+      const checkedAt = date(check?.at);
+      if (applied) applied.textContent = appliedAt
+        ? `前回の更新日時　${appliedAt}（v${installed.version}${installed.initial ? "の初回記録" : ""}）`
+        : "前回の更新日時　記録なし";
+      if (checked) checked.textContent = checkedAt
+        ? `前回の更新確認　${checkedAt}${check.successful ? "" : "（確認失敗）"}`
+        : "前回の更新確認　記録なし";
+    }
+
+    document.addEventListener("hako-af:update-history", event => receive(event, history => {
+      if (!history || typeof history !== "object") return;
+      updateHistory = history;
+      refreshUpdateHistory();
+    }));
+    document.addEventListener("hako-af:desktop-update-status", refreshVersionControls);
+    if (manualUserscript) document.addEventListener("hako-af:userscript-update-status", event => {
+      receive(event, status => {
+        if (typeof status?.text !== "string" || typeof status.busy !== "boolean" || typeof status.error !== "boolean") return;
+        userscriptUpdateStatus = status;
+        refreshVersionControls();
+      });
     });
+    if (manualUserscript) {
+      document.addEventListener("hako-af:userscript-update-ready", event => {
+        userscriptUpdateReady = /^\d+\.\d+\.\d+$/.test(event.detail) && event.detail !== version ? event.detail : null;
+        placeUpdateNotice();
+      });
+      document.dispatchEvent(new Event("hako-af:read-userscript-update"));
+    }
 
     function makeUpdateNotice(available) {
       const notice = node("aside", "update-notice");
@@ -810,8 +855,14 @@
         placeUpdateNotice();
       });
       head.append(node("strong", "update-notice-title", `拡張 v${available} に更新できます`), close);
-      const status = node("p", "update-notice-status", "更新ZIPを取得済みです。");
+      const status = node("p", "update-notice-status", desktop ? "更新ZIPを取得済みです。" : "新版を取得済みです。再読み込みすると適用されます。");
       status.setAttribute("role", "status");
+      if (!desktop) {
+        const reload = makeButton("再読み込みして適用");
+        reload.addEventListener("click", () => location.reload());
+        notice.append(head, status, reload);
+        return notice;
+      }
 
       const steps = node("details", "update-notice-details");
       const instructions = node("ol", "update-notice-steps");
@@ -826,7 +877,7 @@
     }
 
     function placeUpdateNotice() {
-      const available = desktop?.archiveVersion();
+      const available = desktop?.archiveVersion() ?? userscriptUpdateReady;
       if (!available || available === closedUpdateVersion) {
         updateNotice?.remove();
         updateNotice = null;

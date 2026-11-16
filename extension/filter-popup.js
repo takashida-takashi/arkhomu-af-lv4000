@@ -6,11 +6,51 @@
   const { groups } = globalThis.hakoAfEffects;
   const { activeGroup, minimumMatches } = globalThis.hakoAfListRules;
   const PRESET_PREFIX = "af-filter-preset:";
+  const SHARE_FORMAT = "hako-af-filter";
   let openPopup;
   let titleId = 0;
 
   function conditionRows(group) {
     return group.children.flatMap(child => child.children ? conditionRows(child) : [child]);
+  }
+
+  function parseSharedPreset(text) {
+    if (text.length > 256 * 1024) throw new Error("共有テキストが長すぎます。");
+    let data;
+    try { data = JSON.parse(text); } catch { throw new Error("プリセットの共有テキストを確認してください。"); }
+    if (data?.format !== SHARE_FORMAT || data.version !== 1 || !Array.isArray(data.root?.children)) {
+      throw new Error("この共有データの形式には対応していません。");
+    }
+    let visited = 0;
+    const metric = key => typeof key === "string" && /^(power|rate_sum|(?:stat_|trait:)[\w-]{1,128})$/.test(key);
+    function readNumber(value) {
+      if (value == null || value === "") return "";
+      if ((typeof value === "number" || (typeof value === "string" && value.trim())) && Number.isFinite(Number(value))) {
+        return String(Number(value));
+      }
+      throw new Error("上限と下限には数値を指定してください。");
+    }
+    function readNode(node, depth) {
+      if (++visited > 2000 || depth > 60) throw new Error("共有データの入れ子か条件数が多すぎます。");
+      const annotation = {};
+      if (typeof node?.sectionName === "string" && node.sectionName.trim()) annotation.sectionName = node.sectionName.trim().slice(0, 48);
+      if (typeof node?.sectionColor === "string" && /^#[0-9a-f]{6}$/i.test(node.sectionColor)) annotation.sectionColor = node.sectionColor;
+      if (Array.isArray(node?.children)) {
+        if (!["and", "or", "count"].includes(node.join) || (node.minimum != null &&
+            (!Number.isSafeInteger(node.minimum) || node.minimum < 1))) throw new Error("グループの一致条件を確認してください。");
+        return { join: node.join, minimum: node.minimum, children: node.children.map(child => readNode(child, depth + 1)), ...annotation };
+      }
+      if (!metric(node?.key)) throw new Error("条件の項目名を確認してください。");
+      const stars = node.stars == null ? "" : String(node.stars);
+      if (stars && !/^[1-5]$/.test(stars)) throw new Error("★の数は1～5で指定してください。");
+      return { key: node.key, min: readNumber(node.min), max: readNumber(node.max), stars, ...annotation };
+    }
+    return {
+      name: typeof data.name === "string" ? data.name.trim().slice(0, 48) : "",
+      root: readNode(data.root, 0), useForecast: data.useForecast !== false, showUnknown: data.showUnknown === true,
+      sortKey: metric(data.sortKey) ? data.sortKey : "", sortDirection: data.sortDirection === "asc" ? "asc" : "desc",
+      highlightSections: data.highlightSections !== false
+    };
   }
 
   function element(tag, className, label) {
@@ -37,7 +77,7 @@
     return { wrapper, field };
   }
 
-  function createPopup(state, onChange, storage = chrome.storage.local) {
+  function createPopup(state, onChange, storage = chrome.storage.local, inventory = false) {
     const trigger = button(names.filter);
     trigger.dataset.ha4 = "filter";
     trigger.setAttribute("aria-haspopup", "dialog");
@@ -88,7 +128,20 @@
     const presetSaveRow = element("div", "preset-row");
     presetLoadRow.append(presetPicker, loadPreset);
     presetSaveRow.append(presetName, savePreset);
-    presetControls.append(element("h3", null, `${names.filter}のプリセット`), presetLoadRow, presetSaveRow, presetStatus);
+    const sharing = element("details", "preset-sharing");
+    sharing.append(element("summary", null, "プリセットを共有・取り込み"));
+    const shareText = element("textarea", "preset-share-text");
+    shareText.rows = 3;
+    shareText.spellcheck = false;
+    shareText.placeholder = "受け取った共有テキストを貼り付けると反映します";
+    shareText.setAttribute("aria-label", "プリセットの共有テキスト");
+    const copyPreset = button("現在の条件をコピー");
+    const applyShared = button("共有テキストを反映");
+    const shareActions = element("div", "preset-row");
+    shareActions.append(copyPreset, applyShared);
+    sharing.append(shareText, shareActions);
+    presetControls.append(element("h3", null, `${names.filter}のプリセット`),
+      presetLoadRow, presetSaveRow, sharing, presetStatus);
     const unknown = toggle("判定できないAFも表示", state.showUnknown, checked => {
       state.showUnknown = checked;
       onChange();
@@ -100,6 +153,21 @@
     const active = element("section", "selected");
     const selectedRows = element("div", "selected-rows");
     active.append(selectedRows);
+    const sectionBar = inventory ? element("div") : null;
+    const sectionSettings = inventory ? element("details", "section-settings") : null;
+    const sectionFields = inventory ? element("div", "section-fields") : null;
+    const highlight = inventory ? toggle("一致した条件の色でAFを強調", state.highlightSections !== false, checked => {
+      state.highlightSections = checked;
+      onChange();
+    }) : null;
+    if (inventory) {
+      sectionBar.dataset.ha4 = "filter-section-pages";
+      sectionBar.hidden = true;
+      sectionBar.setAttribute("role", "group");
+      sectionBar.setAttribute("aria-label", "AFの条件別ページ");
+      sectionSettings.hidden = true;
+      sectionSettings.append(element("summary", null, "条件別の色・ページ"), highlight.wrapper, sectionFields);
+    }
     const categories = element("div", "categories");
     const noResults = element("p", "empty", "一致する項目がありません。");
     noResults.hidden = true;
@@ -122,7 +190,9 @@
     const keepActions = element("div", "keep-actions");
     keepActions.hidden = state.view == null;
     keepActions.append(keepShown, clearKept);
-    body.append(presetControls, mode.wrapper, sortControls, viewControl, keepActions, active, search, categories, noResults);
+    body.append(presetControls, mode.wrapper, sortControls, viewControl, keepActions, active);
+    if (sectionSettings) body.append(sectionSettings);
+    body.append(search, categories, noResults);
     const status = element("small", "status");
     status.setAttribute("role", "status");
     const notice = element("small", "notice");
@@ -146,12 +216,16 @@
     let presets = new Map();
     let busyWithPresets = false;
     let presetNeedsRender = false;
+    let sectionEditors = [];
+    let pageSections = [];
+    const sectionButtons = [];
 
     function updatePresetButtons() {
       const name = presetName.value.trim();
       loadPreset.disabled = busyWithPresets || !presets.has(presetPicker.value);
       savePreset.disabled = busyWithPresets || !name;
       savePreset.textContent = presets.has(name) ? "上書き保存" : "保存";
+      applyShared.disabled = !shareText.value.trim();
     }
 
     async function refreshPresets() {
@@ -183,27 +257,38 @@
 
     presetPicker.addEventListener("change", updatePresetButtons);
     presetName.addEventListener("input", updatePresetButtons);
-    loadPreset.addEventListener("click", () => {
-      const name = presetPicker.value;
-      const preset = presets.get(name);
-      if (!preset || busyWithPresets) return;
+    function applyPreset(preset, name) {
       state.root = structuredClone(preset.root);
       targetGroup = state.root;
+      state.sectionTarget = null;
       mode.field.checked = state.useForecast = preset.useForecast !== false;
       unknown.field.checked = state.showUnknown = preset.showUnknown === true;
       state.sortKey = preset.sortKey || "";
       sortDirection.value = state.sortDirection = preset.sortDirection === "asc" ? "asc" : "desc";
+      state.highlightSections = preset.highlightSections !== false;
+      if (highlight) highlight.field.checked = state.highlightSections;
       presetName.value = name;
-      presetStatus.textContent = `「${name}」を読み込みました。`;
       updatePresetButtons();
       presetNeedsRender = true;
       onChange();
+    }
+
+    function currentPreset() {
+      const { root, useForecast, showUnknown, sortKey, sortDirection, highlightSections } = state;
+      return { root: structuredClone(root), useForecast, showUnknown, sortKey, sortDirection, highlightSections };
+    }
+
+    loadPreset.addEventListener("click", () => {
+      const name = presetPicker.value;
+      const preset = presets.get(name);
+      if (!preset || busyWithPresets) return;
+      applyPreset(preset, name);
+      presetStatus.textContent = `「${name}」を読み込みました。`;
     });
     savePreset.addEventListener("click", async () => {
       const name = presetName.value.trim();
       if (!name || busyWithPresets) return;
-      const { root, useForecast, showUnknown, sortKey, sortDirection } = state;
-      const preset = { root: structuredClone(root), useForecast, showUnknown, sortKey, sortDirection };
+      const preset = currentPreset();
       busyWithPresets = true;
       updatePresetButtons();
       try {
@@ -218,6 +303,38 @@
         updatePresetButtons();
       }
     });
+    copyPreset.addEventListener("click", async () => {
+      shareText.value = JSON.stringify({ format: SHARE_FORMAT, version: 1, name: presetName.value.trim(), ...currentPreset() });
+      updatePresetButtons();
+      try {
+        await navigator.clipboard.writeText(shareText.value);
+        presetStatus.textContent = "現在のプリセットをコピーしました。";
+      } catch {
+        shareText.focus();
+        shareText.select();
+        presetStatus.textContent = "共有テキストを選択しました。コピーして送ってください。";
+      }
+    });
+    function importShared() {
+      try {
+        const preset = parseSharedPreset(shareText.value.trim());
+        presetPicker.value = "";
+        applyPreset(preset, preset.name);
+        presetStatus.textContent = "共有プリセットを反映しました。保存する場合はプリセット名を指定してください。";
+      } catch (error) {
+        presetStatus.textContent = error.message;
+      }
+    }
+    shareText.addEventListener("input", updatePresetButtons);
+    shareText.addEventListener("paste", event => {
+      const text = event.clipboardData?.getData("text/plain");
+      if (!text) return;
+      event.preventDefault();
+      shareText.value = text;
+      updatePresetButtons();
+      importShared();
+    });
+    applyShared.addEventListener("click", importShared);
     presetName.addEventListener("keydown", event => {
       if (event.key !== "Enter" || event.isComposing || savePreset.disabled) return;
       event.preventDefault();
@@ -446,6 +563,69 @@
       updateSelected();
     }
 
+    function refreshSections(sections, selected, hasPages, sectionCounts) {
+      if (!inventory) return;
+      sectionSettings.hidden = !sections.length;
+      highlight.field.checked = state.highlightSections !== false;
+      if (sections.length !== sectionEditors.length ||
+          sections.some(({ source }, index) => sectionEditors[index].source !== source)) {
+        sectionEditors = sections.map(({ source }, index) => {
+          const row = element("div", "section-field");
+          const description = element("small", "section-description");
+          const name = element("input");
+          name.type = "text";
+          name.maxLength = 48;
+          name.setAttribute("aria-label", `条件${index + 1}のページ名`);
+          name.addEventListener("change", () => {
+            const value = name.value.trim();
+            if (value) source.sectionName = value;
+            else delete source.sectionName;
+            onChange();
+          });
+          const color = element("input");
+          color.type = "color";
+          color.setAttribute("aria-label", `条件${index + 1}の強調色`);
+          color.addEventListener("change", () => {
+            source.sectionColor = color.value;
+            onChange();
+          });
+          row.append(name, color, description);
+          return { row, source, name, color, description };
+        });
+        sectionFields.replaceChildren(...sectionEditors.map(({ row }) => row));
+      }
+      sections.forEach(({ defaultName, color, description }, index) => {
+        const editor = sectionEditors[index];
+        editor.name.placeholder = defaultName;
+        if (document.activeElement !== editor.name) editor.name.value = editor.source.sectionName || "";
+        if (editor.color.value !== color) editor.color.value = color;
+        if (editor.description.textContent !== description) editor.description.textContent = description;
+      });
+      sectionBar.hidden = !hasPages;
+      if (!hasPages) return;
+      pageSections = sections;
+      const entries = [{ name: "すべて" }, ...sections];
+      while (sectionButtons.length > entries.length) sectionButtons.pop().remove();
+      entries.forEach(({ name, color, description }, index) => {
+        let tab = sectionButtons[index];
+        if (!tab) {
+          tab = button("");
+          tab.addEventListener("click", () => {
+            state.sectionTarget = pageSections[index - 1]?.source ?? null;
+            onChange();
+          });
+          sectionButtons.push(tab);
+          sectionBar.append(tab);
+        }
+        const count = sectionCounts?.[index - 1];
+        const label = count == null ? name : `${name} ${count.toLocaleString("ja-JP")}件`;
+        if (tab.textContent !== label) tab.textContent = label;
+        tab.setAttribute("aria-pressed", String(index - 1 === selected));
+        if (color) tab.style.setProperty("--ha4-section-color", color);
+        tab.title = description || "絞り込み結果をまとめて表示";
+      });
+    }
+
     function refresh(entries, newCounts, result) {
       const { active: hasConditions, matched, unknown: unknownCount, message, resultLabel, decomposeNotice, selectionNotice } = result;
       matchingIds = result.matchingIds;
@@ -459,6 +639,7 @@
         ? "残すチェックはこのタブ内の目印です。分解候補を表示して、ゲームの一括解体モードで対象を選んでください。"
         : selectionNotice ?? "";
       unknown.wrapper.hidden = unknownCount === 0;
+      refreshSections(result.sections ?? [], result.section, result.hasSectionPages, result.sectionCounts);
       counts = newCounts;
       const nextSignature = JSON.stringify(entries);
       if (signature !== nextSignature) {
@@ -488,6 +669,9 @@
       state.root.children = [];
       state.root.join = "and";
       delete state.root.minimum;
+      delete state.root.sectionName;
+      delete state.root.sectionColor;
+      state.sectionTarget = null;
       state.sortKey = sortKey.value = "";
       state.sortDirection = sortDirection.value = "desc";
       if (state.view != null) state.view = view.value = "match";
@@ -518,11 +702,13 @@
     }
     return {
       element: trigger,
+      sectionBar,
       refresh,
       close() { if (dialog.open) dialog.close(); },
       remove() {
         if (dialog.open) dialog.close();
         trigger.remove();
+        sectionBar?.remove();
         dialog.remove();
       }
     };

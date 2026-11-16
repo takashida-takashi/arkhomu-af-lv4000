@@ -11,6 +11,7 @@
     slot: "拡張スロット",
     explore: "拡張探索結果",
     exploreAnalysis: "拡張探索統計",
+    expedition: "拡張遠征",
     gacha: "拡張ガチャ結果",
     gachaSets: "拡張セット",
     skinSort: "拡張ソート（未入手を先に）",

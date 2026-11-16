@@ -10,6 +10,15 @@
   }
   const prices = new Map();
   const wrapped = new WeakSet();
+  const expeditionSources = new Map([
+    ["/api/expedition/repeat-status", ["repeat", data => data && {
+      open: data.open, gateLevel: data.gateLevel, passActive: data.passActive
+    }]],
+    ["/api/nation-facilities/effects", ["nation", data => data?.expeditionTimeFactor]],
+    ["/api/config/game", ["config", data => data?.expedition && { expedition: data.expedition, stats: data.stats }]],
+    ["/api/items/category-groups", ["categories", data => data?.find?.(group => group.id === "food")?.categories]]
+  ]);
+  const expeditionData = new Map();
   const earlyMatings = [];
   let watchMatings = false;
   globalThis.hakoAfMarketSnapshots = globalThis[key] = prices;
@@ -22,6 +31,14 @@
     watchMatings = true;
     for (const result of earlyMatings.splice(0)) publishMating(result);
   }, { once: true });
+
+  function publishExpedition(type, value) {
+    document.dispatchEvent(new CustomEvent("hako-af:expedition-native-data", { detail: { type, value } }));
+  }
+
+  document.addEventListener("hako-af:read-expedition-native-data", () => {
+    for (const [type, value] of expeditionData) publishExpedition(type, value);
+  });
 
   function observeMating(args, response) {
     const [url, options] = args;
@@ -70,6 +87,16 @@
           return Promise.reject(Object.assign(new Error(statusMessage), { statusCode: 400, data: { statusMessage } }));
         }
         const response = Reflect.apply(target, thisArg, args);
+        const expeditionSource = expeditionSources.get(args[0]);
+        if (expeditionSource) {
+          const [type, select] = expeditionSource;
+          Promise.resolve(response).then(payload => {
+            const value = select(payload);
+            if (value == null) return;
+            expeditionData.set(type, value);
+            publishExpedition(type, value);
+          }).catch(() => {});
+        }
         if (args[0] === "/api/market/stats") {
           // Observe the data already returned to the marketplace. Return its original promise to the caller.
           Promise.resolve(response).then(payload => {

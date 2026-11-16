@@ -23,7 +23,9 @@
   let currentExplore;
   let explorePlan;
   const latestPlans = new Map();
+  let inventorySection = -1;
   let gameConfig;
+  let foodCategories;
   let powerConfig;
   let pendingPowerConfig;
   let nextPowerConfigRead = 0;
@@ -61,7 +63,14 @@
         return;
       }
       const tx = db.transaction("masters", "readonly");
-      const cursor = tx.objectStore("masters").openCursor(
+      const masters = tx.objectStore("masters");
+      const foodKey = "masters:category-groups:v1";
+      const food = masters.openCursor(IDBKeyRange.bound(foodKey, foodKey + ";"), "prev");
+      food.onsuccess = () => {
+        foodCategories = food.result?.value?.find?.(group => group.id === "food")?.categories;
+        if (foodCategories) document.dispatchEvent(new Event("hako-af:expedition-update"));
+      };
+      const cursor = masters.openCursor(
         IDBKeyRange.bound("masters:game-config:", "masters:game-config;"), "prev"
       );
       cursor.onsuccess = () => {
@@ -107,6 +116,8 @@
     let protectedCount = 0;
     let keptCount = 0;
     const matchingIds = [];
+    const sectionItems = rule.sections.map(() => []);
+    const matches = sectionItems.length ? [] : undefined;
     for (const original of source) {
       const id = original?.id;
       const raw = snapshot(original?._artifact, decomposeState, id);
@@ -122,16 +133,21 @@
         original, level: raw?.level, complete: !!raw, metrics: values,
         decomposable: raw?.decomposable, keepId: raw?.id
       };
-      const status = rule.check(record);
+      if (matches) matches.length = 0;
+      const status = rule.check(record, matches);
       if (status.kept) keptCount++;
       if (status.unknown) unknown++;
       if (status.protected) protectedCount++;
       if (status.result === true && record.keepId) matchingIds.push(record.keepId);
       if (status.show && (rule.checked || rule.discard || status.result === true)) matched++;
+      if (matches && status.result === true) record.sections = rule.matchedSections(matches);
       if (status.show) records.push(record);
     }
-    const items = orderItems(records, plan.sort).map(row => row.original);
-    return { items, total: source.length, matched, unknown, protectedCount, keptCount, matchingIds, metrics: [...metrics] };
+    const items = orderItems(records, plan.sort).map(({ original, sections }) => {
+      if (sections) for (const index of sections) sectionItems[index].push(original);
+      return original;
+    });
+    return { items, sectionItems, total: source.length, matched, unknown, protectedCount, keptCount, matchingIds, metrics: [...metrics] };
   }
 
   function planFor(scope) {
@@ -210,9 +226,14 @@
           state.cache = { source, plan, revision: planRevision, protection: protection?.signature };
           state.result = result;
           state.source = source;
-          state.projected = props.items = result.items;
+        }
+        const section = state.scope === "inventory" ? state.result.sectionItems[inventorySection] : null;
+        const projected = section ?? state.result.items;
+        if (state.projected !== projected) {
+          state.projected = projected;
           document.dispatchEvent(new Event("hako-af:grid-rendered"));
-        } else if (props.items !== state.projected) props.items = state.projected;
+        }
+        if (props.items !== state.projected) props.items = state.projected;
         if (state.layout === "classic" && props.pageSize > 0 && Number.isFinite(instance.vnode.props?.page)) {
           const page = Math.min(Math.max(1, instance.vnode.props.page), Math.max(1, Math.ceil(state.projected.length / props.pageSize)));
           if (page !== props.page) props.page = page;
@@ -293,6 +314,12 @@
     }
     return refs;
   }
+
+  const expeditionPlanner = globalThis.hakoAfExpeditionMain?.start(dependencies);
+  const expeditionNative = globalThis.hakoAfExpeditionNative?.start(readThrough,
+    owner => expeditionPlanner?.presetState(owner), (owner, vnode) => expeditionPlanner?.observePresets(owner, vnode));
+  delete globalThis.hakoAfExpeditionMain;
+  delete globalThis.hakoAfExpeditionNative;
 
   function readThrough(ref, project) {
     const native = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(ref), "value");
@@ -523,6 +550,8 @@
     const app = root?.__vue_app__;
     if (!root?._vnode) return;
     const stores = app?.config?.globalProperties?.$pinia?._s;
+    const expedition = stores?.get("expedition");
+    const expeditionOwners = new Set();
     trainingRoutes?.rememberOwned();
     const matingPage = /^\/(?:f\/)?mating(?:\/|$)/.test(location.pathname);
     let legacyMatingParents;
@@ -561,12 +590,13 @@
     let marketWatchRoot;
     const watchPrices = new Map();
     const marketCache = watchMarket ? stores?.get("marketInfo")?.cache : null;
-    const pending = [[root._vnode, null, null, null, null, null, null]];
+    const pending = [[root._vnode, null, null, null, null, null, null, null, null]];
     const seen = new WeakSet();
 
     // Read the props of rendered cards. The same objects are used by the game when a detail opens.
     while (pending.length) {
-      const [vnode, parentScope, parentAuctionList, parentGacha, parentMonster, parentWarehouse, parentTitleModal] = pending.pop();
+      const [vnode, parentScope, parentAuctionList, parentGacha, parentMonster, parentWarehouse, parentTitleModal,
+        parentExpedition, parentBentoItems] = pending.pop();
       if (!vnode || typeof vnode !== "object" || seen.has(vnode)) continue;
       seen.add(vnode);
       const instance = vnode.component;
@@ -580,6 +610,44 @@
       const titleModal = profileTitles && (titleModals.has(name) ? instance : parentTitleModal);
       if (titleModal && instance) readProfileTitles(titleModal, instance);
       const el = vnode.el ?? instance?.subTree?.el;
+      const expeditionView = name === "ExpeditionModal" || name === "FlexExpeditionPage" ? instance : parentExpedition;
+      if (expeditionView) {
+        expeditionOwners.add(expeditionView);
+        if (instance) expeditionNative?.observe(expeditionView, instance, vnode, stores);
+        if (typeof vnode.props?.onApply === "function") expeditionPlanner?.observePresets(expeditionView, vnode);
+        if (el?.nodeType === 1 && el.matches(".expedition-modal-body, .fx-expd"))
+          expeditionNative?.read(el, expeditionView, "editing");
+      }
+      if (name === "ExpeditionBentoPanel" || name === "FlexExpeditionBento") {
+        configFromCache();
+        expeditionPlanner?.read(name, instance, el, stores, gameConfig, foodCategories, translate);
+      }
+      let bentoItems = parentBentoItems;
+      if (name === "VirtualItemGrid" && el?.closest?.("[data-bento-pointer-remove]") && Array.isArray(props?.items)) {
+        bentoItems = new Map(props.items.filter(Boolean).map(item => [item.id, item]));
+      } else if (bentoItems && vnode.anchor && el?.nodeType === Node.TEXT_NODE) {
+        // The classic grid keys each food slot fragment by the native inventory ID.
+        const item = bentoItems.get(vnode.key);
+        const card = item && el.nextElementSibling;
+        if (card?.querySelector(':scope > button[aria-label="アイテムの詳細を見る"]') &&
+            (card.compareDocumentPosition(vnode.anchor) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+          expeditionPlanner?.foodCard(card, item, translate);
+        }
+      } else if (name === "FlexItemCell" && el?.matches?.("button[data-fx-drag-id]") &&
+          el.parentElement?.matches(".fx-bento__item")) {
+        expeditionPlanner?.foodCard(el.parentElement, props?.item, translate);
+      }
+      if (expeditionView && expedition?.expedition && (vnode.type === "h2" || vnode.type === "span") &&
+          /^遠征(?:中|から帰還しました[！!]?)$/.test(el?.textContent?.trim() ?? "")) {
+        expeditionPlanner?.elapsed(el, expedition);
+        const hero = el?.closest(".expedition-hero, .fx-expd__hero");
+        if (hero) expeditionNative?.read(hero, expeditionView, "status");
+      }
+      if (expeditionView && expedition?.isLoaded && !expedition.isActive && vnode.type === "h2" && el?.nodeType === 1) {
+        const title = el.textContent.trim();
+        if (el.id === "fx-expd-member-title" || /^遠征メンバー\s*\(/.test(title))
+          expeditionNative?.read(el, expeditionView, "ready");
+      }
       if (matingPage && el?.nodeType === 1 && typeof vnode.key === "string" && /^auto-[sp]:/.test(vnode.key)) {
         trainingRoutes?.rememberLegacyAuto(el, vnode.key.slice(5));
       }
@@ -722,7 +790,8 @@
             if (plan && !current && el.getClientRects().length) instance.proxy?.$forceUpdate();
             const report = current ? {
               total: result.total, matched: result.matched, unknown: result.unknown, protectedCount: result.protectedCount,
-              keptCount: result.keptCount, matchingIds: result.matchingIds, metrics: result.metrics
+              keptCount: result.keptCount, matchingIds: result.matchingIds, metrics: result.metrics,
+              sectionCounts: result.sectionItems.map(items => items.length)
             } : null;
             el.dispatchEvent(new CustomEvent("hako-af:grid", {
               bubbles: true, detail: JSON.stringify({ scope: gridScope, report })
@@ -757,13 +826,14 @@
           }
         }
       }
-      const context = [scope, auctionList, gacha, monster, warehouse, titleModal];
+      const context = [scope, auctionList, gacha, monster, warehouse, titleModal, expeditionView, bentoItems];
       if (instance?.subTree) pending.push([instance.subTree, ...context]);
       else if (vnode.suspense?.activeBranch) pending.push([vnode.suspense.activeBranch, ...context]);
       else if (Array.isArray(vnode.children)) {
         for (let i = vnode.children.length - 1; i >= 0; i--) pending.push([vnode.children[i], ...context]);
       }
     }
+    for (const owner of expeditionOwners) expeditionNative?.sync(owner);
     if (matingPage) trainingRoutes?.legacyMating(legacyMatingParents);
     if (estimateAnchors.size && enhanceDetail) {
       configFromCache();
@@ -782,7 +852,7 @@
       if (!state) continue;
       const grid = classicGrids.get(state.scope);
       const plan = planFor(state.scope);
-      const revision = grid?.cache;
+      const revision = grid?.projected;
       if (state.grid !== grid || state.plan !== plan || state.revision !== revision) {
         state.grid = grid;
         state.plan = plan;
@@ -801,10 +871,12 @@
 
   document.addEventListener("hako-af:apply-list", event => {
     if (typeof event.detail !== "string") return;
-    let scope, plan, reset;
-    try { ({ scope, plan, reset } = JSON.parse(event.detail)); } catch { return; }
+    let scope, plan, reset, section;
+    try { ({ scope, plan, reset, section } = JSON.parse(event.detail)); } catch { return; }
     if (!Object.values(sortScopes).includes(scope)) return;
-    latestPlans.set(scope, plan);
+    if (plan) latestPlans.set(scope, plan);
+    const changedSection = scope === "inventory" && Number.isSafeInteger(section) && section !== inventorySection;
+    if (changedSection) inventorySection = section;
     const root = document.getElementById("__nuxt")?._vnode;
     if (!root) return;
     const pending = [root];
@@ -818,6 +890,7 @@
       if (scope === "gacha") gachaSets?.invalidate(instance);
       if (state?.scope === scope) {
         if (!state.pager) state.reset ||= !!reset;
+        else if (changedSection && instance.vnode.props?.page > 1) instance.emit("change", 1);
         instance.proxy?.$forceUpdate();
       }
       if (instance?.subTree) pending.push(instance.subTree);

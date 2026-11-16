@@ -5,16 +5,11 @@ function startArkHomuUpdates(distribution, bundledVersion, bundledCode) {
   const manager = typeof GM === "object" && GM;
   const releaseKey = "arkhomu-af-release";
   const maxScriptLength = 1_048_576;
+  let activeVersion = bundledVersion;
+  let readyVersion = null;
 
-  function usable(release) {
-    if (!newerArkHomuRelease(release?.version, bundledVersion) || typeof release.code !== "string" ||
-        release.code.length > maxScriptLength) return false;
-    const start = release.code.slice(0, 2048);
-    const end = start.indexOf("// ==/UserScript==");
-    const header = start.slice(0, end);
-    return end > 0 && header.startsWith("// ==UserScript==\n") &&
-      header.match(/^\/\/ @namespace\s+(\S+)$/m)?.[1] === "arkhomu-af-lv4000" &&
-      header.match(/^\/\/ @version\s+(\S+)$/m)?.[1] === release.version;
+  function reportReady() {
+    document.dispatchEvent(new CustomEvent("hako-af:userscript-update-ready", { detail: readyVersion }));
   }
 
   function run(code, canUpdate) {
@@ -30,22 +25,27 @@ function startArkHomuUpdates(distribution, bundledVersion, bundledCode) {
     }
     const script = document.createElement("script");
     script.dataset.hakoAfUpdateManaged = String(canUpdate);
+    script.dataset.hakoAfUserscriptManualUpdate = String(canUpdate);
     script.textContent = code;
     root.append(script);
     script.remove();
   }
 
-  async function receive(fetchFile, enabled) {
+  async function receive(fetchFile, enabled, manual) {
     const decoder = new TextDecoder();
     const { version, sha256 } = JSON.parse(decoder.decode(await fetchFile("runtime.json", 4096)));
-    if (!newerArkHomuRelease(version, bundledVersion)) return;
+    if (!validArkHomuReleaseVersion(version)) throw new Error("Invalid release version");
+    if (!newerArkHomuRelease(version, activeVersion)) return null;
     const cached = await manager.getValue(releaseKey, null);
-    if (usable(cached) && !newerArkHomuRelease(version, cached.version)) return;
+    if (usableArkHomuRuntime(cached, bundledVersion) && !newerArkHomuRelease(version, cached.version)) return cached.version;
+    manual?.progress();
     const bytes = await fetchFile("runtime.js", maxScriptLength);
     const code = decoder.decode(bytes);
-    if (usable({ version, code }) && await matchesArkHomuReleaseHash(bytes, sha256) && enabled()) {
-      await manager.setValue(releaseKey, { version, code });
-    }
+    if (!usableArkHomuRuntime({ version, code }, bundledVersion) || !await matchesArkHomuReleaseHash(bytes, sha256))
+      throw new Error("Invalid update script");
+    if (!enabled()) return null;
+    await manager.setValue(releaseKey, { version, code });
+    return version;
   }
 
   async function start() {
@@ -54,8 +54,25 @@ function startArkHomuUpdates(distribution, bundledVersion, bundledCode) {
     if (canUpdate) {
       try { cached = await manager.getValue(releaseKey, null); } catch { /* Use the bundled script. */ }
     }
-    run(usable(cached) ? cached.code : bundledCode, canUpdate);
-    if (canUpdate) startArkHomuReleaseCheck(distribution, manager, "arkhomu-af-next-check", "arkhomu-af-auto-update", receive);
+    const cachedRelease = usableArkHomuRuntime(cached, bundledVersion) ? cached : null;
+    activeVersion = cachedRelease?.version ?? bundledVersion;
+    if (canUpdate) {
+      document.addEventListener("hako-af:read-userscript-update", reportReady);
+      const updates = startArkHomuReleaseCheck(distribution, manager, "arkhomu-af-next-check",
+        "arkhomu-af-auto-update", async (fetchFile, enabled, manual) => {
+          const version = await receive(fetchFile, enabled, manual);
+          if (version && !manual) {
+            readyVersion = version;
+            reportReady();
+          }
+          return version;
+        }, activeVersion);
+      bindArkHomuUserscriptManualCheck(progress => updates.checkNow(progress).catch(error => {
+        if (readyVersion) return readyVersion;
+        throw error;
+      }));
+    }
+    run(cachedRelease?.code ?? bundledCode, canUpdate);
   }
 
   void start();

@@ -133,7 +133,7 @@
   }
 
   storage.getValue(archiveKey, null).then(setArchive).catch(() => {});
-  const updates = startArkHomuReleaseCheck(distribution, storage, "hakoAfDesktopUpdateNextCheck", "arkhomu-af-desktop-update", receive);
+  const updates = startArkHomuReleaseCheck(distribution, storage, "hakoAfDesktopUpdateNextCheck", "arkhomu-af-desktop-update", receive, version);
   globalThis.hakoAfDesktopUpdates = { version, archiveVersion: () => archive?.version,
     saveArchive: () => saveArchive(), checkNow, status: () => state };
 })();

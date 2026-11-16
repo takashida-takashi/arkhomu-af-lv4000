@@ -34,17 +34,19 @@
     return projected(metric, multiplier);
   }
 
-  function activeGroup(group) {
+  function activeGroup(group, origins) {
     const children = [];
     for (const child of group.children) {
       if (child.children) {
-        const nested = activeGroup(child);
+        const nested = activeGroup(child, origins);
         if (nested.children.length) children.push(nested);
       } else if (activeCondition(child)) {
         children.push(child);
       }
     }
-    return { join: group.join, minimum: minimumMatches(group), children };
+    const active = { join: group.join, minimum: minimumMatches(group), children };
+    origins?.set(active, group);
+    return active;
   }
 
   function activeCondition(condition) {
@@ -89,8 +91,28 @@
     return matched >= minimum ? true : matched + unknown >= minimum ? null : false;
   }
 
-  function viewRule({ root, view, useForecast, showUnknown, kept }) {
-    const group = activeGroup(root);
+  function sectionLayout(group, origins) {
+    const sections = [];
+    const indexes = new Map();
+    function indexLeaves(node, index) {
+      if (node.children) node.children.forEach(child => indexLeaves(child, index));
+      else indexes.set(node, index);
+    }
+    function visit(node) {
+      if (node.children && (node.join !== "and" || node.children.length === 1)) {
+        node.children.forEach(visit);
+        return;
+      }
+      indexLeaves(node, sections.length);
+      sections.push({ source: origins.get(node) ?? node, condition: node });
+    }
+    visit(group);
+    return { sections, indexes };
+  }
+
+  function viewRule({ root, view, useForecast, showUnknown, kept, groupSections }) {
+    const origins = groupSections ? new WeakMap() : undefined;
+    const group = activeGroup(root, origins);
     const error = function validationError(node) {
       if (node.children) {
         if (node.children.length && node.join === "count" && node.minimum > node.children.length) {
@@ -105,8 +127,14 @@
     const discard = view === "discard" || unchecked;
     const checked = view === "kept";
     const keptIds = kept instanceof Set ? kept : new Set(kept);
+    const { sections, indexes } = active && origins ? sectionLayout(group, origins) : { sections: [] };
     return {
-      active, error, discard, checked,
+      active, error, discard, checked, sections,
+      matchedSections(matches) {
+        if (!indexes) return [];
+        // evaluateGroup only returns leaves from branches that satisfied their own operator.
+        return [...new Set(matches.map(condition => indexes.get(condition)))].sort((a, b) => a - b);
+      },
       check(item, matches) {
         const kept = keptIds.has(item.keepId);
         const result = active ? evaluateGroup(item, group, useForecast, matches) : null;

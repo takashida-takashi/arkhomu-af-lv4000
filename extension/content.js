@@ -29,6 +29,8 @@
   const AUCTION_CLOCK = `${AUCTION_LIST} > ${AUCTION_CARD} > .min-w-0 > .flex-wrap > span:first-child`;
   const isMarketList = type => type === "market" || type === "auction";
   const SUM_LABEL = "AF変換率＋ドロップ率合計";
+  const sectionColors = ["#62e4ff", "#ff8c9e", "#a3f16d", "#d8a0ff", "#ffce70", "#68f2ca",
+    "#ff9d62", "#aeb9ff", "#ef94d7", "#d9ed74", "#8bd7a0", "#99c5ff"];
   const NATIVE_SUM = "ha4_rate_sum";
   const ROOTS = [
     DETAIL, CLASSIC_GRID, CLASSIC_EQUIP, FLEX_LISTS, ".fx-artifact__slot-grid",
@@ -39,7 +41,7 @@
     "[data-ha4-list-scope]", "[data-ha4-list-scope] button[aria-expanded]"].join(",");
   const extrasApi = globalThis.hakoAfExtras;
   const GACHA_CARD = ".rv-card";
-  const extrasRoots = '[data-chat-message-id],.fx-summary-page,.fx-summary,.fx-result,.fx-settings,.fx-topbar,#fx-todo,[aria-label="国のお知らせ"],[data-ha4-settings-anchor],[data-ha4-home-root],[data-ha4-market-watch-root],[data-home-tutorial-root],.fx-home,.fx-shop-buy,.shop-cell-nolp,.fx-shop-marks,.fx-race-exchange,.fx-ark-product,.fx-wbase-home__outpost,.fx-skedit,.skill-reserve-toggle,.fx-aenh__panel,#__nuxt header,' + GACHA_CARD;
+  const extrasRoots = '[data-chat-message-id],.fx-summary-page,.fx-summary,.fx-result,.fx-settings,.fx-topbar,#fx-todo,[aria-label="国のお知らせ"],[data-ha4-settings-anchor],[data-ha4-home-root],[data-ha4-market-watch-root],[data-home-tutorial-root],.fx-home,.fx-shop-buy,.shop-cell-nolp,.fx-shop-marks,.fx-race-exchange,.fx-ark-product,.fx-wbase-home__outpost,.fx-skedit,.skill-reserve-toggle,.fx-aenh__panel,.fx-bento,.fx-expd,.expedition-modal-body,[data-bento-pointer-slot],#__nuxt header,' + GACHA_CARD;
   const normalRoute = () => location.pathname.replace(/^\/f\//, "/");
   const isOwnProfile = () => /^\/profile\/?$/.test(normalRoute());
   let finishEstimateScan;
@@ -63,12 +65,14 @@
   const rememberedOrder = new WeakMap();
   const nativeChoices = new Map();
   const keepControls = new WeakMap();
+  const sectionMarkers = new WeakMap();
   const gachaInputControls = new WeakMap();
   const skinSortControls = new WeakMap();
   const skinSortKey = "hakoAf4000:skin-unowned-first";
   const currentCards = new Map();
   const detailSnapshots = new WeakMap();
   const forecastCopyButtons = new WeakMap();
+  const forecastCopyFields = new WeakMap();
   const detailControls = new WeakMap();
   const DETAIL_SETTING = "hakoAf4000:showDetail";
   let showDetailForecast = true;
@@ -307,11 +311,24 @@
         event.stopPropagation();
         const current = detailData(root);
         if (!current || current.level >= TARGET) return;
+        const value = forecastCopyText(current);
         try {
-          await navigator.clipboard.writeText(forecastCopyText(current));
+          await navigator.clipboard.writeText(value);
+          forecastCopyFields.get(root)?.remove();
           button.textContent = "✓ 予測をコピーしました";
         } catch {
-          button.textContent = "コピーできませんでした";
+          if (!current.hero.isConnected || !showDetailForecast) return;
+          const field = forecastCopyFields.get(root) ?? node("textarea", "forecast-copy-field");
+          forecastCopyFields.set(root, field);
+          field.value = value;
+          field.readOnly = true;
+          field.rows = 3;
+          field.setAttribute("aria-label", "Lv4000予測のコピーテキスト");
+          if (!field.isConnected) current.hero.after(field);
+          decorated.add(field);
+          field.focus({ preventScroll: true });
+          field.select();
+          button.textContent = "手動でコピーできます";
         }
         setTimeout(() => { button.textContent = COPY_LABEL; }, 1500);
       });
@@ -324,6 +341,8 @@
       detail.hero.append(button);
     }
     decorated.add(button);
+    const field = forecastCopyFields.get(root);
+    if (field?.isConnected && field.value === forecastCopyText(detail)) decorated.add(field);
   }
 
   function renderDetailSwitch(root) {
@@ -727,7 +746,7 @@
       if (type === "gacha") setGridPlan(type, listPlan(type, state));
       requestScan();
     };
-    return { ...globalThis.hakoAfFilterPopup(state, onChange, globalThis.hakoAfPresetStorage), state };
+    return { ...globalThis.hakoAfFilterPopup(state, onChange, globalThis.hakoAfPresetStorage, type === "inventory"), state };
   }
 
   function nativeMetric(key) {
@@ -778,15 +797,17 @@
     input.title = isMarketList(type) ? "Lv4000予測値順に並べます（このページのみ）" : "Lv4000予測値順に並べます";
   }
 
-  function setGridPlan(type, plan) {
+  function setGridPlan(type, plan, section = -1) {
     if (isMarketList(type)) return;
-    const signature = JSON.stringify(plan);
+    const semantic = (key, value) => key === "sectionName" || key === "sectionColor" ? undefined : value;
+    const signature = JSON.stringify(plan, semantic);
     const previous = sentPlans.get(type);
-    if (previous?.signature === signature) return;
-    const order = JSON.stringify([plan.root, plan.view, plan.useForecast, plan.showUnknown, plan.sort]);
-    sentPlans.set(type, { signature, order });
+    if (previous?.signature === signature && previous.section === section) return;
+    const order = JSON.stringify([plan.root, plan.view, plan.useForecast, plan.showUnknown, plan.sort], semantic);
+    sentPlans.set(type, { signature, order, section });
     document.dispatchEvent(new CustomEvent("hako-af:apply-list", {
-      detail: JSON.stringify({ scope: type, plan, reset: previous?.order !== order })
+      detail: JSON.stringify({ scope: type, plan: previous?.signature === signature ? undefined : plan,
+        section, reset: previous?.order !== order || previous?.section !== section }, semantic)
     }));
   }
 
@@ -826,6 +847,62 @@
       const holder = item.placement === "auction" ? item.nameEl.parentElement : item.card;
       adorn(holder, "sort-value", `${label} ${mode}${valueText}`);
     }
+  }
+
+  function inventorySectionLabels({ source, condition }, index) {
+    const labels = conditionRows({ children: [condition] }).map(({ key }) => effectOption(key).label);
+    const fullName = [...new Set(labels)].join(" ＋ ");
+    const defaultName = fullName.length <= 24 ? fullName : `${fullName.slice(0, 21)}…`;
+    function describe(node) {
+      if (node.children) {
+        const entries = node.children.map(describe);
+        if (node.join === "count") return `${entries.length}件中${node.minimum}件以上（${entries.join("／")}）`;
+        return `（${entries.join(node.join === "or" ? " または " : " かつ ")}）`;
+      }
+      const { label, unit } = effectOption(node.key);
+      return [label, node.min && `${node.min}${unit}以上`, node.max && `${node.max}${unit}以下`,
+        node.stars && `★${node.stars}以上`].filter(Boolean).join(" ");
+    }
+    const color = /^#[a-f0-9]{6}$/i.test(source.sectionColor) ? source.sectionColor : defaultSectionColor(index);
+    return { source, defaultName, name: source.sectionName || defaultName, color, description: describe(condition) };
+  }
+
+  function defaultSectionColor(index) {
+    if (index < sectionColors.length) return sectionColors[index];
+    const hue = index * 137.508 % 360;
+    const channels = [0, 8, 4].map(offset => {
+      const step = (offset + hue / 30) % 12;
+      const value = 0.72 - 0.22 * Math.max(-1, Math.min(step - 3, 9 - step, 1));
+      return Math.round(255 * value).toString(16).padStart(2, "0");
+    });
+    return "#" + channels.join("");
+  }
+
+  function renderSectionMarks(card, indexes, sections) {
+    if (!indexes.length) return;
+    const hits = indexes.map(index => sections[index]);
+    const label = `一致条件 ${hits.map(hit => hit.name).join("、")}`;
+    const colors = hits.map(hit => hit.color);
+    const signature = colors.join(",") + label;
+    let entry = sectionMarkers.get(card);
+    if (!entry) {
+      entry = { mark: node("span", "filter-section-marks") };
+      entry.mark.setAttribute("role", "img");
+      sectionMarkers.set(card, entry);
+    }
+    const { mark } = entry;
+    if (entry.signature !== signature) {
+      entry.signature = signature;
+      mark.setAttribute("aria-label", label);
+      mark.style.setProperty("--ha4-section-color", colors[0]);
+      mark.replaceChildren(...colors.map(color => {
+        const segment = document.createElement("span");
+        segment.style.backgroundColor = color;
+        return segment;
+      }));
+    }
+    if (!mark.isConnected) card.append(mark);
+    decorated.add(mark);
   }
 
   function listOptions(items, nativeSort, conditions, type, report, sortKey) {
@@ -892,6 +969,7 @@
       root: state.root, view: state.view, useForecast: state.useForecast, showUnknown: type !== "gacha" && state.showUnknown,
       kept: state.kept ? [...state.kept] : [], sort
     };
+    if (type === "inventory") plan.groupSections = true;
     const { active, discard, checked, error } = viewRule(plan);
     plan.enabled = active || discard || checked || !!sort || type === "gacha" && !!error;
     if (type === "gacha") {
@@ -917,22 +995,39 @@
     const rule = viewRule(plan);
     const { active, error, discard, checked } = rule;
     const gridData = gridReports.get(grid);
-    setGridPlan(type, plan);
+    const sections = rule.sections.map(inventorySectionLabels);
+    const nameCounts = new Map();
+    for (const { name } of sections) nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1);
+    sections.forEach((section, index) => {
+      if (nameCounts.get(section.name) > 1) section.name += `（${index + 1}）`;
+    });
+    const hasSectionPages = sections.length > 1 && !!grid && (!!gridData || !virtual);
+    const section = hasSectionPages ? sections.findIndex(({ source }) => source === state.sectionTarget) : -1;
+    if (section === -1) state.sectionTarget = null;
+    setGridPlan(type, plan, section);
     const report = plan.enabled || type === "gacha" ? gridData?.report : null;
+    const sectionCounts = sections.map(() => 0);
+    const matches = sections.length ? [] : undefined;
     let matched = 0;
     let unknown = 0;
     let protectedCount = 0;
     let keptCount = 0;
     const matchingIds = [];
     for (const item of items) {
-      const status = rule.check(item);
+      if (matches) matches.length = 0;
+      const status = rule.check(item, matches);
+      const hits = matches && status.result === true ? rule.matchedSections(matches) : null;
+      if (hits) {
+        if (state.highlightSections !== false) renderSectionMarks(item.card, hits, sections);
+        for (const index of hits) sectionCounts[index]++;
+      }
       if (status.kept) keptCount++;
       if (state.kept && item.keepId && (active || checked || status.kept)) renderKeepControl(item, state.kept);
       if (state.kept && status.result === true && item.keepId) matchingIds.push(item.keepId);
       if (status.unknown) unknown++;
       if (status.protected) protectedCount++;
       if (status.show && (checked || discard || status.result === true)) matched++;
-      if (!gridData && !virtual && !status.show) {
+      if (!gridData && !virtual && (!status.show || (section >= 0 && !hits?.includes(section)))) {
         item.card.dataset.ha4Filtered = "page";
         filtered.add(item.card);
       }
@@ -940,6 +1035,10 @@
     }
     if (!gridData && !virtual) setCardOrder(items, grid, sort);
     if (report) ({ matched, unknown, protectedCount, keptCount } = report);
+    if (panel.sectionBar && grid) {
+      const after = position === "inside" ? anchor : element;
+      if (after.nextElementSibling !== panel.sectionBar) after.after(panel.sectionBar);
+    }
     const total = report?.total ?? items.length;
     const scope = gridData ? "読み込み済みの一覧" : virtual ? "読み込み済みの表示範囲" : "このページ";
     const unknownStatus = unknown ? ` · 判定できないAF ${unknown}件（${plan.showUnknown && !discard && !checked ? "表示中" : "非表示"}）` : "";
@@ -957,6 +1056,7 @@
     panel.refresh(listOptions(items, nativeSort, conditionRows(state.root), type, report, state.sortKey), counts, {
       active: active || checked, matched, unknown: discard || checked || type === "gacha" ? 0 : unknown, message, resultLabel,
       matchingIds: virtual && !gridData ? [] : report?.matchingIds ?? matchingIds,
+      sections, section, hasSectionPages, sectionCounts: gridData ? report?.sectionCounts : sectionCounts,
       decomposeNotice: type === "decompose" && (active || discard || checked || state.kept.size > 0),
       selectionNotice: type === "gacha" ? "絞り込み条件は標準の自動セットと拡張セットの追加候補にも反映されます。" : ""
     });
@@ -989,7 +1089,7 @@
     marketWatch?.beforeRead();
     if (extras?.enabled("daily")) document.dispatchEvent(new Event("hako-af:read-balance"));
     if (extras?.enabled("home")) document.dispatchEvent(new Event("hako-af:read-home"));
-    if (["/market", "/explore-result", "/guild", "/guild-raid-result", "/base", "/items", "/slot", "/mating", "/monsters", "/hall-of-fame"].includes(normalRoute()) ||
+    if (["/market", "/explore-result", "/expedition", "/guild", "/guild-raid-result", "/base", "/items", "/slot", "/mating", "/monsters", "/hall-of-fame"].includes(normalRoute()) ||
         document.querySelector(GACHA_INPUT) ||
         (isOwnProfile() && document.querySelector(titleSearch)) || document.querySelector(extrasRoots) ||
         document.querySelector(`${FLEX_LISTS},${CLASSIC_GRID},${MARKET_SORT},[data-base-modal-root],${TRADE_ROOTS},${partyRoots},${trainingRoots}`)) {
@@ -1106,6 +1206,7 @@
     try { gachaControls.set(event.target, JSON.parse(event.detail)); } catch { /* Ignore invalid reports. */ }
   });
   document.addEventListener("hako-af:power-ready", requestScan);
+  document.addEventListener("hako-af:expedition-update", requestScan);
   document.addEventListener("hako-af:market-snapshot", () => {
     if (extras?.enabled("marketWatch") && /^\/market\/?$/.test(normalRoute())) requestScan();
   });
@@ -1214,7 +1315,7 @@
         gameChanges.some(n => n.nodeType === 1 && (n.matches('[role="dialog"]') || n.querySelector('[role="dialog"]'))));
       if (slotPrompt || matingDialog || target?.closest(observed) || (isOwnProfile() && (target?.querySelector(titleSearch) ||
           gameChanges.some(n => n.nodeType === 1 && (n.matches(titleSearch) || n.querySelector(titleSearch))))) ||
-          (["/explore-result", "/guild", "/guild-raid-result", "/base", "/items", "/slot", "/mating", "/monsters", "/hall-of-fame", "/encyclopedia"].includes(normalRoute()) && target?.closest("#__nuxt")) ||
+          (["/explore-result", "/expedition", "/guild", "/guild-raid-result", "/base", "/items", "/slot", "/mating", "/monsters", "/hall-of-fame", "/encyclopedia"].includes(normalRoute()) && target?.closest("#__nuxt")) ||
           gameChanges.some(n => n.nodeType === 1 &&
         (n.matches(observed) || n.querySelector(observed)))) {
         requestScan();
@@ -1226,6 +1327,8 @@
     attributes: true, attributeFilter: ["style", "hidden", "aria-expanded", "aria-hidden", "aria-checked", "aria-pressed", "disabled"]
   });
   exploreAnalysis = globalThis.hakoAfExploreAnalysis?.start(node, id => extras?.enabled(id));
+  globalThis.hakoAfExpedition?.start(node, () => extras?.enabled("expedition"));
+  delete globalThis.hakoAfExpedition;
   trainingRoutes = globalThis.hakoAfTrainingRoutes?.start(node, () => extras?.enabled("trainingRoutes"), requestScan);
   partyShare = globalThis.hakoAfPartyShare?.start(node, () => extras?.enabled("partyShare"), trainingRoutes?.openMember,
     () => extras?.enabled("trainingRoutes"));
