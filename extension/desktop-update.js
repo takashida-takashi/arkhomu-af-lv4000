@@ -1,9 +1,7 @@
 (() => {
   "use strict";
 
-  if (window.top !== window) return;
-
-  const version = chrome.runtime.getManifest().version;
+  let version;
   const archiveKey = "hakoAfDesktopUpdateArchive";
   const distribution = "https://takashida-takashi.github.io/arkhomu-af-lv4000/";
   const archiveLimit = 2_000_000;
@@ -28,9 +26,13 @@
     document.dispatchEvent(new Event("hako-af:desktop-update-archive"));
   }
 
-  function saveArchive(record = archive) {
+  async function saveArchive(record = archive) {
     if (!record) return;
-    return chrome.runtime.sendMessage({ type: "hako-af:download-update", version: record.version }).catch(() => false);
+    try {
+      return await chrome.runtime.sendMessage({ type: "hako-af:download-update", version: record.version });
+    } catch {
+      return false;
+    }
   }
 
   function archiveUrl(bytes) {
@@ -99,7 +101,7 @@
     }
   }
 
-  chrome.runtime.onMessage.addListener(message => {
+  function onDownloadFinished(message) {
     if (message?.type !== "hako-af:update-download-finished" || !pendingDownload || message.token !== pendingDownload.token) return;
     const { page, version: downloaded } = pendingDownload;
     pendingDownload = null;
@@ -111,11 +113,25 @@
       setState(`v${downloaded} のZIPを保存しました。再読み込みします…`, true);
       location.reload();
     } else setState(`v${downloaded} のZIPを保存しました`, false);
-  });
+  }
 
-  chrome.storage.onChanged.addListener((changes, area) => {
+  function onArchiveChanged(changes, area) {
     if (area === "local" && changes[archiveKey]) setArchive(changes[archiveKey].newValue);
-  });
+  }
+
+  try {
+    // A page reload can start just before the worker reloads the unpacked extension.
+    version = chrome.runtime?.getManifest?.()?.version;
+    if (!version) return;
+    globalThis.hakoAfDesktopVersion = version;
+    if (window.top !== window) return;
+    chrome.runtime.onMessage.addListener(onDownloadFinished);
+    chrome.storage.onChanged.addListener(onArchiveChanged);
+  } catch (error) {
+    if (error?.message === "Extension context invalidated.") return;
+    throw error;
+  }
+
   storage.getValue(archiveKey, null).then(setArchive).catch(() => {});
   const updates = startArkHomuReleaseCheck(distribution, storage, "hakoAfDesktopUpdateNextCheck", "arkhomu-af-desktop-update", receive);
   globalThis.hakoAfDesktopUpdates = { version, archiveVersion: () => archive?.version,

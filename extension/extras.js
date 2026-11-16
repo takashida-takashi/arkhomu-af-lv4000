@@ -113,8 +113,7 @@
     const enabled = key => settings.features[key] !== false;
     const refreshSlotHome = slotHome?.start(() => enabled("slotHome"));
     const desktop = globalThis.hakoAfDesktopUpdates;
-    const version = desktop?.version ?? globalThis.hakoAfUserscriptVersion ??
-      (globalThis.hakoAfFrameContext?.embedded ? chrome.runtime.getManifest().version : undefined);
+    const version = desktop?.version ?? globalThis.hakoAfUserscriptVersion ?? globalThis.hakoAfDesktopVersion;
     let currentDrops = null;
     let previousDrops;
     let currentBalance = null;
