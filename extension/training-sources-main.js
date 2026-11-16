@@ -92,8 +92,6 @@
     }
     const wanted = new Set([...matches.values()].flat());
     const sources = new Map();
-    const attack = new Set(["attack"]);
-    const rank6 = new Set();
     const add = (kind, id, text, path) => {
       const key = `${kind}:${id}`;
       if (!wanted.has(key)) return;
@@ -114,13 +112,11 @@
         }
       }
       if (monster.attack_skill) {
-        attack.add(monster.attack_skill);
         add("skill", monster.attack_skill, `${name} Lv1（通常攻撃）`, path);
       }
       if (typeof monster.rank6_unique_skill === "string") {
         const id = monster.rank6_unique_skill.trim();
         const kind = byId.has(`skill:${id}`) ? "skill" : byId.has(`passive:${id}`) ? "passive" : null;
-        rank6.add(id);
         if (kind) add(kind, id, `${name} Rank6`, path);
       }
     }
@@ -137,7 +133,6 @@
       const entries = [];
       for (const id of ids) {
         const master = byId.get(id);
-        const kind = id.startsWith("skill:") ? "skill" : "passive";
         entries.push(...(sources.get(id) ?? []));
         const recipe = master.source;
         const recipes = Array.isArray(recipe) ? recipe.some(Array.isArray) ? recipe.filter(Array.isArray) : [recipe] : [];
@@ -146,11 +141,6 @@
           if (materials.length && materials.every(Boolean)) {
             entries.push({ text: `合成レシピ ${materials.map(skill => label(skill, translate)).join(" ＋ ")}` });
           }
-        }
-        if (Array.isArray(data.monsters) && !rank6.has(master.id) &&
-            !(kind === "skill" && (master.skill_type === "attack" || attack.has(master.id))) &&
-            (master.egg_exclusive === true || !["none", "difficulty"].includes(master.display) && master.inheritability !== false)) {
-          entries.push({ text: "スキルの卵（候補）" });
         }
       }
       return [name, [...new Map(entries.map(entry => [entry.text, entry])).values()]];
