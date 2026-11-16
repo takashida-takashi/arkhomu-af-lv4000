@@ -6,6 +6,9 @@
   const panels = new WeakMap();
   const individuals = new WeakMap();
   const detailAnchors = new WeakMap();
+  const profileViews = new Set(["ProfilePublicView", "FlexPublicProfileView"]);
+  const profileParties = new Set(["TopRatedPartyModal", "ColosseumTopRatedPartyModal", "FlexProfilePartyDialog"]);
+  const guildDetails = new Set(["GuildMonsterDetailModal", "FlexGuildMembers", "FlexGuildDetailDialog"]);
   const partyModes = { 1: "探索", boss: "ボス", raid: "レイド", "pvp-official": "公式PvP", "pvp-rating": "魔王PvP", conquest: "国取り" };
   const baseBonusKeys = ["hp", "atk", "mtk", "def", "mdf", "spd"];
   const bonusKeys = new Set([...baseBonusKeys, "lck", "cri", "cdmg"]);
@@ -103,7 +106,27 @@
   function clearMember(anchor) {
     anchor.removeAttribute("data-ha4-share-member");
     anchor.removeAttribute("data-ha4-training-target");
+    anchor.removeAttribute("data-ha4-training-import-member");
     individuals.delete(anchor);
+  }
+
+  function showsPublicSkills(props) {
+    const monster = props?.monster;
+    const native = monster?.t_user_monsters ?? monster;
+    return props?.maskSkills === false && !!native && ![monster, native].some(member =>
+      member?._maskSkills === true || member?.build_hidden === true);
+  }
+
+  function isTrainingSource(instance) {
+    const guildPage = /^\/(?:f\/)?guild\/?$/.test(location.pathname);
+    let inProfileParty = false;
+    for (let parent = instance.parent; parent; parent = parent.parent) {
+      const name = parent.type?.__name;
+      if (guildPage && guildDetails.has(name)) return true;
+      if (profileParties.has(name) && parent.props?.modelValue === true) inProfileParty = true;
+      if (inProfileParty && profileViews.has(name)) return true;
+    }
+    return false;
   }
 
   function bindMember(name, props, vnode, owned, translate) {
@@ -119,14 +142,22 @@
     const native = monster?.t_user_monsters ?? monster;
     const id = monster?.user_monster_id ?? native?.user_monster_id;
     const record = id == null || !Array.isArray(owned) ? null : owned.find(member => member?.user_monster_id === id);
-    if (props?.maskSkills || !record) {
+    const trainingSource = isTrainingSource(vnode.component);
+    root.toggleAttribute("data-ha4-public-training-detail", trainingSource);
+    const publicTraining = trainingSource && showsPublicSkills(props);
+    if (props?.maskSkills || !record && !publicTraining) {
       clearMember(anchor);
       detailAnchors.delete(vnode.component);
       return;
     }
     detailAnchors.set(vnode.component, anchor);
-    individuals.set(anchor, monster);
-    if (!anchor.hasAttribute("data-ha4-share-member")) anchor.setAttribute("data-ha4-share-member", "");
+    individuals.set(anchor, { monster, props, instance: vnode.component, publicTraining });
+    anchor.toggleAttribute("data-ha4-share-member", !!record);
+    anchor.toggleAttribute("data-ha4-training-import-member", publicTraining);
+    if (!record) {
+      anchor.removeAttribute("data-ha4-training-target");
+      return;
+    }
     const key = native.m_monsters?.name_key ?? monster.m_monsters?.name_key ?? record.name_key ?? record.m_monsters?.name_key;
     const species = key ? translate(key) : record.m_monsters?.name ?? "この個体";
     const nickname = native.nickname ?? record.nickname;
@@ -213,7 +244,7 @@
 
   document.addEventListener("hako-af:read-party-share", async event => {
     const anchor = event.target;
-    const individual = individuals.has(anchor);
+    const individual = individuals.get(anchor);
     if (!individual && !panels.has(anchor)) return;
     const reply = (type, value) => anchor.dispatchEvent(new CustomEvent("hako-af:party-share-data", {
       detail: JSON.stringify({ type, value })
@@ -234,7 +265,14 @@
         reply("error", "表示中の投稿が切り替わりました。共有する編成を開き直してください。");
         return;
       }
-      const party = individual ? [individuals.get(anchor)] : partyOf(panel);
+      const selected = individuals.get(anchor);
+      if (individual && (individual.monster !== selected?.monster || individual.monster !== selected.props.monster ||
+          selected.props.maskSkills || individual.publicTraining &&
+          (!showsPublicSkills(selected.props) || !isTrainingSource(selected.instance)))) {
+        reply("error", "表示中の個体が切り替わりました。個体詳細を開き直してください。");
+        return;
+      }
+      const party = individual ? [selected.monster] : partyOf(panel);
       if (!party?.some(Boolean)) {
         reply("error", "共有する編成にホムンクルスを配置してください。");
         return;
@@ -245,7 +283,7 @@
         const masters = tools.masters();
         if (masters.isLoaded?.value !== true) return null;
         const skills = tools.learned();
-        const settings = panel?.hall ? null : properties.$pinia?._s?.get("skillSettings");
+        const settings = panel?.hall || individual?.publicTraining ? null : properties.$pinia?._s?.get("skillSettings");
         const visibleSlots = panel?.hall ? panel.showcase.querySelectorAll(panel.showcase.matches(".fx-ppd")
           ? ".fx-ppd__slots > li" : ":scope > div") : [];
         const slots = Array.from({ length: 6 }, (_, index) => party[index]

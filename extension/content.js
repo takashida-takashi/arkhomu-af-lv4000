@@ -46,7 +46,7 @@
   let exploreAnalysis;
   let partyShare;
   let trainingRoutes;
-  const partyRoots = '.fx-party__panel,.fx-hall-detail,aside[aria-label="投稿の詳細"],[aria-labelledby="hall-classic-comments-title"],[data-party-pointer-slot],.fx-mdetail__hero,.fx-mdetail__head,.detail-pc-fonts,[data-ha4-share-member]';
+  const partyRoots = '.fx-party__panel,.fx-hall-detail,aside[aria-label="投稿の詳細"],[aria-labelledby="hall-classic-comments-title"],[data-party-pointer-slot],.fx-mdetail__hero,.fx-mdetail__head,.detail-pc-fonts,[data-ha4-share-member],[data-ha4-public-training-detail]';
   const trainingRoots = ".fx-mating,.fx-mati,.fx-tgrant,.fx-tgflow,[data-ha4-training-scope],[data-inherit-row]";
   let marketWatch;
   const modes = new Map();
@@ -1227,7 +1227,8 @@
   });
   exploreAnalysis = globalThis.hakoAfExploreAnalysis?.start(node, id => extras?.enabled(id));
   trainingRoutes = globalThis.hakoAfTrainingRoutes?.start(node, () => extras?.enabled("trainingRoutes"), requestScan);
-  partyShare = globalThis.hakoAfPartyShare?.start(node, () => extras?.enabled("partyShare"), trainingRoutes?.openMember);
+  partyShare = globalThis.hakoAfPartyShare?.start(node, () => extras?.enabled("partyShare"), trainingRoutes?.openMember,
+    () => extras?.enabled("trainingRoutes"));
   delete globalThis.hakoAfTrainingRoutes;
   delete globalThis.hakoAfPartyShare;
   extras = extrasApi?.start({ node, requestScan, viewRule, toMetrics: dropMetrics, effectOption, makePanel,

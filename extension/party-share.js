@@ -274,11 +274,14 @@
     downloadBlob(blob, data.individual ? "はこホム-個体.png" : "はこホム-編成.png");
   }
 
-  function start(node, enabled, openTrainingTarget) {
+  function start(node, enabled, openTrainingTarget, trainingEnabled) {
     let dialog;
     let lastHash;
     const detailLaunchers = new Map();
+    const trainingLaunchers = new Map();
     const detailActions = "[data-ha4-share-member],[data-ha4-party-hall-actions]";
+    const publicTrainingAction = "[data-ha4-training-import-member]";
+    const trainingLabel = `${names.trainingRoutes}に取り込む`;
     const makeButton = label => {
       const button = node("button", "extra-button", label);
       button.type = "button";
@@ -337,7 +340,7 @@
           }
           const actions = node("div", "party-member-actions");
           if (openTrainingTarget) {
-            const train = makeButton(`${names.trainingRoutes}に取り込む`);
+            const train = makeButton(trainingLabel);
             train.addEventListener("click", async () => {
               train.disabled = true;
               try { await openTrainingTarget(member, data.individual ? null : position, data.name, train); }
@@ -454,33 +457,84 @@
       });
     }
 
+    function requestNative(panel, receive) {
+      const unreadable = "編成を読み取れませんでした。";
+      const cancel = () => {
+        clearTimeout(timeout);
+        panel.removeEventListener("hako-af:party-share-data", listener);
+      };
+      const listener = event => {
+        cancel();
+        let data;
+        try {
+          data = JSON.parse(event.detail);
+        } catch { /* Report an unreadable response. */ }
+        receive(data ?? { type: "error", value: unreadable });
+      };
+      const timeout = setTimeout(() => {
+        cancel();
+        receive({ type: "error", value: unreadable + "編成画面を開き直してください。" });
+      }, 12000);
+      panel.addEventListener("hako-af:party-share-data", listener, { once: true });
+      panel.dispatchEvent(new Event("hako-af:read-party-share", { bubbles: true }));
+      return cancel;
+    }
+
     function openNative(panel, individual = false) {
       if (!panel) return;
       const ui = openDialog();
       ui.status.textContent = individual ? "個体とスキルを読み取っています…" : "編成とスキルを読み取っています…";
-      const listener = event => {
-        clearTimeout(timeout);
-        try {
-          const { type, value } = JSON.parse(event.detail);
-          if (type === "snapshot") {
-            void showParty(ui, value).catch(() => { ui.status.textContent = "編成を読み取れませんでした。"; });
-          } else {
-            ui.status.textContent = value;
-          }
-        } catch {
-          ui.status.textContent = "編成を読み取れませんでした。";
-        }
-      };
-      const timeout = setTimeout(() => {
-        panel.removeEventListener("hako-af:party-share-data", listener);
-        ui.status.textContent = "編成を読み取れませんでした。編成画面を開き直してください。";
-      }, 12000);
-      panel.addEventListener("hako-af:party-share-data", listener, { once: true });
-      ui.root.addEventListener("close", () => {
-        clearTimeout(timeout);
-        panel.removeEventListener("hako-af:party-share-data", listener);
-      }, { once: true });
-      panel.dispatchEvent(new Event("hako-af:read-party-share", { bubbles: true }));
+      const cancel = requestNative(panel, ({ type, value }) => {
+        if (type === "snapshot") {
+          void showParty(ui, value).catch(() => { ui.status.textContent = "編成を読み取れませんでした。"; });
+        } else ui.status.textContent = value;
+      });
+      ui.root.addEventListener("close", cancel, { once: true });
+    }
+
+    function scanPublicTraining() {
+      const show = openTrainingTarget && trainingEnabled?.();
+      for (const [anchor, controls] of trainingLaunchers) {
+        if (show && anchor.isConnected && anchor.matches(publicTrainingAction)) continue;
+        controls.remove();
+        trainingLaunchers.delete(anchor);
+      }
+      if (!show) return;
+      for (const anchor of document.querySelectorAll(publicTrainingAction)) {
+        if (trainingLaunchers.has(anchor) || !anchor.getClientRects().length) continue;
+        const controls = node("div", "party-member-actions");
+        const train = makeButton(trainingLabel);
+        const status = node("span", "extra-note");
+        status.setAttribute("role", "status");
+        train.setAttribute("aria-haspopup", "dialog");
+        train.addEventListener("click", () => {
+          train.disabled = true;
+          status.textContent = "公開スキルを読み取っています…";
+          requestNative(anchor, async ({ type, value }) => {
+            try {
+              if (!train.isConnected || !anchor.matches(publicTrainingAction) || !trainingEnabled()) return;
+              if (type !== "snapshot") {
+                status.textContent = "公開スキルを読み取れませんでした。個体詳細を開き直してください。";
+                return;
+              }
+              const member = validated(value).slots[0];
+              if (!member || !member.active.length && !member.passive.length) {
+                status.textContent = "取り込める公開スキルがありません。";
+                return;
+              }
+              status.textContent = "";
+              await openTrainingTarget(member, null, value.name, train);
+            } catch {
+              status.textContent = "公開スキルを取り込めませんでした。";
+            } finally {
+              train.disabled = false;
+            }
+          });
+        });
+        controls.append(train, status);
+        anchor.append(controls);
+        trainingLaunchers.set(anchor, controls);
+      }
     }
     launcher.addEventListener("click", () => openNative(launcher.closest("[data-ha4-party-panel]")));
 
@@ -499,6 +553,7 @@
     window.addEventListener("hashchange", readSharedLocation);
 
     function scan() {
+      scanPublicTraining();
       for (const [anchor, button] of detailLaunchers) {
         if (enabled() && anchor.isConnected && anchor.matches(detailActions)) continue;
         button.remove();
