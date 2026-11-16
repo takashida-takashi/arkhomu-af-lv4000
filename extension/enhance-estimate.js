@@ -154,7 +154,7 @@
       price.placeholder = "例 1,000";
       const label = document.createElement("label");
       label.append("素材単価（G）", price);
-      const market = node("button", "estimate-market", "フリマで相場を見る");
+      const market = node("button", "estimate-market", "フリマの売上平均を取得・反映");
       market.type = "button";
       const marketStatus = node("p", "estimate-market-status");
       marketStatus.setAttribute("aria-live", "polite");
