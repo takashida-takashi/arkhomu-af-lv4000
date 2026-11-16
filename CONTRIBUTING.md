@@ -25,7 +25,7 @@ node --check dist/arkhomu-af-lv4000.user.js
 
 ## 配布の流れ
 
-メンテナーが `main` にマージすると、GitHub Actionsが配布番号を更新し、PC用ZIP、Android用Tampermonkeyスクリプト、iPhone・iPad用Userscriptsスクリプトをビルドします。ビルドが通ると3つのファイルと配布ページをまとめて公開します。番号は `main` のコミット履歴から決まり、同じコミットを再実行すると同じ番号になります。
+メンテナーが `main` にマージすると、GitHub ActionsがPC用ZIP、Android用Tampermonkeyスクリプト、iPhone・iPad用Userscriptsスクリプトをビルドします。ビルドが通ると3つのファイルと配布ページをまとめて公開します。配布番号は、拡張本体とモバイルの更新スクリプトの変更に合わせて進みます。取説や配布ページの編集時は直前の配布番号で公開します。
 
 PCだけを更新するときは、`main` に入るコミットの件名の末尾に `[pc-only]` を付けます。この場合もPC用ZIPと配布ページを更新し、スマホ用ファイルは直前の通常配布と同じ内容を公開します。
 

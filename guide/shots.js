@@ -32,7 +32,7 @@ const screenshots = {
   },
   "expedition-members": {
     title: "次の遠征メンバーを選ぶ",
-    filename: "expedition-members.jpg",
+    filename: "expedition-members.jpg?v=masked",
     steps: [[27, 22, "所持ホムンクルスから次のメンバーを選ぶ"], [84, 96, "「次へ：弁当を選ぶ」を押す"]]
   },
   "expedition-plan": {
@@ -52,6 +52,7 @@ const screenshots = {
   },
   "party-share": {
     title: "編成を共有する",
+    filename: "party-share.png?v=masked",
     steps: [[8, 33, "「共有リンクをコピー」を押す"], [27, 33, "「画像を保存」なら1枚の画像で渡せる"]]
   },
   "party-import": {
@@ -68,6 +69,7 @@ const screenshots = {
   },
   "training-grant": {
     title: "必要な永久スキルを付与する",
+    filename: "training-grant.png?v=masked",
     steps: [[64, 44, "訓練所のスキル付与で、ルート設定済みの個体を選択"], [27, 42, "所持スキル一覧では、名前でも検索できる"], [21, 63, "緑の枠が付いた未付与の必要スキルを確認"]]
   },
   "training-inherit": {

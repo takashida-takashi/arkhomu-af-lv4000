@@ -20,7 +20,8 @@ function releaseVersion() {
     if (JSON.parse(git("show", `${commit}:extension/manifest.json`)).version !== manifest.version) break;
     baseline = commit;
   }
-  const depth = baseline ? Number(git("rev-list", "--first-parent", "--count", `${baseline}..HEAD`)) : 0;
+  const releaseSources = ["extension", "scripts/arkhomu-af-auto-update.js", "scripts/arkhomu-af-legacy-update.js"];
+  const depth = baseline ? Number(git("rev-list", "--first-parent", "--count", `${baseline}..HEAD`, "--", ...releaseSources)) : 0;
   const [major, minor, patch] = manifest.version.split(".").map(Number);
   if (patch + depth > 65535) throw new Error("Release patch exceeds the Chrome manifest limit.");
   return [major, minor, patch + depth].join(".");
