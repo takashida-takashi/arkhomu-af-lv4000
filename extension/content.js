@@ -1210,7 +1210,9 @@
         continue;
       }
       const observed = `${ROOTS},${extrasRoots},${partyRoots},${trainingRoots},#__nuxt footer`;
-      if (slotPrompt || target?.closest(observed) || (isOwnProfile() && (target?.querySelector(titleSearch) ||
+      const matingDialog = normalRoute() === "/mating" && (target?.closest('[role="dialog"]') ||
+        gameChanges.some(n => n.nodeType === 1 && (n.matches('[role="dialog"]') || n.querySelector('[role="dialog"]'))));
+      if (slotPrompt || matingDialog || target?.closest(observed) || (isOwnProfile() && (target?.querySelector(titleSearch) ||
           gameChanges.some(n => n.nodeType === 1 && (n.matches(titleSearch) || n.querySelector(titleSearch))))) ||
           (["/explore-result", "/guild", "/guild-raid-result", "/base", "/items", "/slot", "/mating", "/monsters", "/hall-of-fame", "/encyclopedia"].includes(normalRoute()) && target?.closest("#__nuxt")) ||
           gameChanges.some(n => n.nodeType === 1 &&

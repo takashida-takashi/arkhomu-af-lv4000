@@ -59,6 +59,10 @@
     return { learned: learnedModule[learned.exported], masters: masterModule[masters.exported] };
   }
 
+  function getReaders() {
+    return readers ??= loadReaders().catch(error => { readers = null; throw error; });
+  }
+
   function bind(name, props, el) {
     if (!Array.isArray(props?.party)) return;
     const classic = name === "PartyFormationPanel";
@@ -131,6 +135,7 @@
     const level = native.level ?? record.level;
     const target = JSON.stringify({ id: String(id), name: level ? `${nameLabel} Lv${level}` : nameLabel });
     if (anchor.dataset.ha4TrainingTarget !== target) anchor.dataset.ha4TrainingTarget = target;
+    return { anchor, monster, record, id: String(id) };
   }
 
   function bonusParameters(monster, native) {
@@ -213,8 +218,7 @@
       return;
     }
     try {
-      readers ??= loadReaders().catch(error => { readers = null; throw error; });
-      const tools = await readers;
+      const tools = await getReaders();
       if (!anchor.isConnected || !anchor.getClientRects().length) return;
       const panel = panels.get(anchor);
       if (post && panel?.props.detail?.post !== post) {
@@ -254,5 +258,5 @@
       reply("error", "この画面から編成情報を読み取れませんでした。編成画面を再読み込みしてからお試しください。");
     }
   });
-  globalThis.hakoAfPartyShareMain = { bind, bindMember, bindHall };
+  globalThis.hakoAfPartyShareMain = { bind, bindMember, bindHall, getReaders };
 })();

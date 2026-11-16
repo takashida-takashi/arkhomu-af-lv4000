@@ -27,6 +27,7 @@
 
   function start(node, enabled, requestScan) {
     let dialog, lastSent, watchingMatings;
+    const progressData = new WeakMap();
     const button = (label, action) => {
       const el = node("button", "extra-button", label);
       el.type = "button";
@@ -234,10 +235,103 @@
       try { return JSON.parse(anchor.dataset.ha4TrainingTarget); } catch { return null; }
     }
 
+    document.addEventListener("hako-af:training-progress", event => {
+      const anchor = event.target;
+      if (!(anchor instanceof Element) || !anchor.matches(detailsSelector) ||
+          progressData.get(anchor)?.signature === event.detail) return;
+      try {
+        const value = JSON.parse(event.detail);
+        progressData.set(anchor, { value, signature: event.detail });
+        requestScan();
+      } catch { /* Ignore an invalid snapshot. */ }
+    });
+
+    function renderProgress(container, anchor, target, route) {
+      let panel = container.querySelector('[data-ha4="training-progress"]');
+      if (!route) {
+        panel?.remove();
+        return;
+      }
+      const snapshot = progressData.get(anchor);
+      const value = snapshot?.value;
+      const data = value?.id === target.id && value.routeId === route.id ? value : null;
+      const signature = data ? snapshot.signature : JSON.stringify([target.id, route.id]);
+      if (panel?.dataset.progressSignature === signature) return;
+      if (!panel) {
+        panel = node("details", "training-progress");
+        panel.addEventListener("toggle", () => { if (panel.open) requestScan(); });
+        container.append(panel);
+      }
+      panel.dataset.progressSignature = signature;
+      const title = node("summary", "training-progress-title");
+      const body = node("div", "training-progress-body");
+      panel.replaceChildren(title, body);
+      if (!data || data.unavailable) {
+        title.textContent = "育成ルートの不足を確認";
+        body.append(node("p", "extra-note", data?.unavailable
+          ? "この個体のスキルを確認できませんでした。詳細画面を開き直してください。" : "この個体のスキルを確認中…"));
+        return;
+      }
+      const ordinary = data.ordinary ?? [];
+      const permanent = data.permanent ?? [];
+      title.textContent = ordinary.length || permanent.length ? `不足　通常 ${ordinary.length}件・永久 ${permanent.length}件` : "育成ルート達成";
+      if (!ordinary.length && !permanent.length) {
+        body.append(node("p", "extra-note", "育成ルートに必要なスキルがそろっています。"));
+        return;
+      }
+      for (const [heading, skills, isPermanent] of [["通常スキル", ordinary, false], ["永久スキル", permanent, true]]) {
+        if (!skills.length) continue;
+        body.append(node("h4", "training-progress-group", heading));
+        const list = node("ul", "training-progress-list");
+        for (const skill of skills) {
+          const item = node("li", "training-progress-skill");
+          item.append(node("strong", "training-progress-name", skill.name));
+          if (isPermanent) item.append(node("p", "extra-note", skill.learned
+            ? "通常で習得済み。永久枠には同名の永久化スキルを付与"
+            : "永久枠への追加は訓練所の「スキル付与」から"));
+          if (skill.sources?.length && !skill.learned) {
+            if (isPermanent) item.append(node("p", "extra-note", "通常スキルの入手元"));
+            const sources = node("ul", "training-progress-sources");
+            for (const entry of skill.sources) {
+              const line = document.createElement("li");
+              if (typeof entry.path === "string" && entry.path.startsWith("/encyclopedia?monster=")) {
+                const link = document.createElement("a");
+                link.href = entry.path;
+                link.target = "_blank";
+                link.rel = "noopener";
+                link.textContent = entry.text;
+                line.append(link);
+              } else line.textContent = entry.text;
+              sources.append(line);
+            }
+            item.append(sources);
+          } else if (!skill.learned) {
+            item.append(node("p", "extra-note", data.sourcesLoaded ? "図鑑データから入手元を特定できませんでした。"
+              : "入手元の図鑑データを読み込めていません。図鑑を開いてから確認してください。"));
+          }
+          list.append(item);
+        }
+        body.append(list);
+      }
+      const encyclopedia = node("a", "extra-link", "図鑑を開く");
+      encyclopedia.href = "/encyclopedia";
+      encyclopedia.target = "_blank";
+      encyclopedia.rel = "noopener";
+      body.append(encyclopedia);
+      if (permanent.length) {
+        const market = node("a", "extra-link", "フリマで永久化スキルを探す");
+        market.href = "/market";
+        market.target = "_blank";
+        market.rel = "noopener";
+        body.append("　", market);
+      }
+    }
+
     function scan({ routes, bindings }) {
       for (const panel of document.querySelectorAll('[data-ha4="training-detail"]')) {
-        if (!panel.parentElement?.matches(detailsSelector)) panel.remove();
+        if (!enabled() || !panel.parentElement?.matches(detailsSelector)) panel.remove();
       }
+      if (!enabled()) return;
       for (const anchor of document.querySelectorAll(detailsSelector)) {
         const target = readTarget(anchor);
         if (!target?.id || !anchor.getClientRects().length) continue;
@@ -255,9 +349,10 @@
         }
         const binding = bindings.find(item => item.monsterId === target.id);
         const route = binding && routes.find(item => item.id === binding.routeId);
-        const label = panel.lastElementChild;
+        const label = panel.querySelector('[data-ha4="training-detail-route"]');
         const text = route ? `設定中　${route.name}` : "";
         if (label.textContent !== text) label.textContent = text;
+        renderProgress(panel, anchor, target, route);
       }
     }
 

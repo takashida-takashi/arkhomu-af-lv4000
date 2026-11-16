@@ -4,11 +4,14 @@
   if (globalThis.hakoAfFrameContext?.active === false) return;
 
   const names = globalThis.hakoAfFeatureNames;
+  const getReaders = globalThis.hakoAfPartyShareMain?.getReaders;
+  const trainingSources = globalThis.hakoAfTrainingSources;
   const matingComponents = new Set(["FlexMatingInherit", "MatingNewUiPanel"]);
   const grantComponents = new Set(["FlexTrainingSkillGrant", "FlexTrainingSkillGrantFlow"]);
   const grantLists = new Set(["fx-tgrant__rows", "fx-tgflow__rows"]);
   const matingChoices = new WeakMap();
   const grantBindings = new WeakMap();
+  const progressBindings = new WeakMap();
   let routes = new Map();
   let targets = new Map();
   let savedSkills = new Set();
@@ -40,7 +43,8 @@
     try {
       const data = JSON.parse(event.detail);
       const nextRoutes = new Map(data.routes.map(route => [route.id, {
-        name: route.name, skills: new Set([...route.ordinary, ...route.permanent].map(nameKey)),
+        name: route.name, ordinaryNames: route.ordinary, permanentNames: route.permanent,
+        skills: new Set([...route.ordinary, ...route.permanent].map(nameKey)),
         permanent: new Set(route.permanent.map(nameKey))
       }]));
       const nextTargets = new Map(data.bindings.map(binding => [binding.monsterId, binding]));
@@ -69,18 +73,21 @@
     return route;
   }
 
-  function matingSkills(anchor) {
+  function matingSkills(anchor, ctx, panel = anchor) {
     let control = anchor.querySelector(':scope > [data-ha4="training-active-route"]');
     if (!routes.size) {
       control?.remove();
-      matingChoices.delete(anchor);
-      return savedSkills;
+      matingChoices.delete(panel);
+      return { skills: savedSkills, specific: false };
     }
-    const choice = matingChoices.get(anchor);
+    const parentRoutes = new Set((ctx?.matingSlots ?? []).map(monster => targets.get(String(monsterId(monster)))?.routeId).filter(Boolean));
+    const inherited = parentRoutes.size === 1 ? parentRoutes.values().next().value :
+      routes.size === 1 ? routes.keys().next().value : "";
+    const choice = matingChoices.get(panel) ?? inherited ?? "";
     const selected = routes.has(choice) ? choice : "";
-    const skills = routes.get(selected)?.skills ?? savedSkills;
+    const scope = { skills: routes.get(selected)?.skills ?? savedSkills, specific: !!selected };
     const signature = JSON.stringify([selected, [...routes].map(([id, item]) => [id, item.name])]);
-    if (control?.dataset.routeSignature === signature) return skills;
+    if (control?.dataset.routeSignature === signature) return scope;
     control?.remove();
     control = document.createElement("label");
     control.dataset.ha4 = "training-active-route";
@@ -88,63 +95,170 @@
     control.textContent = "継承候補の強調";
     const select = document.createElement("select");
     select.setAttribute("aria-label", "継承候補の強調");
-    select.replaceChildren(new Option("保存したすべての育成ルート", ""), ...[...routes].map(([id, item]) => new Option(item.name, id)));
+    select.replaceChildren(new Option("保存した全ルート（選ぶ候補のみ）", ""), ...[...routes].map(([id, item]) => new Option(item.name, id)));
     select.value = selected;
     select.addEventListener("change", () => {
-      matingChoices.set(anchor, select.value);
+      matingChoices.set(panel, select.value);
       document.dispatchEvent(new Event("hako-af:grid-rendered"));
     });
     control.append(select);
+    if (!selected) control.append("外す候補を出すには育成ルートを1つ選んでください。");
     anchor.prepend(control);
-    return skills;
+    return scope;
   }
 
-  function mark(rows, next, inheritance = false) {
+  function mark(rows, next) {
     for (const row of rows) {
       const needed = next.has(row);
       row.toggleAttribute("data-ha4-training-needed", needed);
-      if (inheritance) row.toggleAttribute("data-ha4-training-inherit", needed);
     }
+  }
+
+  function advise(row, name, label, scope, state) {
+    const visible = !!label && !/^[？?]/.test(label);
+    const desired = visible && scope?.skills.has(nameKey(label));
+    // A single selected route is the only basis for suggesting removals.
+    const outside = visible && scope?.specific && !desired;
+    const caption = desired ? (state.auto ? (state.forgot ? "覚えるに戻す" : "残す")
+      : state.selected ? "選択済み" : state.blocked ? "選ぶ候補・枠を確認" : "選ぶ") :
+      outside ? (state.auto ? (state.forgettable && !state.forgot ? "覚えない候補" : "")
+        : state.selected ? "選択を外す候補" : "") : "";
+    row.toggleAttribute("data-ha4-training-needed", !!desired);
+    row.toggleAttribute("data-ha4-training-inherit", !!desired);
+    row.toggleAttribute("data-ha4-training-remove", !!caption && outside);
+    let badge = row.querySelector('[data-ha4="training-guidance"]');
+    if (!caption) {
+      badge?.remove();
+      return;
+    }
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.dataset.ha4 = "training-guidance";
+      if (name) name.after(badge);
+      else row.append(badge);
+    }
+    if (badge.textContent !== caption) badge.textContent = caption;
   }
 
   function mating(instance, props, root) {
     const rows = [...root.querySelectorAll(".fx-mati__row,[data-inherit-row]")].filter(row => row.getClientRects().length);
-    const skills = rows.length ? matingSkills(root) : null;
-    const needed = new Set();
-    if (skills?.size) {
-      const { ctx } = props;
-      const pool = new Map((ctx?.inheritSelectablePool ?? []).map(item => [item.key, item]));
-      const candidates = new Set(rows);
-      for (const vnode of walk(instance.subTree)) {
-        const el = element(vnode);
-        if (!candidates.has(el)) continue;
-        const entry = pool.get(vnode.key);
-        if (entry?.hidden) continue;
-        const label = (entry && ctx.formatInheritEntryLabel?.(entry)) ||
-          el.querySelector('[role="checkbox"][aria-label]')?.getAttribute("aria-label") ||
-          el.querySelector(".fx-mati__name")?.textContent;
-        if (skills.has(nameKey(label))) needed.add(el);
-      }
+    const { ctx } = props;
+    const anchor = root.matches(".fx-mati") ? root : rows[0]?.parentElement;
+    const scope = anchor && rows.length ? matingSkills(anchor, ctx, root) : null;
+    if (!scope) {
+      root.querySelector('[data-ha4="training-active-route"]')?.remove();
+      return;
     }
-    if (!rows.length) root.querySelector(':scope > [data-ha4="training-active-route"]')?.remove();
-    mark(rows, needed, true);
+    const pool = new Map((ctx?.inheritSelectablePool ?? []).map(item => [item.key, item]));
+    const automatic = new Map((ctx?.autoGrantedSkillPassive ?? []).map(item => [item.key, item]));
+    const candidates = new Set(rows);
+    for (const vnode of walk(instance.subTree)) {
+      const row = element(vnode);
+      if (!candidates.has(row)) continue;
+      const key = typeof vnode.key === "string" ? vnode.key.replace(/^auto-/, "") : vnode.key;
+      const auto = !!automatic.get(key) && (!pool.has(key) || key !== vnode.key);
+      const entry = (auto ? automatic : pool).get(key);
+      const checkbox = row.querySelector('[role="checkbox"]');
+      const name = row.querySelector(".fx-mati__name,span.font-bold.leading-tight");
+      const label = entry?.hidden ? "" : (entry && ctx.formatInheritEntryLabel?.(entry)) ||
+        checkbox?.getAttribute("aria-label") || name?.textContent || row.firstChild?.textContent;
+      advise(row, name, label, scope, {
+        auto, forgot: auto && ctx.selectedForgetKeys?.has(key),
+        forgettable: auto && ctx.forgettableKeySet?.has(key),
+        selected: ctx?.selectedInheritKeys?.has(key) || checkbox?.getAttribute("aria-checked") === "true",
+        blocked: row.dataset.state === "disabled" || checkbox?.getAttribute("aria-disabled") === "true"
+      });
+    }
   }
 
-  function legacyMating(instance) {
-    const nodes = [...walk(instance.subTree)];
-    const heading = nodes.find(vnode => vnode.type === "h3" && vnode.children === "継承するスキル / パッシブを選択");
-    const anchor = heading && element(heading)?.parentElement;
-    if (!anchor) return;
-    const rows = nodes.filter(vnode => vnode.type === "div" && typeof vnode.key === "string" &&
-      element(vnode)?.matches(".bg-background.border.rounded.transition-colors.overflow-hidden"));
-    const skills = rows.length ? matingSkills(anchor) : savedSkills;
-    const needed = new Set();
-    const markers = rows.map(element);
-    for (const marker of markers) {
-      const label = marker.querySelector("span.font-bold.break-words");
-      if (skills.has(nameKey(label?.textContent))) needed.add(marker);
+  function readMonster(target, app, profile) {
+    const { id, anchor, record, monster } = target ?? {};
+    const assigned = targets.get(id);
+    const route = assigned && routes.get(assigned.routeId);
+    if (!route || !anchor.getClientRects().length) return;
+    const native = monster.t_user_monsters ?? monster;
+    const storedPermanent = record.permanent_skills ?? native.permanent_skills;
+    const permanent = Array.isArray(storedPermanent) ? storedPermanent : [];
+    const signature = JSON.stringify([id, assigned.routeId, route.ordinaryNames, route.permanentNames, record.level ?? native.level,
+      record.monster_id ?? native.monster_id, record.rank_up ?? native.rank_up, permanent,
+      record.inherited_traits ?? native.inherited_traits, record.excluded_skill_ids ?? native.excluded_skill_ids,
+      record.forgotten_skills ?? native.forgotten_skills, record.forgotten_passives ?? native.forgotten_passives]);
+    const previous = progressBindings.get(anchor);
+    if (previous?.signature === signature && Date.now() - previous.at < (previous.ready ? 60_000 : 4000)) return;
+    const state = { signature, at: Date.now() };
+    progressBindings.set(anchor, state);
+    const send = value => {
+      if (!anchor.isConnected || progressBindings.get(anchor) !== state || targets.get(id)?.routeId !== assigned.routeId) return;
+      anchor.dispatchEvent(new CustomEvent("hako-af:training-progress", { bubbles: true,
+        detail: JSON.stringify({ id, routeId: assigned.routeId, ...value }) }));
+    };
+    const properties = app?.config?.globalProperties;
+    const buildId = properties?.$config?.public?.buildId ?? properties?.$nuxt?.$config?.public?.buildId;
+    if (!getReaders || !properties) return;
+    void Promise.all([getReaders(), trainingSources?.readMasters(buildId)]).then(([readers, data]) => {
+      const run = properties.$nuxt?.runWithContext?.bind(properties.$nuxt) ?? app.runWithContext.bind(app);
+      const translate = key => properties.$t?.(key) ?? key;
+      const result = run(() => {
+        const masters = readers.masters();
+        if (masters.isLoaded?.value !== true) return null;
+        const skills = readers.learned();
+        const member = { ...native, ...record, m_monsters: record.m_monsters ?? native.m_monsters ?? monster.m_monsters };
+        const title = (entry, kind) => {
+          const key = entry?.name_key ?? (kind === "passive" ? masters.getPassiveSkill(entry?.id) : masters.getActiveSkill(entry?.id))?.name_key;
+          return nameKey(key ? translate(key) : entry?.id);
+        };
+        const knownPermanent = new Set(permanent.filter(Boolean).map(entry => {
+          if (typeof entry !== "string") return title(entry, entry.effect === "passive" ? "passive" : "skill");
+          return title({ id: entry }, masters.getActiveSkill(entry) ? "skill" : "passive");
+        }).filter(Boolean));
+        const known = new Set([
+          ...knownPermanent,
+          ...skills.getActiveSkills(member, { includeReserved: true }).map(entry => title(entry, "skill")),
+          ...skills.getPassiveSkills(member, { includeReserved: true, includeDisabled: true }).map(entry => title(entry, "passive"))
+        ]);
+        const normal = route.ordinaryNames.filter(name => !known.has(nameKey(name)));
+        const missingPermanent = route.permanentNames.filter(name => !knownPermanent.has(nameKey(name)));
+        const index = trainingSources?.sourceIndex(data, [...normal, ...missingPermanent], profile, translate, nameKey);
+        const describe = name => ({ name, sources: index?.get(nameKey(name)) ?? [] });
+        return { ordinary: normal.map(describe), permanent: missingPermanent.map(name => ({
+          ...describe(name), learned: known.has(nameKey(name))
+        })), sourcesLoaded: !!data?.monsters && !!data?.items };
+      });
+      state.ready = !!result;
+      send(result ?? { unavailable: true });
+    }).catch(() => send({ unavailable: true }));
+  }
+
+  function legacyMating() {
+    const heading = [...document.querySelectorAll('[role="dialog"] h3,[data-base-modal-root] h3')]
+      .find(el => el.textContent.trim() === "継承するスキル / パッシブを選択" && el.getClientRects().length);
+    const modal = heading?.closest('[role="dialog"],[data-base-modal-root]');
+    if (!modal) return;
+    const rows = modal.querySelectorAll(".bg-background.border.rounded.transition-colors.overflow-hidden,[class~='bg-emerald-950/30'].border.rounded.overflow-hidden");
+    if (!rows.length) return;
+    if (!modal.hasAttribute("data-ha4-training-scope")) modal.setAttribute("data-ha4-training-scope", "");
+    const body = rows[0].closest(".p-3.flex.flex-col.h-full") ?? heading.closest("header")?.nextElementSibling ?? modal;
+    const scope = matingSkills(body);
+    for (const row of rows) {
+      const auto = row.classList.contains("bg-emerald-950/30");
+      const name = row.querySelector("span.font-bold.break-words");
+      const forget = auto && [...row.querySelectorAll("input[type=checkbox]")]
+        .find(input => input.closest("label")?.textContent.trim() === "覚えない");
+      advise(row, name, name?.textContent, scope, {
+        auto, forgot: forget?.checked, forgettable: !!forget,
+        selected: row.classList.contains("border-secondary") || row.querySelector('[aria-checked="true"]'),
+        blocked: row.classList.contains("opacity-60")
+      });
     }
-    mark(markers, needed, true);
+  }
+
+  for (const type of ["click", "change", "keydown"]) {
+    document.addEventListener(type, event => {
+      if (type === "keydown" && !["Enter", " "].includes(event.key)) return;
+      if (event.target instanceof Element && event.target.closest("[data-ha4-training-scope]")) {
+        document.dispatchEvent(new Event("hako-af:grid-rendered"));
+      }
+    }, true);
   }
 
   function prioritize(instance, items, matches, signature, onPrioritize, dependencies, readThrough) {
@@ -217,10 +331,6 @@
   }
 
   function read(name, instance, props, root, translate, dependencies, readThrough) {
-    if (name === "BaseModal") {
-      if (props?.modelValue && instance?.parent?.type?.__name === "mating") legacyMating(instance);
-      return;
-    }
     if (!instance || !root?.getClientRects().length) return;
     if (!routes.size && !grantBindings.has(instance) && !root.querySelector('[data-ha4="training-active-route"]')) return;
     if (!root.hasAttribute("data-ha4-training-scope")) root.setAttribute("data-ha4-training-scope", "");
@@ -228,5 +338,5 @@
     else if (grantComponents.has(name)) grant(instance, root, translate, dependencies, readThrough);
   }
 
-  globalThis.hakoAfTrainingRoutesMain = { read, accepts: name => matingComponents.has(name) || grantComponents.has(name) || name === "BaseModal" };
+  globalThis.hakoAfTrainingRoutesMain = { read, readMonster, legacyMating, accepts: name => matingComponents.has(name) || grantComponents.has(name) };
 })();

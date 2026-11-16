@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "はこホム AF Lv4000予測",
-  "version": "3.0.17",
+  "version": "3.0.19",
   "description": "AFの現在値とLv4000予測値を並べて表示し、読み込まれた一覧を絞り込みます。",
   "permissions": ["storage", "downloads"],
   "host_permissions": ["https://arkhomu.com/*"],
@@ -13,7 +13,7 @@
   }, {
     "matches": ["https://arkhomu.com/*"],
     "all_frames": true,
-    "js": ["frame-context.js", "feature-names.js", "market-snapshot.js", "forecast.js", "artifact-effects.js", "list-rules.js", "hidden-titles.js", "extras-main.js", "party-share-main.js", "training-routes-main.js", "gacha-sets.js", "read-af.js"],
+    "js": ["frame-context.js", "feature-names.js", "market-snapshot.js", "forecast.js", "artifact-effects.js", "list-rules.js", "hidden-titles.js", "extras-main.js", "party-share-main.js", "training-sources-main.js", "training-routes-main.js", "gacha-sets.js", "read-af.js"],
     "run_at": "document_start",
     "world": "MAIN"
   }, {

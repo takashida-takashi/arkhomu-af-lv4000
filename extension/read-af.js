@@ -523,6 +523,7 @@
     const app = root?.__vue_app__;
     if (!root?._vnode) return;
     const stores = app?.config?.globalProperties?.$pinia?._s;
+    if (/^\/(?:f\/)?mating(?:\/|$)/.test(location.pathname)) trainingRoutes?.legacyMating();
     const translate = key => app?.config?.globalProperties?.$t?.(key) ?? key;
     let chatReplies;
     const getChatReplies = () => chatReplies ??= extras.indexChatReplies(stores?.get("chat"));
@@ -574,7 +575,8 @@
       const el = vnode.el ?? instance?.subTree?.el;
       if (trainingRoutes?.accepts(name)) trainingRoutes.read(name, instance, props, el, translate, dependencies, readThrough);
       if (name === "FlexMonsterDetail" || name === "MonsterDetailPanel") {
-        partyShare?.bindMember(name, props, vnode, stores?.get("userMonsters")?.monsters, translate);
+        const target = partyShare?.bindMember(name, props, vnode, stores?.get("userMonsters")?.monsters, translate);
+        trainingRoutes?.readMonster(target, app, stores?.get("userProfile"));
       }
       const scope = tradeDialogs.has(name) ? (tradeCategory ? "trade" : null)
         : name === "FlexArtifactDecompose" ? "decompose" : name === "FlexArtifactEnhance" ? "enhance"
