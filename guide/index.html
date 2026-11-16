@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="はこホム拡張の画像付きガイド。導入、AF、探索、通知、編成共有、ホムンクルス育成の手順。">
+  <meta name="description" content="はこホム拡張の画像付きガイド。導入、AF、探索、遠征、通知、編成共有、ホムンクルス育成の手順。">
   <title>使い方｜はこホム拡張</title>
   <link rel="stylesheet" href="./guide.css">
 </head>
@@ -16,7 +16,7 @@
       <h1>はこホム拡張の使い方</h1>
       <p>やりたいことを選ぶと、ボタンの位置と操作の順番が分かります。ゲーム画面の画像は押すと拡大でき、原寸でも開けます。</p>
       <nav aria-label="目次">
-        <a href="#setup">導入・更新</a><a href="#settings">拡張設定</a><a href="#af">AF強化後予測値表示</a><a href="#explore">探索結果の見やすさ向上</a><a href="#training">編成共有・育成ルート</a><a href="#mating">合成操作性向上</a><a href="#notices">通知項目追加</a><a href="#gacha">AFガチャ周辺の機能追加</a><a href="#other">その他</a>
+        <a href="#setup">導入・更新</a><a href="#settings">拡張設定</a><a href="#af">AF強化後予測値表示</a><a href="#explore">探索結果の見やすさ向上</a><a href="#expedition">拡張遠征</a><a href="#training">編成共有・育成ルート</a><a href="#mating">合成操作性向上</a><a href="#notices">通知項目追加</a><a href="#gacha">AFガチャ周辺の機能追加</a><a href="#other">その他</a>
       </nav>
     </header>
 
@@ -59,6 +59,23 @@
         <figure data-shot="explore-stats"></figure>
       </div>
       <p class="hint">表示優先度・ページの割り当て・一致枠の色は「拡張設定 → 拡張探索結果」で変更できます。統計は通常とクローバー有効を横並びで比較でき、狭い画面では「集計対象」から切り替えます。編成変更後は「統計をリセット」で集計を始め直せます。</p>
+    </section>
+
+    <section id="expedition" aria-labelledby="expedition-title">
+      <h2 id="expedition-title">拡張遠征</h2>
+      <p>「拡張設定」で「拡張遠征」をオンにし、ホームの「遠征」を開きます。遠征中は「遠征画面を開く」から次の準備に進めます。</p>
+      <figure data-shot="expedition-open"></figure>
+      <figure data-shot="expedition-members"></figure>
+      <p class="hint">準備はこのブラウザーに下書きとして保存されます。「遠征状況に戻る」で現在の進行状況に切り替えられます。報酬回収後に「下書きを反映」を押し、標準の画面で出発します。</p>
+
+      <h3>弁当の配分を計算する</h3>
+      <div class="pair">
+        <figure data-shot="expedition-plan"></figure>
+        <figure data-shot="expedition-weights"></figure>
+      </div>
+      <p class="hint">「くり返しも含める」をオンにすると、指定時間内に収まる回数も計算します。出発前の標準の確認画面で、計算結果と同じ回数を選びます。</p>
+      <figure data-shot="expedition-food"></figure>
+      <p class="hint">食材の除外は次回以降も保存され、配分計算に適用されます。除外した食材も手動で弁当に入れられます。</p>
     </section>
 
     <section id="training" aria-labelledby="training-title">

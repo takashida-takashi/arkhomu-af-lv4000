@@ -373,7 +373,7 @@
       if (previous?.phase === phase) return;
       previous?.element.remove();
       const element = node("div", "expedition-preparation-controls");
-      const trigger = button(phase === "editing" ? "遠征状況に戻る" : phase === "ready" ? "下書きを反映" : "次の遠征を準備");
+      const trigger = button(phase === "editing" ? "遠征状況に戻る" : phase === "ready" ? "下書きを反映" : "遠征画面を開く");
       const status = node("span", "expedition-message", phase === "editing" ? "次の遠征を準備中 · 出発は報酬回収後" : "");
       status.setAttribute("role", "status");
       trigger.addEventListener("click", () => anchor.dispatchEvent(new CustomEvent(phase === "ready"

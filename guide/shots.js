@@ -25,6 +25,31 @@ const screenshots = {
     title: "探索統計の読み方",
     steps: [[49, 24, "「今回」「直近30日」「累計」を比較"], [26, 56, "1ストックあたりのAF・経験値・ゴールドと勝率を確認"], [84, 93, "編成を変えたら必要に応じて「統計をリセット」"]]
   },
+  "expedition-open": {
+    title: "遠征中に次の遠征画面を開く",
+    filename: "expedition-open.jpg",
+    steps: [[17, 86, "遠征の進行状況で「遠征画面を開く」を押す"]]
+  },
+  "expedition-members": {
+    title: "次の遠征メンバーを選ぶ",
+    filename: "expedition-members.jpg",
+    steps: [[27, 22, "所持ホムンクルスから次のメンバーを選ぶ"], [84, 96, "「次へ：弁当を選ぶ」を押す"]]
+  },
+  "expedition-plan": {
+    title: "配分を計算して弁当欄に入れる",
+    filename: "expedition-plan.jpg",
+    steps: [[78, 9, "比較方法と制限時間を設定する"], [32, 44, "くり返しを含めるか選び、「配分を計算」を押す"], [41, 93, "1体あたりの上昇量・時間・回数を確認し、「この配分をセット」を押す"]]
+  },
+  "expedition-weights": {
+    title: "能力ごとの重みと最低値を設定する",
+    filename: "expedition-weights.jpg",
+    steps: [[76, 15, "比較方法で「カスタム（重み・最低値）」を選ぶ"], [39, 83, "例では体力を1、速度を1.5として比較"], [74, 38, "最低値には1体あたりの上昇量を指定する"]]
+  },
+  "expedition-food": {
+    title: "配分計算に使う食材を指定する",
+    filename: "expedition-food.jpg",
+    steps: [[30, 42, "「食材の使用条件」で最高レア度を設定する"], [27, 65, "除外候補を探す。並び順は標準一覧に合わせることもできる"], [78, 38, "カード右下の「除外」で計算対象から外す。「除外中」を押すと解除"]]
+  },
   "party-share": {
     title: "編成を共有する",
     steps: [[8, 33, "「共有リンクをコピー」を押す"], [27, 33, "「画像を保存」なら1枚の画像で渡せる"]]
@@ -73,12 +98,12 @@ const screenshots = {
 
 function renderShot(figure) {
   const id = figure.dataset.shot;
-  const { title, steps } = screenshots[id];
+  const { title, steps, filename = id + ".png" } = screenshots[id];
   const heading = document.createElement("h3");
   heading.textContent = title;
   const screen = document.createElement("a");
   screen.className = "screen";
-  screen.href = "./images/" + id + ".png";
+  screen.href = "./images/" + filename;
   screen.target = "_blank";
   screen.rel = "noopener";
   screen.setAttribute("aria-label", title + "の画像を拡大");
