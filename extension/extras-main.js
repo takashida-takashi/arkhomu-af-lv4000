@@ -11,6 +11,8 @@
   let midnightTimer;
   const dropCache = new WeakMap();
   const exploreCounts = new WeakMap();
+  const exploreStarts = new Map();
+  const exploreElapsed = new WeakMap();
   let homeSignature;
   let nextHomeUpdate;
   let reportOwner;
@@ -267,6 +269,7 @@
 
   document.addEventListener(settingsEvent, event => {
     try { options = JSON.parse(event.detail); } catch { return; }
+    if (!options.exploreAnalysis) exploreStarts.clear();
     if (!options.daily) {
       disposeProfile?.();
       disposeProfile = profileStore = undefined;
@@ -478,6 +481,65 @@
     publish(event.target, "hako-af:explore-owner", owner == null ? null : String(owner));
   });
 
+  function exploreParty(value) {
+    const index = amountOf(value);
+    return Number.isSafeInteger(index) ? index : null;
+  }
+
+  function partyOfExploreButton(button, root) {
+    const label = button.closest(".fx-explore")?.getAttribute("aria-labelledby");
+    const party = exploreParty(label?.match(/^fx-explore-title-(\d+)$/)?.[1]);
+    if (party != null) return party;
+    // Classic home renders both responsive layouts with Vue keys named card-<partyIndex>.
+    const nodes = [root._vnode];
+    while (nodes.length) {
+      const vnode = nodes.pop();
+      if (!vnode || vnode.el?.nodeType === 1 && !vnode.el.contains(button)) continue;
+      const classic = typeof vnode.key === "string" && /^card-(\d+)$/.exec(vnode.key);
+      if (classic && vnode.el?.contains(button)) return Number(classic[1]);
+      if (vnode.component?.type?.__name === "FlexExploreCard" && vnode.el?.contains(button)) {
+        return exploreParty(vnode.component.props.card?.partyIndex);
+      }
+      if (vnode.component) nodes.push(vnode.component.subTree);
+      else if (vnode.suspense) nodes.push(vnode.suspense.activeBranch);
+      else if (Array.isArray(vnode.children)) nodes.push(...vnode.children);
+    }
+    return null;
+  }
+
+  document.addEventListener("click", event => {
+    if (!options.exploreAnalysis || !event.isTrusted || event.defaultPrevented) return;
+    const route = location.pathname.replace(/^\/f(?=\/|$)/, "").replace(/\/$/, "");
+    if (route && route !== "/home" && route !== "/explore-result") return;
+    const button = event.target instanceof Element && event.target.closest("button");
+    const root = document.getElementById("__nuxt");
+    if (!button || !root?.contains(button) || button.disabled || button.getAttribute("aria-disabled") === "true" ||
+        button.getAttribute("aria-busy") === "true") return;
+    const caption = (button.getAttribute("aria-label") || button.textContent).trim();
+    const repeat = route === "/explore-result";
+    if (!(repeat ? /^再び探索(?:（[^）]*）)?$/ : /^探索開始(?:\s*×\s*[\d,]+)?$/).test(caption)) return;
+    const at = Date.now();
+    const tick = performance.now();
+    const stores = appProperties()?.$pinia?._s;
+    const saved = stores?.get("exploreResult")?.current;
+    const owner = stores?.get("userProfile")?.profile?.id;
+    const party = repeat ? exploreParty(saved?.partyIndex ?? new URLSearchParams(location.search).get("party"))
+      : partyOfExploreButton(button, root);
+    if (owner == null || party == null) return;
+    exploreStarts.set(party, { at, tick, owner, previous: saved?.result, runId: saved?.result?.resultRunId });
+  }, true);
+
+  function measureExploreTime(anchor, result, party, owner, at) {
+    if (exploreElapsed.has(result)) return exploreElapsed.get(result);
+    const start = exploreStarts.get(party);
+    if (!start || start.owner !== owner || start.previous === result ||
+        (start.runId && start.runId === result.resultRunId) || (at && at < start.at) || !anchor.getClientRects().length) return;
+    const milliseconds = Math.round(performance.now() - start.tick);
+    exploreStarts.delete(party);
+    exploreElapsed.set(result, milliseconds);
+    return milliseconds;
+  }
+
   function readExploreAnalysis(anchor, props, drops, stores, config, hasDrops) {
     if (!options.exploreAnalysis || new URLSearchParams(location.search).get("return") === "guild") return;
     const saved = stores?.get("exploreResult")?.current;
@@ -488,6 +550,10 @@
     const mode = guild ? "guild" : "normal";
     const owner = stores?.get("userProfile")?.profile?.id ?? saved?.ownerUserId;
     const at = saved?.result === result && amountOf(saved.savedAt);
+    const party = exploreParty(current.partyIndex ?? (saved?.result === result ? saved.partyIndex : null) ??
+      new URLSearchParams(location.search).get("party"));
+    const elapsedMs = current.ownerUserId == null || String(current.ownerUserId) === String(owner)
+      ? measureExploreTime(anchor, result, party, owner, at) : undefined;
     const id = typeof result.resultRunId === "string" && result.resultRunId ||
       (at && Number.isInteger(saved.partyIndex) ? `saved:${saved.partyIndex}:${at}` : null);
     const identity = !guild && at && id && owner && (saved.ownerUserId == null || String(saved.ownerUserId) === String(owner))
@@ -526,13 +592,14 @@
       af = undefined;
     }
     if (!Array.isArray(items) || exp == null || gold == null || !(used > 0)) {
-      if (guild) publish(anchor, "hako-af:explore-analysis", {
-        mode, identity, hasDrops, current: battleResults, missingGuildRewards: result.guildRewardScope === "total" && !Array.isArray(items)
+      if (guild || elapsedMs != null) publish(anchor, "hako-af:explore-analysis", {
+        mode, identity, hasDrops, elapsedMs, current: battleResults,
+        missingGuildRewards: result.guildRewardScope === "total" && !Array.isArray(items)
       });
       return;
     }
     publish(anchor, "hako-af:explore-analysis", {
-      mode, identity, hasDrops, current: { stocks: used, af: af ?? countExploreArtifacts(items), exp, gold, ...battleResults },
+      mode, identity, hasDrops, elapsedMs, current: { stocks: used, af: af ?? countExploreArtifacts(items), exp, gold, ...battleResults },
       estimated: normalStockEstimate > 0,
       guildBattlesPerStock: guildStockEstimate > 0 ? battlesPerStock : undefined
     });

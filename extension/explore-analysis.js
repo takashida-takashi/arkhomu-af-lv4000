@@ -7,8 +7,17 @@
   const metrics = ["stocks", "af", "exp", "gold"];
   const integer = new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 2 });
   const average = new Intl.NumberFormat("ja-JP", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const secondsFormat = new Intl.NumberFormat("ja-JP", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const empty = () => ({ stocks: 0, af: 0, exp: 0, gold: 0, count: 0, wins: 0, losses: 0, battleSamples: 0 });
   const hasBattles = data => Number.isSafeInteger(data?.wins) && Number.isSafeInteger(data?.losses);
+
+  function formatElapsed(ms) {
+    if (!Number.isSafeInteger(ms) || ms < 0) return "—";
+    const tenths = Math.round(ms / 100);
+    const minutes = Math.floor(tenths / 600);
+    const seconds = secondsFormat.format(tenths % 600 / 10) + " 秒";
+    return minutes ? `${minutes} 分 ${seconds}` : seconds;
+  }
 
   function add(target, run) {
     for (const metric of metrics) target[metric] += run[metric];
@@ -126,7 +135,7 @@
       }
       const body = table.createTBody();
       const columns = guild ? 1 : 3;
-      const cells = ["ストック", "AF / 1ストック", "経験値 / 1ストック", "ゴールド / 1ストック", "勝率"].map(label => {
+      const rows = ["探索時間", "ストック", "AF / 1ストック", "経験値 / 1ストック", "ゴールド / 1ストック", "勝率"].map(label => {
         const row = body.insertRow();
         const heading = document.createElement("th");
         heading.scope = "row";
@@ -134,12 +143,15 @@
         row.append(heading);
         return Array.from({ length: columns }, () => row.insertCell());
       });
+      const [elapsedCells, ...cells] = rows;
+      elapsedCells[0].title = "探索のボタンを押してから探索サマリが表示されるまで";
+      for (const cell of elapsedCells.slice(1)) cell.textContent = "—";
       const winCells = cells.pop();
       const note = node("p", "explore-analysis-note");
       note.setAttribute("role", "status");
       const footer = node("div", "explore-analysis-footer");
       footer.append(note);
-      const active = { root, cells, winCells, note, mode };
+      const active = { root, elapsed: elapsedCells[0], cells, winCells, note, mode };
       if (!guild) {
         active.reset = resetButton(footer, "統計をリセット", () => active.data.identity, note);
         active.reset.disabled = true;
@@ -186,7 +198,7 @@
         note("今回の結果を端末の履歴に紐づけられませんでした");
         return;
       }
-      updateHistory(identity, current).then(({ recent, all }) => {
+      updateHistory(identity, current?.stocks > 0 ? current : null).then(({ recent, all }) => {
         if (request !== revision) return;
         render(active, 1, recent);
         render(active, 2, all);
@@ -260,6 +272,7 @@
       revision++;
       panel.data = data;
       updateDisclosure(panel, data.hasDrops);
+      panel.elapsed.textContent = formatElapsed(data.elapsedMs);
       render(panel, 0, data.current);
       if (data.mode === "guild") {
         const unavailable = data.missingGuildRewards ? "挑戦全体の報酬が表示されています。今回分の内訳を取得できませんでした。"
