@@ -277,7 +277,8 @@
       if (data.mode === "guild") {
         const unavailable = data.missingGuildRewards ? "挑戦全体の報酬が表示されています。今回分の内訳を取得できませんでした。"
           : "今回の戦闘回数や報酬の内訳を確認できなかったため、ストックあたりの獲得量を表示できません。";
-        panel.note.textContent = data.current?.stocks > 0 ? `${data.guildBattlesPerStock}戦を1ストックとして換算` : unavailable;
+        panel.note.textContent = data.timingOnlyNote ||
+          (data.current?.stocks > 0 ? `${data.guildBattlesPerStock}戦を1ストックとして換算` : unavailable);
         return;
       }
       panel.method = data.estimated ? "戦闘回数からストックを換算" : "";

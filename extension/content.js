@@ -39,6 +39,10 @@
   const isOwnProfile = () => /^\/profile\/?$/.test(normalRoute());
   let finishEstimateScan;
   let exploreAnalysis;
+  let partyShare;
+  let trainingRoutes;
+  const partyRoots = ".fx-party__panel,.fx-hall-detail,[data-party-pointer-slot],.fx-mdetail__hero,.fx-mdetail__head,.detail-pc-fonts,[data-ha4-share-member]";
+  const trainingRoots = ".fx-mating,.fx-mati,.fx-tgrant,.fx-tgflow,[data-ha4-training-scope],[data-inherit-row]";
   let marketWatch;
   const modes = new Map();
   const ownedStats = new Map();
@@ -878,14 +882,17 @@
     classicUI = [];
     gridReports = new WeakMap();
     extras?.beforeRead();
+    const trainingData = trainingRoutes?.update();
     marketWatch?.beforeRead();
     if (extras?.enabled("daily")) document.dispatchEvent(new Event("hako-af:read-balance"));
     if (extras?.enabled("home")) document.dispatchEvent(new Event("hako-af:read-home"));
-    if (["/market", "/explore-result", "/guild", "/guild-raid-result", "/base", "/items", "/slot"].includes(normalRoute()) ||
+    if (["/market", "/explore-result", "/guild", "/guild-raid-result", "/base", "/items", "/slot", "/mating", "/monsters"].includes(normalRoute()) ||
         (isOwnProfile() && document.querySelector(titleSearch)) || document.querySelector(extrasRoots) ||
-        document.querySelector(`${FLEX_LISTS},${CLASSIC_GRID},${MARKET_SORT},[data-base-modal-root],${TRADE_ROOTS}`)) {
+        document.querySelector(`${FLEX_LISTS},${CLASSIC_GRID},${MARKET_SORT},[data-base-modal-root],${TRADE_ROOTS},${partyRoots},${trainingRoots}`)) {
       document.dispatchEvent(new Event("hako-af:read-list"));
     }
+    partyShare?.scan();
+    trainingRoutes?.scan(trainingData);
     finishEstimateScan?.();
     exploreAnalysis?.finishScan();
     marketWatch?.afterRead();
@@ -1047,6 +1054,10 @@
   document.addEventListener("input", nativeSortChanged, true);
   document.addEventListener("change", nativeSortChanged, true);
   document.addEventListener("hako-af:grid-rendered", requestScan);
+  document.addEventListener("click", event => {
+    if (event.target instanceof Element && (event.target.closest(trainingRoots) ||
+        ["/mating", "/monsters"].includes(normalRoute()) && event.target.closest("#__nuxt"))) requestScan();
+  }, true);
   document.addEventListener("change", event => {
     if (event.target instanceof Element && event.target.matches(MARKET_SORT)) requestScan();
   }, true);
@@ -1054,7 +1065,8 @@
   new MutationObserver(records => {
     for (const record of records) {
       const target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
-      if (target?.closest(OWN)) continue;
+      const slotPrompt = target?.closest('.fx-slot-machine__stage [aria-live="polite"]') && normalRoute() === "/slot";
+      if (target?.closest(OWN) && !slotPrompt) continue;
       if (record.type === "characterData" && target?.matches(AUCTION_CLOCK)) continue;
       const changed = [...record.addedNodes, ...record.removedNodes];
       const gameChanges = changed.filter(n => !(n.nodeType === 1 && n.matches(OWN)));
@@ -1082,10 +1094,10 @@
         }
         continue;
       }
-      const observed = `${ROOTS},${extrasRoots}`;
-      if (target?.closest(observed) || (isOwnProfile() && (target?.querySelector(titleSearch) ||
+      const observed = `${ROOTS},${extrasRoots},${partyRoots},${trainingRoots},#__nuxt footer`;
+      if (slotPrompt || target?.closest(observed) || (isOwnProfile() && (target?.querySelector(titleSearch) ||
           gameChanges.some(n => n.nodeType === 1 && (n.matches(titleSearch) || n.querySelector(titleSearch))))) ||
-          (["/explore-result", "/guild", "/guild-raid-result", "/base", "/items", "/slot"].includes(normalRoute()) && target?.closest("#__nuxt")) ||
+          (["/explore-result", "/guild", "/guild-raid-result", "/base", "/items", "/slot", "/mating", "/monsters"].includes(normalRoute()) && target?.closest("#__nuxt")) ||
           gameChanges.some(n => n.nodeType === 1 &&
         (n.matches(observed) || n.querySelector(observed)))) {
         requestScan();
@@ -1097,8 +1109,14 @@
     attributes: true, attributeFilter: ["style", "hidden", "aria-expanded", "aria-hidden", "aria-checked"]
   });
   exploreAnalysis = globalThis.hakoAfExploreAnalysis?.start(node, id => extras?.enabled(id));
+  trainingRoutes = globalThis.hakoAfTrainingRoutes?.start(node, () => extras?.enabled("trainingRoutes"), requestScan);
+  partyShare = globalThis.hakoAfPartyShare?.start(node, () => extras?.enabled("partyShare"), trainingRoutes?.openMember);
+  delete globalThis.hakoAfTrainingRoutes;
+  delete globalThis.hakoAfPartyShare;
   extras = extrasApi?.start({ node, requestScan, viewRule, toMetrics: dropMetrics, effectOption, makePanel,
     appendExploreReset: exploreAnalysis?.appendSettingsReset,
+    openPartyFile: partyShare?.openFile,
+    openTrainingRoutes: trainingRoutes?.open,
     listOptions: (items, state) => listOptions(items, null, conditionRows(state.root), "explore", null, state.sortKey) });
   finishEstimateScan = globalThis.hakoAfEnhanceEstimate?.start(node, id => extras?.enabled(id), requestScan);
   marketWatch = globalThis.hakoAfMarketWatch?.start(node, id => extras?.enabled(id), requestScan);

@@ -2,6 +2,7 @@
   "use strict";
 
   const { activeGroup } = globalThis.hakoAfListRules;
+  const slotHome = globalThis.hakoAfSlotHome;
 
   const features = {
     detail: "AF詳細の予測・コピー",
@@ -14,6 +15,10 @@
     hiddenTitles: "称号設定に未取得の隠し称号を表示",
     gacha: "AFガチャ・スーパーガチャの結果に性能を表示",
     skillPresets: "ホムンクルスのスキルプリセット",
+    partyShare: "編成共有",
+    trainingRoutes: "育成ルートの目印・優先表示・引き継ぎ",
+    slotBonus: "スロットに継続ストックと決戦情報を表示",
+    ...(slotHome ? { slotHome: "Homeでスロットを並行表示" } : {}),
     chat: "チャットの返信元へ移動",
     daily: "今日のゴールド・ポーション増減",
     home: "ホームの拡張通知"
@@ -54,6 +59,8 @@
   };
   const configKey = "hakoAf4000:settings";
   const autoUpdateKey = "hakoAf4000:autoUpdate";
+  const closedUpdateNoticeKey = "hakoAf4000:closed-update-notice";
+  const homeAlertsOpenKey = "hakoAf4000:home-alerts-open";
   const matchColors = [["red", "赤（既定）"], ["blue", "水色"], ["purple", "紫"], ["white", "白"], ["gold", "金"]];
   const alertsOffByDefault = new Set(["npc", "npcLimited", "npcMedal", "ark", "production", "colosseum",
     "slot:low", "slot:mid", "slot:high", "nation"]);
@@ -71,7 +78,8 @@
   function loadSettings() {
     const stored = get(configKey) ?? {};
     return {
-      features: Object.fromEntries(Object.keys(features).map(id => [id, stored.features?.[id] !== false])),
+      features: Object.fromEntries(Object.keys(features).map(id =>
+        [id, id === "slotHome" ? stored.features?.[id] === true : stored.features?.[id] !== false])),
       paging: ["standard", "all", "priority"].includes(stored.paging) ? stored.paging : "priority",
       candidates: ["mark", "first", "only"].includes(stored.candidates) ? stored.candidates : "first",
       matchColor: matchColors.some(([color]) => color === stored.matchColor) ? stored.matchColor : "red",
@@ -99,13 +107,19 @@
   const settingsControl = ".fx-topbar__settings,[data-ha4-settings-anchor]";
   const menuControl = 'button[title="メニュー"]';
 
-  function start({ node, requestScan, viewRule, toMetrics, listOptions, effectOption, makePanel, appendExploreReset }) {
+  function start({ node, requestScan, viewRule, toMetrics, listOptions, effectOption, makePanel, appendExploreReset, openPartyFile, openTrainingRoutes }) {
     const enabled = key => settings.features[key] !== false;
+    const refreshSlotHome = slotHome?.start(() => enabled("slotHome"));
+    const desktop = globalThis.hakoAfDesktopUpdates;
+    const version = desktop?.version ?? globalThis.hakoAfUserscriptVersion;
     let currentDrops = null;
     let previousDrops;
     let currentBalance = null;
     let explore;
     let settingsDialog;
+    let updateNotice;
+    let closedUpdateVersion = get(closedUpdateNoticeKey);
+    let gameBuild, requestedBuild;
     let nativeAlertState = new Set();
     let homeTimers = [];
     let homeChecked = new Set();
@@ -381,11 +395,10 @@
       header.append(title, close);
       dialog.append(header);
 
-      const desktop = globalThis.hakoAfDesktopUpdates;
-      const version = desktop?.version ?? globalThis.hakoAfUserscriptVersion;
       if (version) {
         const updates = subsection(dialog, "更新");
-        updates.append(node("p", "extra-note", "使用中のバージョン v" + version));
+        updates.dataset.ha4UpdateSettings = "";
+        updates.append(versionControl("使用中のバージョン v" + version, "extra-note"));
         if (desktop || globalThis.hakoAfUpdateManaged) {
           const autoUpdate = document.createElement("input");
           autoUpdate.type = "checkbox";
@@ -396,7 +409,7 @@
             document.dispatchEvent(new Event("hako-af:auto-update-changed"));
           });
           updates.append(node("p", "extra-note", desktop
-            ? "24時間に1回確認し、新しいZIPを取得します。展開したファイルを現在の拡張機能フォルダーに上書きし、拡張機能とはこホムのタブを再読み込みしてください。"
+            ? "24時間に1回確認し、新しいZIPを取得します。現在の拡張機能フォルダーに上書き展開したあと、はこホムのタブを再読み込みすると更新を反映します。"
             : "はこホムを表示している間に24時間に1回確認し、次にページが読み込まれるときに反映します。"));
         }
         if (desktop) {
@@ -418,6 +431,24 @@
       const functions = subsection(dialog, "機能のオン／オフ");
       for (const [id, name] of Object.entries(features)) {
         field(functions, name, "checkbox", settings.features[id], value => { settings.features[id] = value; });
+      }
+      if (openPartyFile) {
+        const party = subsection(dialog, "編成共有");
+        const load = makeButton("編成ファイルを開く");
+        load.addEventListener("click", () => {
+          dialog.close();
+          openPartyFile();
+        });
+        party.append(load);
+      }
+      if (openTrainingRoutes) {
+        const section = subsection(dialog, "育成ルート");
+        const edit = makeButton("育成ルートを開く");
+        edit.addEventListener("click", () => {
+          dialog.close();
+          openTrainingRoutes();
+        });
+        section.append(edit);
       }
       const drops = subsection(dialog, "探索結果");
       appendExploreReset?.(drops);
@@ -448,10 +479,12 @@
       dialog.addEventListener("close", () => {
         dialog.remove();
         if (settingsDialog === dialog) settingsDialog = undefined;
+        placeUpdateNotice();
         requestScan();
       });
       document.body.append(dialog);
       dialog.showModal();
+      placeUpdateNotice();
       requestScan();
     }
 
@@ -688,9 +721,15 @@
         return;
       }
       if (!homePanel) {
-        homePanel = node("details", "home-alerts");
-        homePanel.open = true;
-        homePanel.append(node("summary", "extra-heading", "拡張通知"), node("ul", "extra-alert-list"));
+        const panel = homePanel = node("details", "home-alerts");
+        let lastOpen = get(homeAlertsOpenKey) !== false;
+        panel.open = lastOpen;
+        panel.addEventListener("toggle", () => {
+          if (panel.open === lastOpen) return;
+          lastOpen = panel.open;
+          save(homeAlertsOpenKey, lastOpen);
+        });
+        panel.append(node("summary", "extra-heading", "拡張通知"), node("ul", "extra-alert-list"));
       }
       if (homePanel.parentElement !== anchor) anchor.prepend(homePanel);
       const messages = new Map(rows.map(({ id, message, end, to, reached }) => {
@@ -729,9 +768,118 @@
       if (anchor.nextElementSibling !== settingButton) anchor.after(settingButton);
     }
 
+    function refreshVersionControl(control) {
+      const { text, busy, error } = desktop.status();
+      const trigger = control.querySelector("button");
+      const status = control.querySelector('[data-ha4="update-version-status"]');
+      trigger.disabled = busy;
+      status.textContent = text;
+      status.toggleAttribute("data-error", error);
+    }
+
+    function versionControl(caption, kind) {
+      if (!desktop?.checkNow) return node("span", kind, caption);
+      const control = node("span", kind);
+      control.dataset.ha4VersionCheck = "";
+      const trigger = makeButton(caption, "update-version-button");
+      trigger.title = "配布版の更新を確認する";
+      trigger.addEventListener("click", desktop.checkNow);
+      const status = node("small", "update-version-status");
+      status.setAttribute("role", "status");
+      control.append(trigger, status);
+      refreshVersionControl(control);
+      return control;
+    }
+
+    document.addEventListener("hako-af:desktop-update-status", () => {
+      for (const control of document.querySelectorAll("[data-ha4-version-check]")) refreshVersionControl(control);
+    });
+
+    function makeUpdateNotice(available) {
+      const notice = node("aside", "update-notice");
+      notice.dataset.version = available;
+      notice.setAttribute("aria-label", "拡張機能の更新案内");
+      const head = node("div", "update-notice-head");
+      const close = makeButton("×", "update-notice-close");
+      close.setAttribute("aria-label", "更新案内を閉じる");
+      close.addEventListener("click", () => {
+        closedUpdateVersion = available;
+        save(closedUpdateNoticeKey, available);
+        placeUpdateNotice();
+      });
+      head.append(node("strong", "update-notice-title", `拡張 v${available} に更新できます`), close);
+      const status = node("p", "update-notice-status", "更新ZIPを取得済みです。");
+      status.setAttribute("role", "status");
+
+      const steps = node("details", "update-notice-details");
+      const instructions = node("ol", "update-notice-steps");
+      instructions.append(node("li", "update-notice-step", "ZIPを現在の拡張機能フォルダーに上書き展開します。"),
+        node("li", "update-notice-step", "はこホムのタブを再読み込みします。"));
+      const saveZip = makeButton("ZIPを再保存");
+      saveZip.addEventListener("click", desktop.saveArchive);
+      steps.append(node("summary", "update-notice-summary", "更新手順"), instructions,
+        node("p", "update-notice-note", "自動更新がオフの場合は、先にChromeの拡張機能画面で拡張機能を再読み込みしてください。"), saveZip);
+      notice.append(head, status, steps);
+      return notice;
+    }
+
+    function placeUpdateNotice() {
+      const available = desktop?.archiveVersion();
+      if (!available || available === closedUpdateVersion) {
+        updateNotice?.remove();
+        updateNotice = null;
+        return;
+      }
+      if (updateNotice?.dataset.version !== available) {
+        updateNotice?.remove();
+        updateNotice = makeUpdateNotice(available);
+      }
+      const settingsSection = settingsDialog?.open && settingsDialog.querySelector("[data-ha4-update-settings]");
+      const owner = settingsSection || document.body;
+      if (owner && updateNotice.parentElement !== owner) owner.append(updateNotice);
+    }
+
+    if (desktop) {
+      document.addEventListener("hako-af:desktop-update-archive", placeUpdateNotice);
+      window.addEventListener("storage", event => {
+        if (event.key !== closedUpdateNoticeKey && event.key !== null) return;
+        closedUpdateVersion = get(closedUpdateNoticeKey);
+        placeUpdateNotice();
+      });
+    }
+
+    function placeVersions() {
+      for (const footer of document.querySelectorAll("#__nuxt footer")) {
+        const previous = footer.querySelector('[data-ha4="footer-versions"]');
+        if (!footer.querySelector('a[href="/terms"]') || !footer.querySelector('a[href="/privacy"]')) {
+          previous?.remove();
+          continue;
+        }
+        if (!requestedBuild) {
+          requestedBuild = true;
+          document.dispatchEvent(new Event("hako-af:read-game-build"));
+        }
+        const list = footer.querySelector(".fx-hub-foot__links");
+        const owner = list ?? footer;
+        if ((!version && !gameBuild) || previous?.parentElement === owner) continue;
+        previous?.remove();
+        const label = node(list ? "li" : "span", "footer-versions");
+        if (version) label.append(versionControl(`拡張 v${version}`, "footer-extension-version"));
+        if (gameBuild) {
+          const build = node("span", "footer-game-build", `本体ビルド ${gameBuild.slice(0, 8)}`);
+          build.title = `本体ビルド ${gameBuild}`;
+          label.append(build);
+        }
+        owner.append(label);
+      }
+    }
+
     function receive(event, callback) {
       try { callback(JSON.parse(event.detail)); } catch { /* Ignore data that could not be decoded. */ }
     }
+    document.addEventListener("hako-af:game-build", event => receive(event, build => {
+      if (typeof build === "string") gameBuild = build;
+    }));
     document.addEventListener("hako-af:drops", event => {
       if (previousDrops?.anchor === event.target && previousDrops.payload === event.detail) {
         currentDrops = previousDrops;
@@ -808,10 +956,13 @@
         readItems();
       },
       refresh() {
+        refreshSlotHome?.();
         if (chatPreview && (!chatPreviewQuote.isConnected || chatPreviewQuote.nextElementSibling !== chatPreview)) {
           closeChatPreview();
         }
         placeSettings();
+        placeVersions();
+        placeUpdateNotice();
         updateItemWatch();
         updateSkillPresets();
         updateExplore();

@@ -27,6 +27,8 @@ node --check dist/arkhomu-af-lv4000.user.js
 
 メンテナーが `main` にマージすると、GitHub Actionsが配布番号を更新し、PC用ZIP、Android用Tampermonkeyスクリプト、iPhone・iPad用Userscriptsスクリプトをビルドします。ビルドが通ると3つのファイルと配布ページをまとめて公開します。番号は `main` のコミット履歴から決まり、同じコミットを再実行すると同じ番号になります。
 
+PCだけを更新するときは、`main` に入るコミットの件名の末尾に `[pc-only]` を付けます。この場合もPC用ZIPと配布ページを更新し、スマホ用ファイルは直前の通常配布と同じ内容を公開します。
+
 公開結果は [Actions](https://github.com/takashida-takashi/arkhomu-af-lv4000/actions/workflows/check.yml) で確認できます。再実行する際は、最新の `main` で「Run workflow」を選びます。
 
 手元で配布用のファイルを確認する場合は `node scripts/build-userscripts.cjs --pages` を実行します。Gitの全履歴とZIP作成コマンド（Windowsでは標準の `tar.exe`、macOS・Linuxでは `zip`）を使い、`dist/pages/` に出力します。

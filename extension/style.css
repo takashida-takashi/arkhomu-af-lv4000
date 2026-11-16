@@ -495,6 +495,68 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
 }
 [data-ha4="settings-launch"], [data-ha4="extra-button"] { cursor: pointer; white-space: nowrap; }
 [data-ha4="extra-button"][aria-pressed="true"] { background: #563480; border-color: #c0a0ea; }
+[data-ha4="footer-versions"] {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: .25em .75em;
+  font-size: .75rem;
+}
+[data-ha4="footer-versions"] > span { white-space: nowrap; }
+[data-ha4-version-check] { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: .25em .55em; }
+[data-ha4="update-version-button"] {
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: .15em;
+  cursor: pointer;
+}
+[data-ha4="update-version-button"]:is(:hover,:focus-visible) { color: #f0d9ff; }
+[data-ha4="update-version-button"]:disabled { cursor: wait; }
+[data-ha4="update-version-status"] { color: #a8f3df; font-size: .85em; }
+[data-ha4="update-version-status"][data-error] { color: #ffaaaa; }
+[data-ha4="update-version-status"]:empty { display: none; }
+[data-ha4="update-notice"] {
+  position: fixed;
+  inset-inline-end: max(1rem, env(safe-area-inset-right));
+  inset-block-end: max(1rem, env(safe-area-inset-bottom));
+  z-index: 100;
+  box-sizing: border-box;
+  width: min(21rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  padding: .7rem .85rem;
+  border: 1px solid #795ba0;
+  border-radius: .65rem;
+  background: #261d34;
+  color: #f7edff;
+  box-shadow: 0 .45rem 1.4rem #0b071694;
+  font: .85rem/1.45 system-ui, sans-serif;
+}
+[data-ha4-update-settings] > [data-ha4="update-notice"] {
+  position: static;
+  width: auto;
+  max-height: none;
+  margin-block-start: .6rem;
+  box-shadow: none;
+}
+[data-ha4="update-notice-head"] { display: flex; justify-content: space-between; align-items: center; gap: .65rem; }
+[data-ha4="update-notice-close"] {
+  flex: none;
+  width: 1.65rem;
+  height: 1.65rem;
+  border: 0;
+  border-radius: .3rem;
+  background: transparent;
+  color: inherit;
+  font-size: 1.15rem;
+  cursor: pointer;
+}
+[data-ha4="update-notice-close"]:is(:hover,:focus-visible) { background: #ffffff1c; }
+[data-ha4="update-notice-status"] { margin: .1rem 0 .4rem; color: #dbceea; }
+[data-ha4="update-notice-summary"] { color: #ead2ff; cursor: pointer; }
+[data-ha4="update-notice-steps"] { margin: .4rem 0; padding-inline-start: 1.3rem; list-style: decimal; }
+[data-ha4="update-notice-note"] { margin: .4rem 0; color: #dbceea; font-size: .8em; }
 [data-ha4="settings-launch"][data-ha4-placement] {
   flex: none;
   color: inherit;
@@ -518,7 +580,7 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
   font-size: .75rem;
   padding-inline: .3rem;
 }
-:is([data-ha4="settings"], [data-ha4="explore-match-dialog"]) {
+:is([data-ha4="settings"], [data-ha4="explore-match-dialog"], [data-ha4="party-share"], [data-ha4="training-routes"]) {
   inset: 0;
   box-sizing: border-box;
   width: min(630px, calc(100vw - 24px));
@@ -533,7 +595,116 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
   font: 14px/1.45 system-ui, sans-serif;
   color-scheme: dark;
 }
-:is([data-ha4="settings"], [data-ha4="explore-match-dialog"])::backdrop { background: #090610aa; }
+:is([data-ha4="settings"], [data-ha4="explore-match-dialog"], [data-ha4="party-share"], [data-ha4="training-routes"])::backdrop { background: #090610aa; }
+[data-ha4="party-share"] { width: min(1050px, calc(100vw - 20px)); }
+[data-ha4="party-share"]:has([data-ha4="party-individual"]) { width: min(500px, calc(100vw - 20px)); }
+[data-ha4="party-member-actions"] { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .6rem; }
+.ha4-hall-share { justify-self: start; align-self: start; }
+[data-ha4="training-form"] { display: grid; gap: .6rem; padding: .7rem .9rem; }
+[data-ha4="training-field"] { display: grid; gap: .2rem; min-width: 0; }
+[data-ha4="training-skill-fields"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
+[data-ha4="training-input"], [data-ha4="training-active-route"] select {
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: .35rem .55rem;
+  border: 1px solid #705697;
+  border-radius: .35rem;
+  background: #171221;
+  color: #f7edff;
+  font: inherit;
+}
+[data-ha4="training-form"] [data-ha4="party-actions"] { padding: 0; }
+[data-ha4="training-form"] [data-ha4="extra-note"] { margin: 0; }
+[data-ha4="training-count"] { color: #d1bedc; font-size: .8rem; }
+[data-ha4="training-detail"] {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .25rem .5rem;
+  margin-block-start: .35rem;
+  font-size: .82rem;
+}
+[data-ha4="training-detail-route"] { color: #a8f3df; overflow-wrap: anywhere; }
+[data-ha4="training-detail-route"]:empty { display: none; }
+textarea[data-ha4="training-input"] { width: 100%; resize: vertical; }
+[data-ha4="training-active-route"] {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .35rem;
+  margin: .35rem 0;
+  color: #a8f3df;
+  font-size: .82rem;
+  font-weight: 700;
+}
+[data-ha4-training-needed] {
+  outline: 2px solid #72f1cb !important;
+  outline-offset: -2px;
+}
+[data-ha4-training-inherit] { box-shadow: inset 4px 0 #72f1cb; }
+[data-ha4-training-inherit] :is(.fx-mati__name, span.font-bold.break-words)::after {
+  content: "育成ルート";
+  display: inline-block;
+  margin-inline-start: .45em;
+  padding-inline: .35em;
+  border-radius: .25rem;
+  background: #143e36;
+  color: #b8ffe9;
+  font-size: .75em;
+  font-weight: 700;
+  white-space: nowrap;
+}
+@media (max-width: 480px) {
+  [data-ha4="training-skill-fields"] { grid-template-columns: minmax(0, 1fr); }
+}
+[data-ha4="party-actions"] { display: flex; flex-wrap: wrap; gap: .4rem; padding: .65rem .9rem 0; }
+[data-ha4="party-status"] { margin: .5rem .9rem; color: #e1d4ec; }
+[data-ha4="party-status"]:empty { display: none; }
+[data-ha4="party-link"] { width: 100%; padding: .3rem; background: #171320; color: #fff; border: 1px solid #6f5787; }
+[data-ha4="party-file"] { display: grid; gap: .4rem; max-width: 100%; }
+[data-ha4="party-file"] input { max-width: 100%; }
+[data-ha4="party-overview"] { display: grid; gap: .9rem; padding: .7rem .9rem .9rem; }
+[data-ha4="party-rank-heading"] { margin: 0 0 .4rem; color: #e9ccfa; font-size: .9rem; font-weight: 700; }
+[data-ha4="party-grid"] { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .55rem; }
+[data-ha4="party-card"] { min-width: 0; padding: .6rem; border: 1px solid #534264; border-radius: .5rem; background: #21192b; }
+[data-ha4="party-identity"] { display: flex; align-items: center; gap: .5rem; }
+[data-ha4="party-portrait"] { flex: none; width: 36px; height: 36px; object-fit: contain; }
+[data-ha4="party-monster"] { margin: 0; font-size: .92rem; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+[data-ha4="party-level"], [data-ha4="party-empty"] { color: #ddcee8; font-size: .79rem; }
+[data-ha4="party-attack"] { margin: .35rem 0; font-size: .8rem; overflow-wrap: anywhere; }
+[data-ha4="party-bonus"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .15rem .65rem;
+  margin: .1rem 0 .35rem;
+  color: #eedff8;
+  font-size: .8rem;
+  overflow-wrap: anywhere;
+}
+[data-ha4="party-skill-heading"] { margin: .5rem 0 .15rem; color: #d7b2ef; font-size: .8rem; font-weight: 700; }
+[data-ha4="party-skills"] { margin: 0; padding: 0; list-style: none; }
+[data-ha4="party-skill"] {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .3rem;
+  padding: .12rem 0;
+  border-bottom: 1px solid #41344e;
+  font-size: .82rem;
+}
+[data-ha4="party-skill-name"] { overflow-wrap: anywhere; }
+[data-ha4="party-permanent"] {
+  flex: none;
+  padding: 0 .24rem;
+  border-radius: .25rem;
+  background: #58214a;
+  color: #ffe2f5;
+  font-size: .7rem;
+  font-weight: 700;
+}
+@media (max-width: 620px) {
+  [data-ha4="party-grid"] { grid-template-columns: minmax(0, 1fr); }
+}
 [data-ha4="explore-match-list"] { margin: 6px 0 0; padding-inline-start: 1.3em; }
 [data-ha4="explore-match-entry"] + [data-ha4="explore-match-entry"] { margin-top: .35em; }
 [data-ha4="extra-header"] {
@@ -655,6 +826,64 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
   scrollbar-gutter: stable;
 }
 [data-ha4="extra-alert"] { padding-block: 2px; }
+html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
+[data-ha4="slot-home"] {
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  min-width: 0;
+  min-height: 0;
+  background: #15111e;
+}
+[data-ha4="slot-home"] > iframe { display: block; width: 100%; height: 100%; border: 0; }
+[data-ha4="slot-home-dock"] {
+  position: absolute;
+  inset: auto 8px 8px auto;
+  box-sizing: border-box;
+  width: min(38vw, 420px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  background: #1c1628;
+  border: 1px solid #674f82;
+  border-radius: 9px;
+  color: #f7edff;
+}
+[data-ha4="slot-home-dock"] > div:first-child { display: flex; flex-wrap: wrap; gap: 4px; }
+[data-ha4="slot-home-dock"]:not([data-ha4-slot-collapsed]) > div:first-child { margin-block-end: 5px; }
+[data-ha4="slot-home-dock"] .fx-slot-machine { min-width: 0; max-width: 100%; }
+[data-ha4="slot-home-dock"] .fx-slot-machine__head { display: none; }
+[data-ha4="slot-home-dock"][data-ha4-slot-over-chat] {
+  inset: var(--ha4-slot-top) auto auto var(--ha4-slot-left);
+  width: var(--ha4-slot-width);
+  height: var(--ha4-slot-height);
+  max-height: none;
+}
+[data-ha4="slot-home-dock"][data-ha4-slot-collapsed] { width: max-content; overflow: hidden; }
+[data-ha4-slot-collapsed] .fx-slot-machine {
+  position: absolute;
+  inset-inline-start: 100%;
+  width: min(38vw, 420px);
+  max-width: none;
+  visibility: hidden;
+  pointer-events: none;
+}
+[data-ha4="slot-home-dock"].ha4-slot-home-obscured { visibility: hidden; }
+[data-ha4="slot-bonus-info"] {
+  box-sizing: border-box;
+  margin: 0 0 5px;
+  padding: 5px 8px;
+  border: 1px solid #a88642;
+  border-radius: 6px;
+  background: #1b1428;
+  color: #ffe7a3;
+  font-size: .82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  text-align: center;
+}
 [data-ha4="home-alerts"] > summary { cursor: pointer; }
 [data-ha4-hidden-alert] { display: none !important; }
 [data-ha4="daily-balance"] {

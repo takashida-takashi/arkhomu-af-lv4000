@@ -11,8 +11,14 @@
   let midnightTimer;
   const dropCache = new WeakMap();
   const exploreCounts = new WeakMap();
-  const exploreStarts = new Map();
+  const exploreTimingKey = "hakoAf4000:explore-timing";
+  const previousExploreResults = new WeakMap();
   const exploreElapsed = new WeakMap();
+  let exploreTiming = { pending: {}, finished: {} };
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(exploreTimingKey));
+    if (saved?.pending && saved?.finished) exploreTiming = saved;
+  } catch { /* Continue with in-tab timing. */ }
   let homeSignature;
   let nextHomeUpdate;
   let reportOwner;
@@ -35,6 +41,7 @@
   const raidQuotaPattern = /本日の残り参加回数\s*([0-9]+)\s*[/／]\s*2(?![0-9])/;
   const slotRates = [["low", "低レート", 1000, 10000], ["mid", "中レート", 10000, 10000],
     ["high", "高レート", 50000, 10000], ["vip", "超高レート", 500000, 5000]];
+  const slotPlaybackReaders = new WeakMap();
   const reportLinks = {
     npcLimited: "/f/shop", npcNormal: "/f/shop", npcMedal: "/f/shop?tab=medal", npcMark: "/f/shop",
     guildBoss: null, guildShop: "/guild?tab=shop"
@@ -214,6 +221,13 @@
     target.dispatchEvent(new CustomEvent(name, { bubbles: true, detail: JSON.stringify(value) }));
   }
 
+  document.addEventListener("hako-af:read-game-build", () => {
+    const config = appProperties()?.$config ?? window.__NUXT__?.config;
+    const build = config?.public?.buildId;
+    const valid = typeof build === "string" && build !== "dev" && /^[\w.-]{1,128}$/.test(build);
+    publish(document, "hako-af:game-build", valid ? build : null);
+  });
+
   function dateJst(now) {
     return new Date(now + 9 * 3600000).toISOString().slice(0, 10);
   }
@@ -269,7 +283,10 @@
 
   document.addEventListener(settingsEvent, event => {
     try { options = JSON.parse(event.detail); } catch { return; }
-    if (!options.exploreAnalysis) exploreStarts.clear();
+    if (!options.exploreAnalysis && Object.keys(exploreTiming.pending).length) {
+      exploreTiming.pending = {};
+      saveExploreTiming();
+    }
     if (!options.daily) {
       disposeProfile?.();
       disposeProfile = profileStore = undefined;
@@ -486,6 +503,14 @@
     return Number.isSafeInteger(index) ? index : null;
   }
 
+  function saveExploreTiming() {
+    try { sessionStorage.setItem(exploreTimingKey, JSON.stringify(exploreTiming)); } catch { /* Keep the active tab's timing. */ }
+  }
+
+  function exploreRunKey(result, at) {
+    return typeof result?.resultRunId === "string" && result.resultRunId || (at > 0 ? `saved:${at}` : null);
+  }
+
   function partyOfExploreButton(button, root) {
     const label = button.closest(".fx-explore")?.getAttribute("aria-labelledby");
     const party = exploreParty(label?.match(/^fx-explore-title-(\d+)$/)?.[1]);
@@ -517,25 +542,39 @@
         button.getAttribute("aria-busy") === "true") return;
     const caption = (button.getAttribute("aria-label") || button.textContent).trim();
     const repeat = route === "/explore-result";
-    if (!(repeat ? /^再び探索(?:（[^）]*）)?$/ : /^探索開始(?:\s*×\s*[\d,]+)?$/).test(caption)) return;
+    const boss = !repeat && caption === "ボス戦へ";
+    if (!boss && !(repeat ? /^再び探索(?:（[^）]*）)?$/ : /^探索開始(?:\s*×\s*[\d,]+)?$/).test(caption)) return;
     const at = Date.now();
-    const tick = performance.now();
+    const tick = performance.timeOrigin + performance.now();
     const stores = appProperties()?.$pinia?._s;
     const saved = stores?.get("exploreResult")?.current;
     const owner = stores?.get("userProfile")?.profile?.id;
     const party = repeat ? exploreParty(saved?.partyIndex ?? new URLSearchParams(location.search).get("party"))
       : partyOfExploreButton(button, root);
     if (owner == null || party == null) return;
-    exploreStarts.set(party, { at, tick, owner, previous: saved?.result, runId: saved?.result?.resultRunId });
+    if (boss && exploreParty(stores?.get("guildDungeon")?.session?.partyIndex) !== party) return;
+    const start = { at, tick, owner: String(owner), kind: boss ? "boss" : "step",
+      previousKey: exploreRunKey(saved?.result, saved?.savedAt) };
+    if (saved?.result) previousExploreResults.set(start, saved.result);
+    exploreTiming.pending[party] = start;
+    saveExploreTiming();
   }, true);
 
-  function measureExploreTime(anchor, result, party, owner, at) {
+  function measureExploreTime(anchor, result, party, owner, at, kind) {
     if (exploreElapsed.has(result)) return exploreElapsed.get(result);
-    const start = exploreStarts.get(party);
-    if (!start || start.owner !== owner || start.previous === result ||
-        (start.runId && start.runId === result.resultRunId) || (at && at < start.at) || !anchor.getClientRects().length) return;
-    const milliseconds = Math.round(performance.now() - start.tick);
-    exploreStarts.delete(party);
+    if (party == null || owner == null) return;
+    const account = String(owner);
+    const key = exploreRunKey(result, at);
+    const finished = exploreTiming.finished[party];
+    if (key && finished?.key === key && finished.owner === account) return finished.milliseconds;
+    const start = exploreTiming.pending[party];
+    if (!start || start.owner !== account || start.kind !== kind || previousExploreResults.get(start) === result ||
+        (key && start.previousKey === key) || (at && at < start.at) || !anchor.getClientRects().length) return;
+    const milliseconds = Math.round(performance.timeOrigin + performance.now() - start.tick);
+    if (!Number.isFinite(milliseconds) || milliseconds < 0) return;
+    delete exploreTiming.pending[party];
+    if (key) exploreTiming.finished[party] = { owner: account, key, milliseconds };
+    saveExploreTiming();
     exploreElapsed.set(result, milliseconds);
     return milliseconds;
   }
@@ -545,15 +584,22 @@
     const saved = stores?.get("exploreResult")?.current;
     const current = props?.result ? props : saved;
     const result = current?.result;
-    if (current?.kind !== "step" || !result?.summary || result.tower || result.debugNoSave || result.guildPractice) return;
+    if (!result?.summary || result.tower || result.debugNoSave) return;
     const guild = !!(result.guildSessionId || result.dungeon?.is_guild);
+    if (current.kind !== "step" && !(guild && current.kind === "boss")) return;
     const mode = guild ? "guild" : "normal";
     const owner = stores?.get("userProfile")?.profile?.id ?? saved?.ownerUserId;
     const at = saved?.result === result && amountOf(saved.savedAt);
     const party = exploreParty(current.partyIndex ?? (saved?.result === result ? saved.partyIndex : null) ??
       new URLSearchParams(location.search).get("party"));
     const elapsedMs = current.ownerUserId == null || String(current.ownerUserId) === String(owner)
-      ? measureExploreTime(anchor, result, party, owner, at) : undefined;
+      ? measureExploreTime(anchor, result, party, owner, at, current.kind) : undefined;
+    if (guild && (result.guildPractice || current.kind === "boss")) {
+      if (elapsedMs != null) publish(anchor, "hako-af:explore-analysis", {
+        mode, hasDrops, elapsedMs, timingOnlyNote: result.guildPractice ? "試走（ストック消費なし）" : "ギルダンのボス戦（ストック消費なし）"
+      });
+      return;
+    }
     const id = typeof result.resultRunId === "string" && result.resultRunId ||
       (at && Number.isInteger(saved.partyIndex) ? `saved:${saved.partyIndex}:${at}` : null);
     const identity = !guild && at && id && owner && (saved.ownerUserId == null || String(saved.ownerUserId) === String(owner))
@@ -685,6 +731,57 @@
         `上限到達（${limit.toLocaleString("ja-JP")}回転）`}`;
       rememberAlert(instance, "slot", rate, message, until, "/slot", `${readAt}/${spins}/${limit}`);
     }
+  }
+
+  function readSlotPlayback(instance, el) {
+    const reader = slotPlaybackReaders.get(instance);
+    if (reader) return reader();
+    // The cabinet watches the current replay snapshot through a Vue ref.
+    // Read that ref only. The server can send later frames in the same response.
+    for (const { fn, deps } of instance.scope?.effects ?? []) {
+      if (typeof fn !== "function" || !deps?.dep || deps.nextDep || deps.dep.computed ||
+          !/^\(\s*\)\s*=>\s*[\w$]+\.value$/.test(Function.prototype.toString.call(fn))) continue;
+      const snapshot = fn();
+      if (!Number.isSafeInteger(snapshot?.cursor) || !Number.isSafeInteger(snapshot.stock) ||
+          !Object.hasOwn(snapshot, "nextDuelOdds") || !Object.hasOwn(snapshot, "bonus")) continue;
+      slotPlaybackReaders.set(instance, fn);
+      instance.proxy?.$watch(
+        () => [fn(), instance.props.machine?.kind, instance.props.ctl?.isPreview],
+        () => readSlotBonus(instance, el), { flush: "post" }
+      );
+      return snapshot;
+    }
+  }
+
+  function readSlotBonus(instance, el) {
+    const stage = instance.refs?.stageEl ?? el.querySelector(".fx-slot-machine__stage");
+    if (!stage?.parentElement) return;
+    const existing = stage.parentElement.querySelector(':scope > [data-ha4="slot-bonus-info"]');
+    const playback = options.slotBonus && instance.props?.machine?.kind === "empire" &&
+      !instance.props.ctl?.isPreview && readSlotPlayback(instance, el);
+    if (playback?.bonus !== "bonus") {
+      existing?.remove();
+      return;
+    }
+
+    const values = [`継続ストック ${playback.stock} 個`];
+    if (Number.isSafeInteger(playback.upper) && playback.upper > 0) {
+      values.push(`確定継続 残り ${playback.upper} 回`);
+    }
+    const odds = playback.nextDuelOdds;
+    if (Number.isSafeInteger(odds) && odds >= 0 && odds <= 3 &&
+        stage.querySelector('[aria-live="polite"]')?.textContent.startsWith("出撃する機体を選んでください")) {
+      values.push(`決戦の演出レベル ${odds}`);
+    }
+    const summary = values.join("　／　");
+    if (existing) {
+      if (existing.textContent !== summary) existing.textContent = summary;
+      return;
+    }
+    const info = document.createElement("div");
+    info.dataset.ha4 = "slot-bonus-info";
+    info.textContent = summary;
+    stage.before(info);
   }
 
   function rememberAlert(source, id, suffix, message, until, to, evidence = message, rotation = 0) {
@@ -1101,7 +1198,7 @@
   document.addEventListener("click", handleQuote, true);
   document.addEventListener("keydown", handleQuote, true);
   globalThis.hakoAfExtrasMain = { readDrops, readExploreAnalysis, dropType, readInventoryItem, readSkillEditor, readSkillToggle, gachaStage, readGachaCard,
-    prepareQuote, indexChatReplies, observeAlertPage, homeObserverNames, openWatchedItem, hiddenTitlesEnabled: () => options.hiddenTitles === true,
+    prepareQuote, indexChatReplies, observeAlertPage, homeObserverNames, openWatchedItem, readSlotBonus, hiddenTitlesEnabled: () => options.hiddenTitles === true,
     enhanceEstimateEnabled: () => options.enhanceEstimate === true, readEnhanceEstimate, watchMarketPrices,
     marketWatchEnabled: () => options.marketWatch === true, readMarketItemPrices, readMarketWatchItem, readMarketWatchSkill };
 })();

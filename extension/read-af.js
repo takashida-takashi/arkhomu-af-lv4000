@@ -4,8 +4,11 @@
   const { readEffects } = globalThis.hakoAfEffects;
   const extras = globalThis.hakoAfExtrasMain;
   const hiddenTitles = globalThis.hakoAfHiddenTitles;
+  const partyShare = globalThis.hakoAfPartyShareMain;
+  const trainingRoutes = globalThis.hakoAfTrainingRoutesMain;
   delete globalThis.hakoAfExtrasMain;
   delete globalThis.hakoAfHiddenTitles;
+  delete globalThis.hakoAfPartyShareMain;
   const { POWER, SUM, sumRates, dropMetrics, metricValue, viewRule, orderItems } = globalThis.hakoAfListRules;
   const { TARGET } = globalThis.hakoAf4000;
   delete globalThis.hakoAf4000;
@@ -511,6 +514,7 @@
     const app = root?.__vue_app__;
     if (!root?._vnode) return;
     const stores = app?.config?.globalProperties?.$pinia?._s;
+    const translate = key => app?.config?.globalProperties?.$t?.(key) ?? key;
     let chatReplies;
     const getChatReplies = () => chatReplies ??= extras.indexChatReplies(stores?.get("chat"));
     const tradeCategory = stores?.get("userItems")?.currentCategoryKey === "artifact";
@@ -559,6 +563,10 @@
       const titleModal = profileTitles && (titleModals.has(name) ? instance : parentTitleModal);
       if (titleModal && instance) readProfileTitles(titleModal, instance);
       const el = vnode.el ?? instance?.subTree?.el;
+      if (trainingRoutes?.accepts(name)) trainingRoutes.read(name, instance, props, el, translate, dependencies, readThrough);
+      if (name === "FlexMonsterDetail" || name === "MonsterDetailPanel") {
+        partyShare?.bindMember(name, props, vnode, stores?.get("userMonsters")?.monsters, translate);
+      }
       const scope = tradeDialogs.has(name) ? (tradeCategory ? "trade" : null)
         : name === "FlexArtifactDecompose" ? "decompose" : name === "FlexArtifactEnhance" ? "enhance"
           : Object.hasOwn(classicScopes, name) ? classicScopes[name] : parentScope;
@@ -578,6 +586,8 @@
       const monster = name === "MonsterDetailPanel" || name === "FlexMonsterDetail"
         ? props?.monster : parentMonster;
       if (el?.nodeType === 1 && el.isConnected) {
+        if (name === "FlexPartySlots" || name === "PartyFormationPanel") partyShare?.bind(name, props, el);
+        if (name === "FlexHallPostDetail") partyShare?.bindHall(props, el);
         if (watchMarket) {
           if (name === "market") {
             marketWatchRoot = el;
@@ -639,6 +649,7 @@
         }
         if (vnode.props?.["data-chat-message-id"]) extras?.prepareQuote(vnode, getChatReplies);
         if (extras?.homeObserverNames.has(name)) extras.observeAlertPage(name, instance, el);
+        if (name === "FlexSlotMachine") extras?.readSlotBonus(instance, el);
         const sortKey = instance?.props?.sortScope ?? vnode.props?.sortScope;
         const sortScope = name === "ItemSortControls" && sortKey !== "trade-offer" && Object.hasOwn(sortScopes, sortKey)
           ? sortScopes[sortKey] : null;

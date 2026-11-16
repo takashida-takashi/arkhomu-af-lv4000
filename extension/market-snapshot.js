@@ -8,7 +8,39 @@
   }
   const prices = new Map();
   const wrapped = new WeakSet();
+  const earlyMatings = [];
+  let watchMatings = false;
   globalThis.hakoAfMarketSnapshots = globalThis[key] = prices;
+
+  function publishMating(result) {
+    document.dispatchEvent(new CustomEvent("hako-af:mating-completed", { detail: JSON.stringify(result) }));
+  }
+
+  document.addEventListener("hako-af:watch-mating-results", () => {
+    watchMatings = true;
+    for (const result of earlyMatings.splice(0)) publishMating(result);
+  }, { once: true });
+
+  function observeMating(args, response) {
+    const [url, options] = args;
+    if (options?.method !== "POST") return;
+    const special = url === "/api/mating/r6-execute";
+    const parentIds = special ? options.body?.materialIds : [options.body?.parentAId, options.body?.parentBId];
+    if (!Array.isArray(parentIds) || !parentIds.length || !parentIds.every(validId)) return;
+    const parents = parentIds.map(String);
+    Promise.resolve(response).then(payload => {
+      if (special ? payload?.success === false : payload?.success !== true) return;
+      const id = payload?.monster?.id;
+      if (!validId(id) || parents.includes(String(id))) return;
+      const result = { parents, child: String(id) };
+      if (watchMatings) publishMating(result);
+      else earlyMatings.push(result);
+    }).catch(() => {});
+  }
+
+  function validId(id) {
+    return typeof id === "string" && id.length > 0 || Number.isSafeInteger(id);
+  }
 
   function observe(native) {
     if (typeof native !== "function" || wrapped.has(native)) return native;
@@ -31,6 +63,7 @@
             document.dispatchEvent(new Event("hako-af:market-snapshot"));
           }).catch(() => {});
         }
+        if (args[0] === "/api/mating/execute" || args[0] === "/api/mating/r6-execute") observeMating(args, response);
         return response;
       }
     });

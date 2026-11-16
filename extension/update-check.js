@@ -1,5 +1,9 @@
+function validArkHomuReleaseVersion(version) {
+  return typeof version === "string" && /^\d{1,6}\.\d{1,6}\.\d{1,6}$/.test(version);
+}
+
 function newerArkHomuRelease(candidate, current) {
-  if (typeof candidate !== "string" || !/^\d{1,6}\.\d{1,6}\.\d{1,6}$/.test(candidate)) return false;
+  if (!validArkHomuReleaseVersion(candidate)) return false;
   const left = candidate.split(".").map(Number);
   const right = current.split(".").map(Number);
   const difference = left.findIndex((part, index) => part !== right[index]);
@@ -16,7 +20,8 @@ async function matchesArkHomuReleaseHash(bytes, expected) {
 function startArkHomuReleaseCheck(distribution, storage, nextCheckKey, lockName, receive) {
   const preferenceKey = "hakoAf4000:autoUpdate";
   const day = 24 * 60 * 60 * 1000;
-  let checking = false;
+  let checking;
+  let manualCheck;
   let nextCheck = 0;
   let timer;
   let pending;
@@ -25,10 +30,10 @@ function startArkHomuReleaseCheck(distribution, storage, nextCheckKey, lockName,
     try { return localStorage.getItem(preferenceKey) !== "false"; } catch { return false; }
   }
 
-  async function fetchFile(path, maxLength) {
-    if (!enabled()) throw new Error("Automatic updates disabled");
+  async function fetchFile(path, maxLength, manual = false) {
+    if (!manual && !enabled()) throw new Error("Automatic updates disabled");
     const controller = new AbortController();
-    pending = controller;
+    if (!manual) pending = controller;
     const timeout = setTimeout(() => controller.abort(), 10_000);
     try {
       const response = await fetch(distribution + path, {
@@ -44,7 +49,7 @@ function startArkHomuReleaseCheck(distribution, storage, nextCheckKey, lockName,
       return bytes;
     } finally {
       clearTimeout(timeout);
-      pending = undefined;
+      if (pending === controller) pending = undefined;
     }
   }
 
@@ -67,24 +72,35 @@ function startArkHomuReleaseCheck(distribution, storage, nextCheckKey, lockName,
       pending?.abort();
       return;
     }
-    if (document.hidden || checking) return;
+    if (document.hidden || checking || manualCheck) return;
     const wait = nextCheck - Date.now();
     if (wait > 0) timer = setTimeout(refresh, Math.min(day, wait + 20));
     else void check();
   }
 
-  async function check() {
-    checking = true;
-    try {
-      // Serialize checks from simultaneously opened game tabs.
-      if (navigator.locks) await navigator.locks.request(lockName, downloadIfDue);
-      else await downloadIfDue();
-    } catch {
+  function locked(task) {
+    // Serialize checks from simultaneously opened game tabs.
+    return navigator.locks ? navigator.locks.request(lockName, task) : task();
+  }
+
+  function check() {
+    checking = Promise.resolve().then(() => locked(downloadIfDue)).catch(() => {
       if (Date.now() >= nextCheck) nextCheck = Date.now() + day;
-    } finally {
-      checking = false;
+    }).finally(() => {
+      checking = null;
       refresh();
-    }
+    });
+  }
+
+  function checkNow(progress) {
+    if (manualCheck) return manualCheck;
+    const fetchManually = (path, maxLength) => fetchFile(path, maxLength, true);
+    manualCheck = Promise.resolve(checking).then(() => locked(() =>
+      receive(fetchManually, () => true, { progress }))).finally(() => {
+      manualCheck = null;
+      refresh();
+    });
+    return manualCheck;
   }
 
   document.addEventListener("visibilitychange", refresh);
@@ -93,4 +109,5 @@ function startArkHomuReleaseCheck(distribution, storage, nextCheckKey, lockName,
   window.addEventListener("focus", refresh);
   window.addEventListener("storage", event => { if (!event.key || event.key === preferenceKey) refresh(); });
   refresh();
+  return { checkNow };
 }
