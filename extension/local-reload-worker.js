@@ -5,8 +5,30 @@ importScripts("update-check.js");
 const gameOrigin = "https://arkhomu.com";
 const pendingKey = "hakoAfPendingLocalReload";
 const archiveKey = "hakoAfDesktopUpdateArchive";
+const updateFilename = "arkhomu-af-lv4000-update.zip";
+const savedZipKey = "hakoAfSavedUpdateZip";
 const downloadKey = id => `hakoAfUpdateDownload:${id}`;
 let checking;
+let zipOperations = Promise.resolve();
+
+function queueZipOperation(run) {
+  const operation = zipOperations.then(run);
+  zipOperations = operation.catch(() => {});
+  return operation;
+}
+
+async function removeAppliedZip() {
+  const { [savedZipKey]: saved } = await chrome.storage.local.get(savedZipKey);
+  if (!Number.isInteger(saved?.id) || !validArkHomuReleaseVersion(saved.version) ||
+      newerArkHomuRelease(saved.version, chrome.runtime.getManifest().version)) return;
+  const [item] = await chrome.downloads.search({ id: saved.id });
+  if (item?.state === "in_progress") return;
+  if (item?.state === "complete" && item.exists && item.byExtensionId === chrome.runtime.id &&
+      item.filename.split(/[/\\]/).at(-1) === updateFilename) {
+    await chrome.downloads.removeFile(item.id);
+  }
+  await chrome.storage.local.remove(savedZipKey);
+}
 
 async function checkLocalUpdate(tabId, url) {
   const { installType } = await chrome.management.getSelf();
@@ -34,13 +56,15 @@ async function finishUpdateDownload(id, state) {
 }
 
 async function downloadUpdate({ token, version }, sender) {
-  if (typeof token !== "string" || !/^[\da-f-]{36}$/.test(token) || !sender.documentId ||
-      !newerArkHomuRelease(version, chrome.runtime.getManifest().version)) return false;
+  if (token !== undefined && (typeof token !== "string" || !/^[\da-f-]{36}$/.test(token) || !sender.documentId)) return false;
+  if (!newerArkHomuRelease(version, chrome.runtime.getManifest().version)) return false;
   const { [archiveKey]: record } = await chrome.storage.local.get(archiveKey);
   if (record?.version !== version || typeof record.url !== "string" ||
       !record.url.startsWith("data:application/zip;base64,")) return false;
 
-  const id = await chrome.downloads.download({ url: record.url, filename: `arkhomu-af-lv4000-v${version}.zip` });
+  const id = await chrome.downloads.download({ url: record.url, filename: updateFilename, conflictAction: "overwrite" });
+  await chrome.storage.local.set({ [savedZipKey]: { id, version } });
+  if (token === undefined) return true;
   await chrome.storage.session.set({ [downloadKey(id)]: { tabId: sender.tab.id, documentId: sender.documentId, token } });
   // A cached ZIP can finish before the tracking entry is written.
   const [item] = await chrome.downloads.search({ id });
@@ -56,7 +80,7 @@ chrome.downloads.onErased.addListener(id => { void finishUpdateDownload(id, "int
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.frameId !== 0 || sender.origin !== gameOrigin || !sender.url || !Number.isInteger(sender.tab?.id)) return;
   if (message?.type === "hako-af:download-update") {
-    void downloadUpdate(message, sender).then(respond, () => respond(false));
+    void queueZipOperation(() => downloadUpdate(message, sender)).then(respond, () => respond(false));
     return true;
   }
   if (message?.type !== "hako-af:check-local-update") return;
@@ -82,4 +106,6 @@ async function resumeTab(previousVersion) {
 
 chrome.runtime.onInstalled.addListener(({ reason, previousVersion }) => {
   if (reason === "update") void resumeTab(previousVersion).catch(() => {});
+  void queueZipOperation(removeAppliedZip).catch(() => {});
 });
+chrome.runtime.onStartup.addListener(() => { void queueZipOperation(removeAppliedZip).catch(() => {}); });

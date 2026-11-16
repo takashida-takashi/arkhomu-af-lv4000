@@ -826,6 +826,16 @@ textarea[data-ha4="training-input"] { width: 100%; resize: vertical; }
   scrollbar-gutter: stable;
 }
 [data-ha4="extra-alert"] { padding-block: 2px; }
+[data-ha4="extra-button"][data-ha4-slot-home-launch] {
+  flex-shrink: 0;
+  align-self: center;
+  margin-inline-start: .35rem;
+  padding-inline: 12px;
+  border-color: #a67de0;
+  background: #503171;
+  font: 700 13px/1.35 system-ui, sans-serif;
+  filter: none;
+}
 html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
 [data-ha4="slot-home"] {
   position: fixed;

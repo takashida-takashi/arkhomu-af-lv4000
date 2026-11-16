@@ -78,8 +78,7 @@
   function loadSettings() {
     const stored = get(configKey) ?? {};
     return {
-      features: Object.fromEntries(Object.keys(features).map(id =>
-        [id, id === "slotHome" ? stored.features?.[id] === true : stored.features?.[id] !== false])),
+      features: Object.fromEntries(Object.keys(features).map(id => [id, stored.features?.[id] !== false])),
       paging: ["standard", "all", "priority"].includes(stored.paging) ? stored.paging : "priority",
       candidates: ["mark", "first", "only"].includes(stored.candidates) ? stored.candidates : "first",
       matchColor: matchColors.some(([color]) => color === stored.matchColor) ? stored.matchColor : "red",
@@ -409,7 +408,7 @@
             document.dispatchEvent(new Event("hako-af:auto-update-changed"));
           });
           updates.append(node("p", "extra-note", desktop
-            ? "24時間に1回確認し、新しいZIPを取得します。現在の拡張機能フォルダーに上書き展開したあと、はこホムのタブを再読み込みすると更新を反映します。"
+            ? "24時間に1回確認し、新版は同じ名前の更新ZIPに上書き保存します。現在の拡張機能フォルダーに上書き展開して、はこホムのタブを再読み込みします。新版が読み込まれると、拡張が保存したZIPは削除されます。"
             : "はこホムを表示している間に24時間に1回確認し、次にページが読み込まれるときに反映します。"));
         }
         if (desktop) {

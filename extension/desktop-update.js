@@ -28,10 +28,7 @@
 
   function saveArchive(record = archive) {
     if (!record) return;
-    const link = document.createElement("a");
-    link.href = record.url;
-    link.download = `arkhomu-af-lv4000-v${record.version}.zip`;
-    link.click();
+    return chrome.runtime.sendMessage({ type: "hako-af:download-update", version: record.version }).catch(() => false);
   }
 
   function archiveUrl(bytes) {

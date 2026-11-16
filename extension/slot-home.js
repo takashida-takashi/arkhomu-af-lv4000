@@ -184,16 +184,20 @@
         entry = null;
       }
       if (entry) entry.button.hidden = false;
-      if (!cabinet || entry) return;
-      const tools = cabinet.querySelector(".fx-slot-machine__tools");
-      if (!tools) return;
+      if (!cabinet) return;
+      const heading = [...document.querySelectorAll("#__nuxt h1")].find(element =>
+        [...element.childNodes].some(child => child.nodeType === Node.TEXT_NODE && child.textContent.trim() === "スロット"));
+      const anchor = heading ?? cabinet.querySelector(".fx-slot-machine__tools");
+      if (!anchor || entry?.anchor === anchor) return;
+      entry?.button.remove();
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.ha4 = "extra-button";
+      button.dataset.ha4SlotHomeLaunch = "";
       button.textContent = "Homeで並行する";
       button.addEventListener("click", event => { if (event.isTrusted) open(cabinet, button); });
-      tools.append(button);
-      entry = { cabinet, button };
+      anchor.append(button);
+      entry = { cabinet, button, anchor };
     };
   }
 
