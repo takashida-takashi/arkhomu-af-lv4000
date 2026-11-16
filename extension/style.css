@@ -874,9 +874,9 @@ html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
   max-width: none;
   max-height: none;
 }
-[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] .fx-slot-machine__layout {
+[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] .fx-slot-machine .fx-slot-machine__layout {
   display: grid;
-  grid-template: minmax(0, 1fr) auto / minmax(0, 1fr);
+  grid-template: "play" minmax(0, 1fr) "tools" auto / minmax(0, 1fr);
   gap: 4px;
   width: 100%;
   height: 100%;
@@ -885,20 +885,18 @@ html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
   max-width: none;
   max-height: none;
 }
-[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] :is(.fx-slot-machine__head,.fx-slot-machine__side) { display: none; }
-[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] .fx-slot-machine__play {
+[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] .fx-slot-machine :is(.fx-slot-machine__head,.fx-slot-machine__side,.fx-slot-machine__island) { display: none; }
+[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] .fx-slot-machine .fx-slot-machine__play {
   display: block;
-  grid-area: 1 / 1;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
 }
-[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] .fx-slot-machine__tools {
-  grid-area: 2 / 1;
+[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] .fx-slot-machine .fx-slot-machine__tools {
   min-width: 0;
 }
-[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] .fx-slot-machine__zoom:not(.fx-slot-machine__zoom--on) {
+[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] .fx-slot-machine .fx-slot-machine__zoom:not(.fx-slot-machine__zoom--on) {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -909,12 +907,13 @@ html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
   max-width: none;
   max-height: none;
 }
-[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] .fx-slot-machine__stage {
+[data-ha4="slot-home-dock"] [data-ha4="slot-home-viewport"] .fx-slot-machine .fx-slot-machine__stage {
   flex: 0 0 auto;
   box-sizing: border-box;
   width: var(--ha4-slot-stage-width, 100%);
   height: auto;
   aspect-ratio: var(--fx-slot-aspect);
+  margin: 0;
   min-width: 0;
   min-height: 0;
   max-width: 100%;
@@ -927,12 +926,6 @@ html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
 }
 [data-ha4="slot-home-dock"][data-ha4-slot-collapsed] { width: max-content; height: auto; }
 [data-ha4="slot-home-dock"][data-ha4-slot-showing-chat] { visibility: hidden; pointer-events: none; }
-[data-ha4="extra-button"][data-ha4-slot-chat-return] {
-  display: block;
-  flex: 0 0 auto;
-  width: fit-content;
-  margin: 5px 6px;
-}
 [data-ha4-slot-collapsed] [data-ha4="slot-home-viewport"] {
   position: absolute;
   inset-inline-start: 100%;

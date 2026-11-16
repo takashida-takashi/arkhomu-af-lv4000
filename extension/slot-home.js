@@ -175,9 +175,13 @@
       show.textContent = "台をたたむ";
       const returnToCabinet = document.createElement("button");
       returnToCabinet.type = "button";
-      returnToCabinet.dataset.ha4 = "extra-button";
-      returnToCabinet.dataset.ha4SlotChatReturn = "";
       returnToCabinet.textContent = "スロットを表示";
+      // The chat belongs to the Home iframe, outside this content script's stylesheet.
+      Object.assign(returnToCabinet.style, {
+        display: "block", flex: "none", alignSelf: "start", width: "fit-content",
+        margin: "5px 6px", padding: "4px 9px", border: "1px solid #a67de0", borderRadius: "5px",
+        backgroundColor: "#36234d", color: "#f7edff", font: "700 13px/1.4 system-ui, sans-serif", cursor: "pointer"
+      });
       const exit = document.createElement("button");
       exit.type = "button";
       exit.dataset.ha4 = "extra-button";
