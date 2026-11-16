@@ -1,6 +1,7 @@
 (() => {
   "use strict";
 
+  const names = globalThis.hakoAfFeatureNames;
   const dayMs = 86400000;
   const jstOffset = 9 * 3600000;
   const dayInJst = time => Math.floor((time + jstOffset) / dayMs);
@@ -122,7 +123,7 @@
     function createPanel(target, mode) {
       const root = node("details", "explore-analysis");
       const guild = mode === "guild";
-      const title = guild ? "ギルダンの獲得量" : "探索の獲得量";
+      const title = guild ? `${names.exploreAnalysis}（ギルダン）` : names.exploreAnalysis;
       root.setAttribute("aria-label", title);
       const table = node("table", "explore-analysis-table");
       table.setAttribute("aria-label", title);

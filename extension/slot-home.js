@@ -3,6 +3,7 @@
 
   if (window.top !== window) return;
 
+  const names = globalThis.hakoAfFeatureNames;
   const cabinetSelector = ".fx-slot-machine";
   const chatSelector = "#home-chat,.fx-home__chat";
   const modalSelector = 'dialog[open],[role="dialog"],[aria-modal="true"],[data-base-modal-root]';
@@ -175,7 +176,7 @@
       frame.dataset.ha4SlotHomeFrame = "";
       const dock = document.createElement("section");
       dock.dataset.ha4 = "slot-home-dock";
-      dock.setAttribute("aria-label", "スロット");
+      dock.setAttribute("aria-label", names.slot);
       const toolbar = document.createElement("div");
       toolbar.dataset.ha4 = "slot-home-toolbar";
       const show = document.createElement("button");
@@ -269,7 +270,8 @@
       button.type = "button";
       button.dataset.ha4 = "extra-button";
       button.dataset.ha4SlotHomeLaunch = "";
-      button.textContent = "Homeで並行する";
+      button.textContent = names.slot;
+      button.title = "Homeでスロットを並行表示";
       button.addEventListener("click", event => { if (event.isTrusted) open(cabinet, button); });
       anchor.append(button);
       entry = { cabinet, button, anchor };

@@ -97,7 +97,7 @@ function copyPreviousDownloads(site) {
   }
 }
 
-const files = ["forecast.js", "artifact-effects.js", "list-rules.js", "filter-popup.js", "hidden-titles.js", "extras.js", "extras-main.js",
+const files = ["feature-names.js", "forecast.js", "artifact-effects.js", "list-rules.js", "filter-popup.js", "hidden-titles.js", "extras.js", "extras-main.js",
   "enhance-estimate.js", "explore-analysis.js", "market-watch.js", "party-share-main.js", "training-routes-main.js",
   "party-share.js", "training-routes.js", "content.js", "read-af.js"];
 // Register the UI before the game bridge discards the module exports it uses. The first scan runs next frame.

@@ -3,6 +3,7 @@
 
   if (globalThis.hakoAfFrameContext?.active === false) return;
 
+  const names = globalThis.hakoAfFeatureNames;
   const { TARGET, normalize, levelFrom, valueFrom, ratio, projected, text } = globalThis.hakoAf4000;
   const { parameters, readEffects, optionFor, groups } = globalThis.hakoAfEffects;
   const { POWER, SUM, DROP, CONVERSION, sumRates, dropMetrics, metricValue, viewRule, orderItems } = globalThis.hakoAfListRules;
@@ -326,7 +327,7 @@
       const button = node("button", "detail-switch");
       button.type = "button";
       button.setAttribute("role", "switch");
-      button.setAttribute("aria-label", "AF詳細の予測表示");
+      button.setAttribute("aria-label", names.forecast);
       button.addEventListener("click", event => {
         event.stopPropagation();
         showDetailForecast = !showDetailForecast;
@@ -338,7 +339,7 @@
       detailControls.set(root, tools);
     }
     const button = tools.firstElementChild;
-    const label = showDetailForecast ? "予測 ON" : "予測 OFF";
+    const label = `${names.forecast} ${showDetailForecast ? "ON" : "OFF"}`;
     if (button.textContent !== label) {
       button.textContent = label;
       button.setAttribute("aria-checked", String(showDetailForecast));
@@ -682,7 +683,7 @@
         state.nativeForecast = input.checked;
         requestScan();
       });
-      label.append(input, "予測値順");
+      label.append(input, names.sort);
       select.closest("label").after(label);
     }
     const input = label.firstElementChild;

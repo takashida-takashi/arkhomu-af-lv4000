@@ -3,6 +3,7 @@
 
   if (globalThis.hakoAfFrameContext?.active === false) return;
 
+  const names = globalThis.hakoAfFeatureNames;
   const matingComponents = new Set(["FlexMatingInherit", "MatingNewUiPanel"]);
   const grantComponents = new Set(["FlexTrainingSkillGrant", "FlexTrainingSkillGrantFlow"]);
   const grantLists = new Set(["fx-tgrant__rows", "fx-tgflow__rows"]);
@@ -63,7 +64,7 @@
       label.dataset.ha4 = "training-active-route";
       anchor.prepend(label);
     }
-    const caption = `育成ルート　${route.name}`;
+    const caption = `${names.trainingRoutes}　${route.name}`;
     if (label.textContent !== caption) label.textContent = caption;
     return route;
   }

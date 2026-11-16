@@ -3,6 +3,7 @@
 
   if (globalThis.hakoAfFrameContext?.active === false) return;
 
+  const names = globalThis.hakoAfFeatureNames;
   const settingsEvent = "hako-af:extra-settings";
   const chatRow = "[data-chat-message-id]";
   const chatLog = ".fx-chat-room__log,[role='log'],.overflow-y-auto";
@@ -223,11 +224,43 @@
     target.dispatchEvent(new CustomEvent(name, { bubbles: true, detail: JSON.stringify(value) }));
   }
 
+  const gameUpdateCacheKey = "hakoAf4000:game-update-build";
+  const patchDatePattern = /^\d{4}-\d{2}-\d{2}(?:-\d{1,3})?$/;
+
+  async function readGameUpdate(build) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(gameUpdateCacheKey));
+      if (cached?.build === build && patchDatePattern.test(cached.date) && Number.isSafeInteger(cached.count) &&
+          cached.count > 0) return cached;
+    } catch { /* The public update history is still available without a cache. */ }
+
+    const script = document.querySelector('script[type="module"][src*="/_nuxt/"]');
+    if (!script) return;
+    const entry = new URL(script.src);
+    if (entry.origin !== location.origin || !/^\/_nuxt\/[\w.-]+\.js$/.test(entry.pathname)) return;
+    const response = await fetch(entry, { cache: "force-cache", signal: AbortSignal.timeout(5000) });
+    if (!response.ok) return;
+    const source = await response.text();
+    // The official entry contains the recent notes and total used by its update history screen.
+    const totals = [...source.matchAll(/\}\]\}\],\s*[\w$]+\s*=\s*([1-9]\d{0,6}),\s*[\w$]+\s*=\s*\["important","content","bugfix","balance","ui","other"\]/g)];
+    if (totals.length !== 1) return;
+    const [total] = totals;
+    const notes = source.slice(Math.max(0, total.index - 64_000), total.index);
+    const start = [...notes.matchAll(/\[\{date:"(\d{4}-\d{2}-\d{2}(?:-\d{1,3})?)",items:\[\{cat:"(?:important|content|bugfix|balance|ui|other)",text:/g)].at(-1);
+    if (!start) return;
+    const result = { build, date: start[1], count: Number(total[1]) };
+    try { localStorage.setItem(gameUpdateCacheKey, JSON.stringify(result)); } catch { /* Caching is optional. */ }
+    return result;
+  }
+
   document.addEventListener("hako-af:read-game-build", () => {
     const config = appProperties()?.$config ?? window.__NUXT__?.config;
     const build = config?.public?.buildId;
     const valid = typeof build === "string" && build !== "dev" && /^[\w.-]{1,128}$/.test(build);
     publish(document, "hako-af:game-build", valid ? build : null);
+    if (valid) void readGameUpdate(build).then(update => {
+      if (update) publish(document, "hako-af:game-build", update);
+    }).catch(() => {});
   });
 
   function dateJst(now) {
@@ -782,6 +815,7 @@
     }
     const info = document.createElement("div");
     info.dataset.ha4 = "slot-bonus-info";
+    info.title = names.slot;
     info.textContent = summary;
     stage.before(info);
   }

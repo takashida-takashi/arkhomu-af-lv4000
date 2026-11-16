@@ -1,6 +1,7 @@
 (() => {
   "use strict";
 
+  const names = globalThis.hakoAfFeatureNames;
   const target = globalThis.hakoAf4000.TARGET;
   const trials = 4096;
   // The v9 calculator models a great success as 10% of successful attempts.
@@ -114,7 +115,7 @@
         return [row.insertCell(), row.insertCell()];
       });
       body.append(label, market, source, status, table);
-      root.append(node("summary", "estimate-heading", `Lv${target}までの強化費用の目安`), body);
+      root.append(node("summary", "estimate-heading", `${names.enhanceEstimate}（Lv${target}）`), body);
       anchor.after(root);
       const panel = { root, price, market, source, status, table, rows, ticket: 0 };
       root.addEventListener("toggle", () => {

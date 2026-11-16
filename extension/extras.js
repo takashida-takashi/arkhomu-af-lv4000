@@ -2,26 +2,28 @@
   "use strict";
 
   const { activeGroup } = globalThis.hakoAfListRules;
+  const names = globalThis.hakoAfFeatureNames;
   const slotHome = globalThis.hakoAfSlotHome;
+  const filterAndSort = `${names.filter}・${names.sort}`;
 
   const features = {
-    detail: "AF詳細の予測・コピー",
-    inventory: "装備・強化・分解の拡張フィルター",
-    enhanceEstimate: "強化画面にLv4000までの費用の目安を表示",
-    market: "フリマ・オークション・個人間取引の拡張フィルター",
-    marketWatch: "フリマの最安値の推移を記録",
-    explore: "探索結果の全件一覧・絞り込み",
-    exploreAnalysis: "探索結果にストックあたりの獲得量を表示",
-    hiddenTitles: "称号設定に未取得の隠し称号を表示",
-    gacha: "AFガチャ・スーパーガチャの結果に性能を表示",
-    skillPresets: "ホムンクルスのスキルプリセット",
-    partyShare: "編成共有",
-    trainingRoutes: "育成ルートの目印・優先表示・引き継ぎ",
-    slotBonus: "スロットに継続ストックと決戦情報を表示",
-    ...(slotHome ? { slotHome: "Homeでスロットを並行表示" } : {}),
-    chat: "チャットの返信元へ移動",
-    daily: "今日のゴールド・ポーション増減",
-    home: "ホームの拡張通知"
+    detail: `${names.forecast}（AF詳細・コピー）`,
+    inventory: `${filterAndSort}（装備・強化・分解）`,
+    enhanceEstimate: `${names.enhanceEstimate}（AFのLv4000到達）`,
+    market: `${filterAndSort}（フリマ・オークション・個人間取引）`,
+    marketWatch: `${names.marketWatch}（フリマ最安値）`,
+    explore: `${names.explore}（${filterAndSort}・ページ表示）`,
+    exploreAnalysis: `${names.exploreAnalysis}（獲得量・勝率・経過時間）`,
+    hiddenTitles: `${names.hiddenTitles}（未取得の隠し称号）`,
+    gacha: `${names.gacha}（AFガチャ・スーパーガチャ）`,
+    skillPresets: `${names.skillPresets}（ホムンクルスの使用中・控え）`,
+    partyShare: names.partyShare,
+    trainingRoutes: names.trainingRoutes,
+    slotBonus: `${names.slot}（継続ストック・決戦情報）`,
+    ...(slotHome ? { slotHome: `${names.slot}（Homeで並行表示）` } : {}),
+    chat: `${names.chat}（返信元への移動・表示）`,
+    daily: `${names.daily}（ゴールド・ポーション）`,
+    home: names.home
   };
   const afRanks = ["コモン", "アンコモン", "レア", "エリート", "エピック", "ヒロイック", "レジェンダリー",
     "ミシック", "セレスティアル", "ディヴァイン", "トランセンデント", "エターナル"];
@@ -60,6 +62,7 @@
   const configKey = "hakoAf4000:settings";
   const autoUpdateKey = "hakoAf4000:autoUpdate";
   const closedUpdateNoticeKey = "hakoAf4000:closed-update-notice";
+  const gameUpdateSeenKey = "hakoAf4000:game-update-seen";
   const homeAlertsOpenKey = "hakoAf4000:home-alerts-open";
   const matchColors = [["red", "赤（既定）"], ["blue", "水色"], ["purple", "紫"], ["white", "白"], ["gold", "金"]];
   const alertsOffByDefault = new Set(["npc", "npcLimited", "npcMedal", "ark", "production", "colosseum",
@@ -132,7 +135,7 @@
     const skillPanels = new Map();
     const selectedSkillPresets = new Map();
     let skillMarks = new Map();
-    const settingButton = makeButton("拡張設定", "settings-launch");
+    const settingButton = makeButton(names.settings, "settings-launch");
     settingButton.setAttribute("aria-haspopup", "dialog");
     settingButton.addEventListener("click", event => {
       event.stopPropagation();
@@ -213,7 +216,7 @@
       if (itemWatch?.signature === signature && itemWatch.element.parentElement === anchor) return;
       itemWatch?.element.remove();
       const element = node("div", "watch-item");
-      const toggle = makeButton(saved ? "ホーム通知を解除" : "ホーム通知に追加");
+      const toggle = makeButton(saved ? `${names.home}から解除` : `${names.home}に追加`);
       const goal = document.createElement("input");
       goal.type = "text";
       goal.inputMode = "numeric";
@@ -270,7 +273,7 @@
         if (!panel) {
           const bar = node("div", "skill-presets");
           const picker = document.createElement("select");
-          picker.setAttribute("aria-label", "スキルプリセット");
+          picker.setAttribute("aria-label", names.skillPresets);
           const name = document.createElement("input");
           name.placeholder = "プリセット名";
           name.setAttribute("aria-label", "プリセット名");
@@ -311,7 +314,7 @@
         const labels = JSON.stringify(presets.map(item => item.label));
         if (panel.labels !== labels) {
           panel.labels = labels;
-          panel.picker.replaceChildren(new Option("スキルプリセット", ""), ...presets.map(item => new Option(item.label, item.label)));
+          panel.picker.replaceChildren(new Option(names.skillPresets, ""), ...presets.map(item => new Option(item.label, item.label)));
         }
         panel.picker.value = chosen?.label ?? "";
         panel.remove.disabled = !chosen;
@@ -385,7 +388,7 @@
       if (settingsDialog?.open) return;
       settingsDialog?.remove();
       const dialog = settingsDialog = node("dialog", "settings");
-      const title = node("h2", "extra-heading", "拡張設定");
+      const title = node("h2", "extra-heading", names.settings);
       title.id = "ha4-settings-title";
       dialog.setAttribute("aria-labelledby", title.id);
       const close = makeButton("閉じる");
@@ -396,7 +399,7 @@
       dialog.append(header);
 
       if (version) {
-        const updates = subsection(dialog, "更新");
+        const updates = subsection(dialog, names.updates);
         updates.dataset.ha4UpdateSettings = "";
         updates.append(versionControl("使用中のバージョン v" + version, "extra-note"));
         if (desktop || globalThis.hakoAfUpdateManaged) {
@@ -433,7 +436,7 @@
         field(functions, name, "checkbox", settings.features[id], value => { settings.features[id] = value; });
       }
       if (openPartyFile) {
-        const party = subsection(dialog, "編成共有");
+        const party = subsection(dialog, names.partyShare);
         const load = makeButton("編成ファイルを開く");
         load.addEventListener("click", () => {
           dialog.close();
@@ -442,15 +445,15 @@
         party.append(load);
       }
       if (openTrainingRoutes) {
-        const section = subsection(dialog, "育成ルート");
-        const edit = makeButton("育成ルートを開く");
+        const section = subsection(dialog, names.trainingRoutes);
+        const edit = makeButton(`${names.trainingRoutes}を開く`);
         edit.addEventListener("click", () => {
           dialog.close();
           openTrainingRoutes();
         });
         section.append(edit);
       }
-      const drops = subsection(dialog, "探索結果");
+      const drops = subsection(dialog, names.explore);
       appendExploreReset?.(drops);
       select(drops, "ページ表示", [["standard", "標準の件数"], ["all", "全件表示"], ["priority", "優先度別ページ"]],
         settings.paging, value => { settings.paging = value; });
@@ -471,7 +474,7 @@
         });
       }
       drops.append(table);
-      const home = subsection(dialog, "ホームの通知");
+      const home = subsection(dialog, names.home);
       home.append(node("p", "extra-note", "ショップやギルドの当日分は、状態を読み込むまで「未実行（未確認）」と表示します。"));
       for (const [id, name] of Object.entries(alerts)) {
         field(home, name, "checkbox", settings.alerts[id], value => { settings.alerts[id] = value; });
@@ -574,7 +577,7 @@
       ui.signature = config;
       ui.data = data;
       const view = viewRule(state);
-      const legendText = plan.sort ? "並び順 " + effectOption(plan.sort.key).label +
+      const legendText = plan.sort ? names.sort + " " + effectOption(plan.sort.key).label +
         (!view.active && plan.sort.forecast ? "（→ Lv4000予測）" : "") : "";
       if (ui.legend.textContent !== legendText) ui.legend.textContent = legendText;
       ui.legend.hidden = !legendText;
@@ -662,7 +665,7 @@
       const label = enabled("daily") && dailyText();
       if (label && (top || home && anchor)) {
         dailyChip ??= node("div", "daily-balance");
-        const caption = "今日の増減（JST） " + label;
+        const caption = names.daily + "（JST） " + label;
         if (dailyChip.textContent !== caption) dailyChip.textContent = caption;
         const times = Object.entries(currentBalance.day).filter(([, v]) => v?.baselineAt != null)
           .map(([type, v]) => (type === "gold" ? "ゴールド" : "ポーション") + " " + balanceTime.format(v.baselineAt));
@@ -729,7 +732,7 @@
           lastOpen = panel.open;
           save(homeAlertsOpenKey, lastOpen);
         });
-        panel.append(node("summary", "extra-heading", "拡張通知"), node("ul", "extra-alert-list"));
+        panel.append(node("summary", "extra-heading", names.home), node("ul", "extra-alert-list"));
       }
       if (homePanel.parentElement !== anchor) anchor.prepend(homePanel);
       const messages = new Map(rows.map(({ id, message, end, to, reached }) => {
@@ -861,25 +864,52 @@
         }
         const list = footer.querySelector(".fx-hub-foot__links");
         const owner = list ?? footer;
-        if ((!version && !gameBuild) || previous?.parentElement === owner) continue;
-        previous?.remove();
-        const label = node(list ? "li" : "span", "footer-versions");
-        if (version) label.append(versionControl(`拡張 v${version}`, "footer-extension-version"));
-        if (gameBuild) {
-          const build = node("span", "footer-game-build", `本体ビルド ${gameBuild.slice(0, 8)}`);
-          build.title = `本体ビルド ${gameBuild}`;
-          label.append(build);
+        if (!version && !gameBuild) continue;
+        let label = previous;
+        if (label?.parentElement !== owner) {
+          label?.remove();
+          label = node(list ? "li" : "span", "footer-versions");
+          if (version) label.append(versionControl(`拡張 v${version}`, "footer-extension-version"));
+          owner.append(label);
         }
-        owner.append(label);
+        if (gameBuild) {
+          const { build, date, count, advanced, unlisted } = gameBuild;
+          const full = `本体ビルド ${build}`;
+          const caption = count ? `本体更新 #${count}${advanced ? `（+${advanced}）` : unlisted ? "（ビルド更新）" : ""}` :
+            `本体ビルド ${build.slice(0, 8)}`;
+          let buildLabel = label.querySelector('[data-ha4="footer-game-build"]');
+          if (!buildLabel) {
+            buildLabel = node("span", "footer-game-build");
+            label.append(buildLabel);
+          }
+          const title = count ? `公式更新履歴 ${date}（全${count}件）\n${full}` : full;
+          if (buildLabel.textContent !== caption) buildLabel.textContent = caption;
+          if (buildLabel.title !== title) buildLabel.title = title;
+        }
       }
+    }
+
+    function readBuild(value) {
+      if (typeof value === "string") {
+        if (gameBuild?.build !== value) gameBuild = { build: value };
+      } else if (typeof value?.build === "string" && typeof value.date === "string" &&
+          Number.isSafeInteger(value.count) && value.count > 0) {
+        const previous = get(gameUpdateSeenKey);
+        const known = Number.isSafeInteger(previous?.count) && previous.count > 0;
+        const sameNumber = known && previous.count === value.count;
+        const sameBuild = sameNumber && previous.build === value.build;
+        const advanced = sameBuild ? previous.advanced : known ? Math.max(0, value.count - previous.count) : 0;
+        const unlisted = sameNumber && (!sameBuild || previous.unlisted);
+        gameBuild = { ...value, advanced, unlisted };
+        if (!sameBuild && (!known || value.count >= previous.count)) save(gameUpdateSeenKey, gameBuild);
+      } else return;
+      requestScan();
     }
 
     function receive(event, callback) {
       try { callback(JSON.parse(event.detail)); } catch { /* Ignore data that could not be decoded. */ }
     }
-    document.addEventListener("hako-af:game-build", event => receive(event, build => {
-      if (typeof build === "string") gameBuild = build;
-    }));
+    document.addEventListener("hako-af:game-build", event => receive(event, readBuild));
     document.addEventListener("hako-af:drops", event => {
       if (previousDrops?.anchor === event.target && previousDrops.payload === event.detail) {
         currentDrops = previousDrops;

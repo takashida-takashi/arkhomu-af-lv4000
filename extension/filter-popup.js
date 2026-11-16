@@ -1,6 +1,7 @@
 (() => {
   "use strict";
 
+  const names = globalThis.hakoAfFeatureNames;
   const { normalize } = globalThis.hakoAf4000;
   const { groups } = globalThis.hakoAfEffects;
   const { activeGroup, minimumMatches } = globalThis.hakoAfListRules;
@@ -37,12 +38,12 @@
   }
 
   function createPopup(state, onChange, storage = chrome.storage.local) {
-    const trigger = button("予測で絞り込み");
+    const trigger = button(names.filter);
     trigger.dataset.ha4 = "filter";
     trigger.setAttribute("aria-haspopup", "dialog");
     const dialog = element("dialog");
     dialog.dataset.ha4 = "filter-popup";
-    const title = element("h2", null, "予測で絞り込み");
+    const title = element("h2", null, names.filter);
     title.id = "ha4-filter-title-" + ++titleId;
     dialog.setAttribute("aria-labelledby", title.id);
     const closeIcon = button("×", "close-icon");
@@ -55,7 +56,7 @@
       onChange();
     });
     const sortKey = element("select");
-    sortKey.setAttribute("aria-label", "拡張の並び順");
+    sortKey.setAttribute("aria-label", names.sort);
     const sortDirection = element("select");
     sortDirection.setAttribute("aria-label", "並べる方向");
     sortDirection.append(new Option("高い順", "desc"), new Option("低い順", "asc"));
@@ -70,7 +71,7 @@
       onChange();
     });
     const sortControls = element("label", "view");
-    sortControls.append("並び順", sortKey, sortDirection);
+    sortControls.append(names.sort, sortKey, sortDirection);
     const presetPicker = element("select");
     presetPicker.setAttribute("aria-label", "保存済みのプリセット");
     const presetName = element("input");
@@ -87,7 +88,7 @@
     const presetSaveRow = element("div", "preset-row");
     presetLoadRow.append(presetPicker, loadPreset);
     presetSaveRow.append(presetName, savePreset);
-    presetControls.append(element("h3", null, "プリセット"), presetLoadRow, presetSaveRow, presetStatus);
+    presetControls.append(element("h3", null, `${names.filter}のプリセット`), presetLoadRow, presetSaveRow, presetStatus);
     const unknown = toggle("判定できないAFも表示", state.showUnknown, checked => {
       state.showUnknown = checked;
       onChange();
@@ -450,7 +451,7 @@
       matchingIds = result.matchingIds;
       keepShown.disabled = state.view !== "match" || !matchingIds.some(id => !state.kept.has(id));
       clearKept.disabled = !state.kept?.size;
-      const caption = hasConditions ? `予測で絞り込み｜${resultLabel} ${matched}件` : "予測で絞り込み";
+      const caption = hasConditions ? `${names.filter}｜${resultLabel} ${matched}件` : names.filter;
       if (trigger.textContent !== caption) trigger.textContent = caption;
       if (status.textContent !== message) status.textContent = message;
       notice.hidden = !decomposeNotice;

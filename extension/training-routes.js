@@ -1,6 +1,8 @@
 (() => {
   "use strict";
 
+  const names = globalThis.hakoAfFeatureNames;
+  const loadRouteLabel = `${names.trainingRoutes}を読み込む`;
   const storageKey = "ha4-training-routes-v2";
   const legacyKey = "ha4-training-routes-v1";
   const detailsSelector = "[data-ha4-training-target]";
@@ -107,7 +109,7 @@
     }
 
     function open(initial) {
-      const root = modal("育成ルート");
+      const root = modal(names.trainingRoutes);
       const form = node("form", "training-form");
       const picker = node("select", "training-input");
       const name = node("input", "training-input");
@@ -115,7 +117,7 @@
       status.setAttribute("role", "status");
       name.maxLength = 120;
       form.append(field("保存済みのルート", picker), field("ルート名（任意）", name),
-        node("p", "extra-note", "スキル名を1行に1つ入力してください。保存後、ホムンクルス詳細の「育成ルートを読み込む」から設定できます。"));
+        node("p", "extra-note", `スキル名を1行に1つ入力してください。保存後、ホムンクルス詳細の「${loadRouteLabel}」から設定できます。`));
       const fields = node("div", "training-skill-fields");
       const inputs = Object.fromEntries(Object.entries(groups).map(([key, [label, limit]]) => {
         const input = node("textarea", "training-input");
@@ -191,7 +193,7 @@
     }
 
     function assign(target) {
-      const root = modal("育成ルートを読み込む");
+      const root = modal(loadRouteLabel);
       const form = node("form", "training-form");
       form.append(node("strong", "training-recipient", target.name));
       const { routes, bindings } = load();
@@ -242,7 +244,7 @@
         let panel = anchor.querySelector(':scope > [data-ha4="training-detail"]');
         if (!panel) {
           panel = node("div", "training-detail");
-          const open = button("育成ルートを読み込む", () => {
+          const open = button(loadRouteLabel, () => {
             document.dispatchEvent(new Event("hako-af:read-list"));
             const current = readTarget(anchor);
             if (current?.id) assign(current);

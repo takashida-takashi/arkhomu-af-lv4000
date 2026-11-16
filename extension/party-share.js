@@ -1,6 +1,7 @@
 (() => {
   "use strict";
 
+  const names = globalThis.hakoAfFeatureNames;
   const prefix = "#ha4-party=";
   const legacyLinkLimit = 1800;
   const linkLimit = 32 * 1024;
@@ -280,7 +281,7 @@
       button.type = "button";
       return button;
     };
-    const launcher = makeButton("編成共有");
+    const launcher = makeButton(names.partyShare);
     launcher.setAttribute("aria-haspopup", "dialog");
 
     function partyCards(data) {
@@ -333,7 +334,7 @@
           }
           const actions = node("div", "party-member-actions");
           if (openTrainingTarget) {
-            const train = makeButton("育成ルートに取り込む");
+            const train = makeButton(`${names.trainingRoutes}に取り込む`);
             train.addEventListener("click", () => openTrainingTarget(member, data.individual ? null : position, data.name));
             actions.append(train);
           }
@@ -358,8 +359,8 @@
     function openDialog() {
       dialog?.close();
       const root = dialog = node("dialog", "party-share");
-      root.setAttribute("aria-label", "編成共有");
-      const heading = node("h2", "extra-heading", "編成共有");
+      root.setAttribute("aria-label", names.partyShare);
+      const heading = node("h2", "extra-heading", names.partyShare);
       const close = makeButton("閉じる");
       close.autofocus = true;
       close.addEventListener("click", () => root.close());

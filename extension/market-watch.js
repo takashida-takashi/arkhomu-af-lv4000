@@ -1,6 +1,7 @@
 (() => {
   "use strict";
 
+  const names = globalThis.hakoAfFeatureNames;
   const prefix = "hakoAf4000:price-watch:";
   const format = new Intl.NumberFormat("ja-JP");
   const date = new Intl.DateTimeFormat("ja-JP", {
@@ -62,7 +63,7 @@
     function open(focus) {
       if (!dialog?.open) {
         dialog = node("dialog", "market-watch-dialog");
-        dialog.setAttribute("aria-label", "最安値の推移");
+        dialog.setAttribute("aria-label", names.marketWatch);
         document.body.append(dialog);
         dialog.addEventListener("close", () => dialog.remove(), { once: true });
         dialog.showModal();
@@ -78,7 +79,7 @@
       const close = node("button", "extra-button", "閉じる");
       close.type = "button";
       close.addEventListener("click", () => dialog.close());
-      header.append(node("h2", "extra-heading", "最安値の推移"), close);
+      header.append(node("h2", "extra-heading", names.marketWatch), close);
       const intro = node("p", "market-watch-note", status || "通常アイテムはフリマの表示時、永久スキルは個別の最安値が確認できたときに記録します。");
       const list = node("div", "market-watch-list");
       dialog.replaceChildren(header, intro, list);
@@ -192,7 +193,7 @@
       market = event.target;
       if (launcher?.parentElement !== market) {
         launcher?.remove();
-        launcher = node("button", "market-watch-button", "最安値の推移");
+        launcher = node("button", "market-watch-button", names.marketWatch);
         launcher.type = "button";
         launcher.addEventListener("click", () => open());
         market.prepend(launcher);
