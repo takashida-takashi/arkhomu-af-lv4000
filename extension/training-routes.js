@@ -6,7 +6,8 @@
   const storageKey = "ha4-training-routes-v2";
   const legacyKey = "ha4-training-routes-v1";
   const detailsSelector = "[data-ha4-training-target]";
-  const groups = { ordinary: ["通常スキル", 26], permanent: ["永久スキル", 10] };
+  const groups = { ordinary: ["通常スキル", 37], permanent: ["永久スキル", 37] };
+  const groupName = value => typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, 60) : "";
   const nameKey = value => value.normalize("NFKC").trim().replace(/\s+/g, " ");
   const skillLines = text => [...new Map(text.split(/\r?\n/)
     .map(line => line.trim()).filter(Boolean).map(line => [nameKey(line), line])).values()];
@@ -32,6 +33,27 @@
       return { routes, bindings, mothers };
     } catch { /* Invalid or unavailable local storage. */ }
     return { routes: [], bindings: [], mothers: [] };
+  }
+
+  function routeGroups(routes) {
+    const grouped = new Map();
+    for (const route of routes) {
+      const name = groupName(route.group);
+      if (!grouped.has(name)) grouped.set(name, []);
+      grouped.get(name).push(route);
+    }
+    return [...grouped].sort(([a], [b]) => a && b ? a.localeCompare(b, "ja") : a ? -1 : b ? 1 : 0);
+  }
+
+  function routeOptions(routes) {
+    return routeGroups(routes).flatMap(([name, entries]) => {
+      const options = entries.map(route => new Option(route.name, route.id));
+      if (!name) return options;
+      const group = document.createElement("optgroup");
+      group.label = name;
+      group.append(...options);
+      return [group];
+    });
   }
 
   function start(node, enabled, requestScan) {
@@ -72,6 +94,44 @@
       update(data);
       requestScan();
       return true;
+    }
+
+    function saveRoute(draft, status) {
+      const data = load();
+      const current = data.routes.find(route => route.id === draft.id);
+      if (draft.id && !current) {
+        status.textContent = "この育成ルートは削除されています。";
+        return;
+      }
+      const route = { id: current?.id ?? crypto.randomUUID(),
+        name: draft.name.trim() || current?.name || `育成ルート ${data.routes.length + 1}`, group: groupName(draft.group) };
+      const baseMonsterId = draft.baseMonsterId ?? current?.baseMonsterId;
+      if (typeof baseMonsterId === "string" && baseMonsterId) route.baseMonsterId = baseMonsterId;
+      const preview = draft.preview ?? current?.preview;
+      if (preview && typeof preview === "object") route.preview = preview;
+      const rank6 = Object.hasOwn(draft, "rank6Passive") ? draft.rank6Passive : current?.rank6Passive;
+      if (typeof rank6?.id === "string" && typeof rank6.name === "string" && typeof rank6.enabled === "boolean") {
+        const { id, name, enabled } = rank6;
+        if (id && name.trim()) route.rank6Passive = { id, name, enabled };
+      }
+      for (const [key, [label, limit]] of Object.entries(groups)) {
+        route[key] = skillLines(draft[key].join("\n"));
+        if (key === "ordinary" && route.rank6Passive) {
+          route[key] = route[key].filter(name => nameKey(name) !== nameKey(route.rank6Passive.name));
+        }
+        if (route[key].length > limit) {
+          status.textContent = `${label}は${limit}件まで保存できます。`;
+          return;
+        }
+      }
+      const skillIds = draft.previewSkillIds ?? current?.previewSkillIds;
+      if (skillIds) route.previewSkillIds = Object.fromEntries([...route.ordinary, ...route.permanent].flatMap(name => {
+        const id = skillIds[name];
+        return typeof id === "string" && /^[sp]\./.test(id) ? [[name, id]] : [];
+      }));
+      if (current) data.routes[data.routes.indexOf(current)] = route;
+      else data.routes.push(route);
+      return persist(data, status) ? route : undefined;
     }
 
     document.addEventListener("hako-af:mating-completed", event => {
@@ -123,15 +183,29 @@
       return wrapper;
     }
 
+    function groupInput(input, list) {
+      input.maxLength = 60;
+      input.setAttribute("list", list.id = `ha4-route-groups-${crypto.randomUUID()}`);
+      const refresh = () => list.replaceChildren(...routeGroups(load().routes)
+        .filter(([name]) => name).map(([name]) => new Option(name, name)));
+      input.addEventListener("focus", refresh);
+      refresh();
+    }
+
     function open(initial) {
       const root = modal(names.trainingRoutes);
       const form = node("form", "training-form");
       const picker = node("select", "training-input");
       const name = node("input", "training-input");
+      const group = node("input", "training-input");
+      const groupList = node("datalist", "training-group-list");
+      group.placeholder = "例：探索編成用";
+      groupInput(group, groupList);
       const status = node("p", "extra-note");
       status.setAttribute("role", "status");
       name.maxLength = 120;
       form.append(field("保存済みのルート", picker), field("ルート名（任意）", name),
+        field("グループ名（任意）", group), groupList,
         node("p", "extra-note", `スキル名を1行に1つ入力してください。保存後、ホムンクルス詳細の「${loadRouteLabel}」から設定できます。`));
       const fields = node("div", "training-skill-fields");
       const inputs = Object.fromEntries(Object.entries(groups).map(([key, [label, limit]]) => {
@@ -239,9 +313,10 @@
       let currentId;
       function setRoute(route) {
         currentId = route?.id;
-        picker.replaceChildren(new Option("新規ルート", ""), ...load().routes.map(item => new Option(item.name, item.id)));
+        picker.replaceChildren(new Option("新規ルート", ""), ...routeOptions(load().routes));
         picker.value = currentId ?? "";
         name.value = route?.name ?? "";
+        group.value = groupName(route?.group);
         for (const [key, { input, refresh }] of Object.entries(inputs)) {
           input.value = route?.[key]?.join("\n") ?? "";
           refresh();
@@ -255,14 +330,10 @@
       picker.addEventListener("change", () => setRoute(load().routes.find(route => route.id === picker.value)));
       form.addEventListener("submit", event => {
         event.preventDefault();
-        const data = load();
-        const index = data.routes.findIndex(item => item.id === currentId);
-        const route = { id: currentId ?? crypto.randomUUID(),
-          name: name.value.trim() || data.routes[index]?.name || `育成ルート ${data.routes.length + 1}` };
-        for (const [key, { input }] of Object.entries(inputs)) route[key] = skillLines(input.value);
-        if (index === -1) data.routes.push(route);
-        else data.routes[index] = route;
-        if (persist(data, status)) {
+        const draft = { id: currentId, name: name.value, group: group.value };
+        for (const [key, { input }] of Object.entries(inputs)) draft[key] = skillLines(input.value);
+        const route = saveRoute(draft, status);
+        if (route) {
           setRoute(route);
           status.textContent = "育成ルートを保存しました。";
         }
@@ -310,7 +381,7 @@
       const current = bindings.find(binding => binding.monsterId === target.id)?.routeId;
       const picker = node("select", "training-input");
       picker.required = true;
-      picker.replaceChildren(new Option("育成ルートを選ぶ", ""), ...routes.map(route => new Option(route.name, route.id)));
+      picker.replaceChildren(new Option("育成ルートを選ぶ", ""), ...routeOptions(routes));
       picker.value = current ?? "";
       const status = node("p", "extra-note");
       status.setAttribute("role", "status");
@@ -378,9 +449,18 @@
       }
       const ordinary = data.ordinary ?? [];
       const permanent = data.permanent ?? [];
-      title.textContent = ordinary.length || permanent.length ? `不足　通常 ${ordinary.length}件・永久 ${permanent.length}件` : "育成ルート達成";
+      const rank6 = data.rank6;
+      const rank6Pending = rank6 && (!rank6.learned || rank6.actualEnabled !== rank6.enabled);
+      title.textContent = ordinary.length || permanent.length ? `不足　通常 ${ordinary.length}件・永久 ${permanent.length}件` :
+        rank6Pending ? "Rank 6固有パッシブを確認" : "育成ルート達成";
+      if (rank6) {
+        const planned = rank6.enabled ? "ON" : "OFF";
+        const current = rank6.learned ? rank6.actualEnabled ? "ON" : "OFF" : "未習得";
+        body.append(node("h4", "training-progress-group", "Rank 6固有パッシブ（枠外）"),
+          node("p", "extra-note", `${rank6.name}　計画 ${planned} ／ 現在 ${current}`));
+      }
       if (!ordinary.length && !permanent.length) {
-        body.append(node("p", "extra-note", "育成ルートに必要なスキルがそろっています。"));
+        if (!rank6Pending) body.append(node("p", "extra-note", "育成ルートに必要なスキルがそろっています。"));
         return;
       }
       for (const [heading, skills, isPermanent] of [["通常スキル", ordinary, false], ["永久スキル", permanent, true]]) {
@@ -477,13 +557,17 @@
         if (mother.textContent !== motherText) mother.textContent = motherText;
         if (mother.getAttribute("aria-pressed") !== String(designated)) mother.setAttribute("aria-pressed", String(designated));
         const label = panel.querySelector('[data-ha4="training-detail-route"]');
-        const text = route ? `設定中　${route.name}` : "";
+        const text = route ? `設定中　${[groupName(route.group), route.name].filter(Boolean).join(" ／ ")}` : "";
         if (label.textContent !== text) label.textContent = text;
         renderProgress(panel, anchor, target, route);
       }
     }
 
-    return { open: () => open(load().routes[0]), openMember, update, scan };
+    return { open: (id) => {
+      const { routes } = load();
+      open(routes.find(route => route.id === id) ?? routes[0]);
+    }, openMember, update, scan, saveRoute, groups, groupInput,
+      groupedRoutes: () => routeGroups(load().routes) };
   }
 
   globalThis.hakoAfTrainingRoutes = { start };

@@ -34,13 +34,13 @@
     return projected(metric, multiplier);
   }
 
-  function activeGroup(group, origins) {
+  function activeGroup(group, origins, includes = activeCondition) {
     const children = [];
     for (const child of group.children) {
       if (child.children) {
-        const nested = activeGroup(child, origins);
+        const nested = activeGroup(child, origins, includes);
         if (nested.children.length) children.push(nested);
-      } else if (activeCondition(child)) {
+      } else if (includes(child)) {
         children.push(child);
       }
     }
@@ -75,7 +75,7 @@
     return (!condition.min || n >= Number(condition.min)) && (!condition.max || n <= Number(condition.max));
   }
 
-  function evaluateGroup(item, group, forecast, matches) {
+  function evaluateGroup(item, group, forecast, matches, evaluateCondition = evaluate) {
     const { children } = group;
     const minimum = group.join === "count" ? group.minimum : group.join === "or" ? 1 : children.length;
     let unknown = 0;
@@ -83,7 +83,9 @@
     let remaining = children.length;
     for (const child of children) {
       const nested = matches && child.children ? [] : undefined;
-      const result = child.children ? evaluateGroup(item, child, forecast, nested) : evaluate(item, child, forecast);
+      const result = child.children
+        ? evaluateGroup(item, child, forecast, nested, evaluateCondition)
+        : evaluateCondition(item, child, forecast);
       remaining--;
       if (result === true) {
         matched++;
@@ -130,20 +132,22 @@
     return { sections, indexes, pages, pageBySection };
   }
 
+  function validationError(node) {
+    if (node.children) {
+      if (node.children.length && node.join === "count" && node.minimum > node.children.length) {
+        return `一致数 ${node.minimum} を満たすには、このグループに条件があと ${node.minimum - node.children.length} 件必要です。`;
+      }
+      return node.children.map(validationError).find(Boolean);
+    }
+    if (!node.absent && node.min && node.max && Number(node.min) > Number(node.max)) {
+      return "下限は上限以下にしてください。";
+    }
+  }
+
   function viewRule({ root, view, useForecast, showUnknown, kept, groupSections }) {
     const origins = groupSections ? new WeakMap() : undefined;
     const group = activeGroup(root, origins);
-    const error = function validationError(node) {
-      if (node.children) {
-        if (node.children.length && node.join === "count" && node.minimum > node.children.length) {
-          return `一致数 ${node.minimum} を満たすには、このグループに条件があと ${node.minimum - node.children.length} 件必要です。`;
-        }
-        return node.children.map(validationError).find(Boolean);
-      }
-      if (!node.absent && node.min && node.max && Number(node.min) > Number(node.max)) {
-        return "下限は上限以下にしてください。";
-      }
-    }(group);
+    const error = validationError(group);
     const active = !error && group.children.length > 0;
     const unchecked = view === "unchecked";
     const discard = view === "discard" || unchecked;
@@ -189,5 +193,5 @@
   }
 
   globalThis.hakoAfListRules = Object.freeze({ POWER, SUM, DROP, CONVERSION, sumRates, dropMetrics, metricValue,
-    activeGroup, minimumMatches, supportsAbsence, viewRule, orderItems });
+    activeGroup, minimumMatches, supportsAbsence, evaluateGroup, validationError, viewRule, orderItems });
 })();

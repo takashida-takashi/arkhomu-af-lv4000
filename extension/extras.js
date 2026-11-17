@@ -21,6 +21,7 @@
     hiddenTitles: `${names.hiddenTitles}（未取得の隠し称号）`,
     gacha: `${names.gacha}（AFガチャ・スーパーガチャの性能表示）`,
     monsterBoxes: `${names.monsterBoxes}（個体の分類・元ランクの絞り込み）`,
+    guildDungeonFilter: `${names.filter}（ギルドダンジョン）`,
     skillPresets: `${names.skillPresets}（ホムンクルスの使用中・控え）`,
     partyShare: names.partyShare,
     trainingRoutes: `${names.trainingRoutes}（目印・優先表示・引き継ぎ）`,
@@ -70,7 +71,7 @@
   const gameUpdateSeenKey = "hakoAf4000:game-update-seen";
   const homeAlertsOpenKey = "hakoAf4000:home-alerts-open";
   const matchColors = [["red", "赤（既定）"], ["blue", "水色"], ["purple", "紫"], ["white", "白"], ["gold", "金"]];
-  const alertsOffByDefault = new Set(["npc", "npcLimited", "npcMedal", "ark", "production", "colosseum",
+  const alertsOffByDefault = new Set(["npcLimited", "npcMedal", "ark", "production", "colosseum",
     "slot:low", "slot:mid", "slot:high", "nation"]);
 
   function get(key) {
@@ -487,9 +488,20 @@
       }
       drops.append(table);
       const home = subsection(dialog, names.home);
-      home.append(node("p", "extra-note", "ショップやギルドの当日分は、状態を読み込むまで「未実行（未確認）」と表示します。"));
+      home.append(node("p", "extra-note", "ショップやギルドの状態を読み込むまでは「未確認」と表示します。"));
+      const npcOptions = node("fieldset", "npc-alert-options");
+      npcOptions.setAttribute("aria-label", "NPCショップの個別通知");
+      npcOptions.disabled = !settings.alerts.npc;
+      field(home, "NPCショップ（全体）", "checkbox", settings.alerts.npc, value => {
+        settings.alerts.npc = value;
+        npcOptions.disabled = !value;
+      });
+      home.append(node("p", "extra-note", "オフにすると、下の4つのNPCショップ通知も非表示になります。"), npcOptions);
       for (const [id, name] of Object.entries(alerts)) {
-        field(home, name, "checkbox", settings.alerts[id], value => { settings.alerts[id] = value; });
+        if (id === "npc") continue;
+        field(id.startsWith("npc") ? npcOptions : home, name, "checkbox", settings.alerts[id], value => {
+          settings.alerts[id] = value;
+        });
       }
       dialog.addEventListener("close", () => {
         dialog.remove();
@@ -671,8 +683,14 @@
     function withinFilter(id) {
       return settings.alerts[id] && (!id.startsWith("npc") || settings.alerts.npc);
     }
+    function npcShopControl(anchor) {
+      const controls = anchor.querySelectorAll("button.btn-3d-soft, .fx-home__place, a[href]");
+      return [...controls].find(control => !control.closest("[data-ha4]") && !control.disabled &&
+        control.getClientRects().length &&
+        /^NPCショップ(?:\s*商品更新)?$/.test((control.getAttribute("aria-label") || control.textContent).trim()));
+    }
     function updateHome() {
-      const home = location.pathname === "/" || location.pathname === "/f/home" || location.pathname === "/home";
+      const home = /^\/(?:f\/?|(?:f\/)?home\/?)?$/.test(location.pathname);
       const top = document.querySelector(".fx-topbar,.layout-header") ?? (home ? document.querySelector("#__nuxt header") : null);
       const anchor = home ? document.querySelector(homeRoot) ?? document.querySelector("#__nuxt main") : null;
       const label = enabled("daily") && dailyText();
@@ -748,19 +766,26 @@
         panel.append(node("summary", "extra-heading", names.home), node("ul", "extra-alert-list"));
       }
       if (homePanel.parentElement !== anchor) anchor.prepend(homePanel);
+      const canOpenNpcShop = rows.some(row => row.id.startsWith("npc")) && !!npcShopControl(anchor);
       const messages = new Map(rows.map(({ id, message, end, to, reached }) => {
         const label = id.startsWith("slot:") ? "スロット" : alerts[id];
         const prefix = id === "materials" || id === "hatchery" || message.startsWith(label) ? "" : label + "  ";
         const time = end ? `（${balanceDate.format(end).slice(5)} ${balanceTime.format(end)} JST）` : "";
-        return [prefix + message + time, { to, reached }];
+        const npc = id.startsWith("npc");
+        return [prefix + message + time, { to: npc ? null : to, openNpcShop: npc && canOpenNpcShop, reached }];
       }));
       const signature = JSON.stringify([...messages]);
       if (homePanel.dataset.content !== signature) {
         homePanel.dataset.content = signature;
-        homePanel.lastElementChild.replaceChildren(...[...messages].map(([message, { to, reached }]) => {
+        homePanel.lastElementChild.replaceChildren(...[...messages].map(([message, { to, openNpcShop, reached }]) => {
           const item = node("li", "extra-alert");
           if (reached) item.dataset.ha4Goal = "";
-          if (typeof to === "string" && /^\/(?!\/)/.test(to)) {
+          if (openNpcShop) {
+            const button = makeButton(message, "extra-open-shop");
+            button.title = "標準のNPCショップを開く";
+            button.addEventListener("click", () => npcShopControl(anchor)?.click());
+            item.append(button);
+          } else if (typeof to === "string" && /^\/(?!\/)/.test(to)) {
             const link = node("a", "extra-link", message);
             link.href = to;
             item.append(link);

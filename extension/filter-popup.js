@@ -14,15 +14,16 @@
     return group.children.flatMap(child => child.children ? conditionRows(child) : [child]);
   }
 
-  function parseSharedPreset(text) {
+  function parseSharedPreset(text, fields, format = SHARE_FORMAT) {
     if (text.length > 256 * 1024) throw new Error("共有テキストが長すぎます。");
     let data;
     try { data = JSON.parse(text); } catch { throw new Error("プリセットの共有テキストを確認してください。"); }
-    if (data?.format !== SHARE_FORMAT || ![1, 2].includes(data.version) || !Array.isArray(data.root?.children)) {
+    if (data?.format !== format || ![1, 2].includes(data.version) || !Array.isArray(data.root?.children)) {
       throw new Error("この共有データの形式には対応していません。");
     }
     let visited = 0;
-    const metric = key => typeof key === "string" && /^(power|rate_sum|(?:stat_|trait:)[\w-]{1,128})$/.test(key);
+    const metric = key => typeof key === "string" && (fields ? fields.has(key) :
+      /^(power|rate_sum|(?:stat_|trait:)[\w-]{1,128})$/.test(key));
     function readNumber(value) {
       if (value == null || value === "") return "";
       if ((typeof value === "number" || (typeof value === "string" && value.trim())) && Number.isFinite(Number(value))) {
@@ -44,6 +45,20 @@
         return { join: node.join, minimum: node.minimum, children: node.children.map(child => readNode(child, depth + 1)), ...annotation };
       }
       if (!metric(node?.key)) throw new Error("条件の項目名を確認してください。");
+      if (fields) {
+        const { kind, choices, ordered } = fields.get(node.key);
+        if (kind === "number") return { key: node.key, min: readNumber(node.min), max: readNumber(node.max) };
+        const value = node.value ?? "";
+        if (typeof value !== "string" || value.length > 100 ||
+            (kind === "choice" && value && !choices.some(([id]) => id === value))) {
+          throw new Error("条件の入力値を確認してください。");
+        }
+        if (ordered && node.comparison != null && !["eq", "min", "max"].includes(node.comparison)) {
+          throw new Error("難易度の比較方法を確認してください。");
+        }
+        return { key: node.key, value, ...(ordered && node.comparison ? { comparison: node.comparison } : {}),
+          ...(kind === "text" && node.absent === true ? { absent: true } : {}) };
+      }
       if (node.absent !== undefined) {
         if (data.version !== 2 || node.absent !== true || !supportsAbsence(node.key)) {
           throw new Error("「含まない」の対象を確認してください。");
@@ -57,7 +72,8 @@
     return {
       name: typeof data.name === "string" ? data.name.trim().slice(0, 48) : "",
       root: readNode(data.root, 0), useForecast: data.useForecast !== false, showUnknown: data.showUnknown === true,
-      sortKey: metric(data.sortKey) ? data.sortKey : "", sortDirection: data.sortDirection === "asc" ? "asc" : "desc",
+      sortKey: metric(data.sortKey) && fields?.get(data.sortKey)?.sortable !== false ? data.sortKey : "",
+      sortDirection: data.sortDirection === "asc" ? "asc" : "desc",
       highlightSections: data.highlightSections !== false
     };
   }
@@ -86,13 +102,17 @@
     return { wrapper, field };
   }
 
-  function createPopup(state, onChange, storage = chrome.storage.local, inventory = false) {
+  function createPopup(state, onChange, storage = chrome.storage.local, inventory = false, custom) {
+    const titleLabel = custom?.title ?? names.filter;
+    const groupLabels = custom?.groups ?? groups;
+    const presetPrefix = custom?.presetPrefix ?? PRESET_PREFIX;
+    const shareFormat = custom?.shareFormat ?? SHARE_FORMAT;
     const trigger = button(names.filter);
     trigger.dataset.ha4 = "filter";
     trigger.setAttribute("aria-haspopup", "dialog");
     const dialog = element("dialog");
     dialog.dataset.ha4 = "filter-popup";
-    const title = element("h2", null, names.filter);
+    const title = element("h2", null, titleLabel);
     title.id = "ha4-filter-title-" + ++titleId;
     dialog.setAttribute("aria-labelledby", title.id);
     const closeIcon = button("×", "close-icon");
@@ -151,13 +171,13 @@
     sharing.append(shareText, shareActions);
     presetControls.append(element("h3", null, `${names.filter}のプリセット`),
       presetLoadRow, presetSaveRow, sharing, presetStatus);
-    const unknown = toggle("判定できないAFも表示", state.showUnknown, checked => {
+    const unknown = toggle(custom?.unknownLabel ?? "判定できないAFも表示", state.showUnknown, checked => {
       state.showUnknown = checked;
       onChange();
     });
     const search = element("input", "search");
     search.type = "search";
-    search.placeholder = "パラメータ・特性を検索";
+    search.placeholder = custom ? "条件項目を検索" : "パラメータ・特性を検索";
     search.setAttribute("aria-label", search.placeholder);
     const active = element("section", "selected");
     const selectedRows = element("div", "selected-rows");
@@ -203,7 +223,11 @@
     const keepActions = element("div", "keep-actions");
     keepActions.hidden = state.view == null;
     keepActions.append(keepShown, clearKept);
-    body.append(presetControls, mode.wrapper, sortControls, viewControl, keepActions, active);
+    body.append(presetControls);
+    if (!custom) body.append(mode.wrapper);
+    body.append(sortControls);
+    if (!custom) body.append(viewControl, keepActions);
+    body.append(active);
     if (sectionSettings) body.append(sectionSettings);
     body.append(search, categories, noResults);
     const status = element("small", "status");
@@ -249,8 +273,8 @@
       try {
         const stored = await storage.get();
         presets = new Map(Object.entries(stored)
-          .filter(([key, value]) => key.startsWith(PRESET_PREFIX) && Array.isArray(value?.root?.children))
-          .map(([key, value]) => [key.slice(PRESET_PREFIX.length), value]));
+          .filter(([key, value]) => key.startsWith(presetPrefix) && Array.isArray(value?.root?.children))
+          .map(([key, value]) => [key.slice(presetPrefix.length), value]));
         renderPresetOptions(selected);
       } catch {
         presetStatus.textContent = "保存済みのプリセットを取得できませんでした。";
@@ -305,7 +329,7 @@
       busyWithPresets = true;
       updatePresetButtons();
       try {
-        await storage.set({ [PRESET_PREFIX + name]: preset });
+        await storage.set({ [presetPrefix + name]: preset });
         presets.set(name, preset);
         renderPresetOptions(name);
         presetStatus.textContent = `「${name}」を保存しました。`;
@@ -320,7 +344,7 @@
       const preset = currentPreset();
       const needsCurrentFormat = node => node.sectionPage || node.absent || node.children?.some(needsCurrentFormat);
       const version = needsCurrentFormat(preset.root) ? 2 : 1;
-      shareText.value = JSON.stringify({ format: SHARE_FORMAT, version, name: presetName.value.trim(), ...preset });
+      shareText.value = JSON.stringify({ format: shareFormat, version, name: presetName.value.trim(), ...preset });
       updatePresetButtons();
       try {
         await navigator.clipboard.writeText(shareText.value);
@@ -333,7 +357,7 @@
     });
     function importShared() {
       try {
-        const preset = parseSharedPreset(shareText.value.trim());
+        const preset = parseSharedPreset(shareText.value.trim(), custom ? options : undefined, shareFormat);
         presetPicker.value = "";
         applyPreset(preset, preset.name);
         presetStatus.textContent = "共有プリセットを反映しました。保存する場合はプリセット名を指定してください。";
@@ -372,7 +396,7 @@
         (state.view == null || state.view === "match") && !state.sortKey;
       const conditions = conditionRows(state.root);
       for (const [group, { count, total }] of thresholds) {
-        const available = activeGroup(group).children.length;
+        const available = activeGroup(group, undefined, custom?.isActive).children.length;
         const selected = minimumMatches(group);
         const signature = `${available}/${selected}`;
         if (count.dataset.options === signature) continue;
@@ -395,11 +419,47 @@
       }
     }
 
-    function renderCondition(condition, group) {
-      const { label, unit } = options.get(condition.key);
-      const row = element("div", "condition");
-      row.dataset.ha4Condition = condition.key;
-      row.append(element("strong", "condition-name", label));
+    function renderValues(row, condition, { label, unit, kind, choices, ordered }) {
+      if (kind === "text" || kind === "choice") {
+        if (kind === "text") {
+          const operator = element("select");
+          operator.setAttribute("aria-label", label + "の一致方法");
+          operator.append(new Option("含む", "present"), new Option("含まない", "absent"));
+          operator.value = condition.absent ? "absent" : "present";
+          operator.addEventListener("change", () => {
+            condition.absent = operator.value === "absent";
+            onChange();
+          });
+          row.append(operator);
+        }
+        if (ordered) {
+          const operator = element("select");
+          operator.setAttribute("aria-label", label + "の比較方法");
+          operator.append(new Option("一致", "eq"), new Option("以上", "min"), new Option("以下", "max"));
+          operator.value = condition.comparison ?? "eq";
+          operator.addEventListener("change", () => {
+            condition.comparison = operator.value;
+            onChange();
+          });
+          row.append(operator);
+        }
+        const input = element(kind === "choice" ? "select" : "input", "condition-value");
+        input.setAttribute("aria-label", label + "の条件値");
+        if (kind === "choice") input.append(new Option("指定なし", ""), ...choices.map(([id, name]) => new Option(name, id)));
+        else {
+          input.type = "text";
+          input.maxLength = 100;
+          input.placeholder = "名前を入力";
+        }
+        input.value = condition.value ?? "";
+        input.addEventListener(kind === "choice" ? "change" : "input", () => {
+          condition.value = input.value;
+          updateControls();
+          onChange();
+        });
+        row.append(input);
+        return;
+      }
       const bounds = [];
       if (supportsAbsence(condition.key)) {
         const operator = element("select");
@@ -423,12 +483,13 @@
         input.setAttribute("aria-label", label + "の" + caption);
         input.addEventListener("input", () => {
           condition[field] = input.value;
+          if (custom) updateControls();
           onChange();
         });
         bounds.push(input);
       }
       bounds.push(element("span", "unit", unit));
-      if (condition.key !== "power" && condition.key !== "rate_sum") {
+      if (!custom && condition.key !== "power" && condition.key !== "rate_sum") {
         const stars = element("select");
         stars.setAttribute("aria-label", label + "の★の数");
         stars.append(new Option("★指定なし", ""), ...[1, 2, 3, 4, 5].map(n =>
@@ -442,6 +503,15 @@
       }
       for (const field of bounds) field.hidden = condition.absent === true;
       row.append(...bounds);
+    }
+
+    function renderCondition(condition, group) {
+      const option = options.get(condition.key);
+      const { label } = option;
+      const row = element("div", "condition");
+      row.dataset.ha4Condition = condition.key;
+      row.append(element("strong", "condition-name", label));
+      renderValues(row, condition, option);
       const remove = button("×", "remove");
       remove.setAttribute("aria-label", label + "の条件を外す");
       remove.addEventListener("click", () => setCondition(condition.key, false, group));
@@ -546,7 +616,7 @@
         let matches = 0;
         for (const [key, item] of view.items) {
           const label = normalize(options.get(key).label).toLowerCase();
-          const searchText = label + " " + normalize(groups[group]).toLowerCase() +
+          const searchText = label + " " + normalize(groupLabels[group]).toLowerCase() +
             (key === "rate_sum" ? " af合計 変換率合計" : "");
           const visible = !query || searchText.includes(query) ||
             (query.includes("af") && label.includes(query.replaceAll("af", "アーティファクト")));
@@ -563,11 +633,12 @@
     function renderOptions() {
       rendered.clear();
       const sections = [];
-      for (const [group, groupLabel] of Object.entries(groups)) {
+      for (const [group, groupLabel] of Object.entries(groupLabels)) {
         const entries = [...options].filter(([, option]) => option.group === group);
         if (!entries.length) continue;
         const section = element("details", "category");
-        if (!expanded.has(group)) expanded.set(group, group === "basic" || group === "parameter" || group === "reward");
+        if (!expanded.has(group)) expanded.set(group, custom ? group === Object.keys(groupLabels)[0] :
+          group === "basic" || group === "parameter" || group === "reward");
         section.open = expanded.get(group);
         const summary = element("summary", null, groupLabel);
         const badge = element("span", "category-count");
@@ -680,6 +751,7 @@
 
     function refresh(entries, newCounts, result) {
       const { active: hasConditions, matched, unknown: unknownCount, message, resultLabel, decomposeNotice, selectionNotice } = result;
+      mode.field.checked = state.useForecast;
       matchingIds = result.matchingIds;
       keepShown.disabled = state.view !== "match" || !matchingIds.some(id => !state.kept.has(id));
       clearKept.disabled = !state.kept?.size;
@@ -691,6 +763,7 @@
         ? "残すチェックはこのタブ内の目印です。分解候補を表示して、ゲームの一括解体モードで対象を選んでください。"
         : selectionNotice ?? "";
       unknown.wrapper.hidden = unknownCount === 0;
+      if (custom) unknown.field.checked = state.showUnknown;
       refreshSections(result.sections ?? [], result.pages ?? [], result.section, result.hasSectionPages, result.sectionCounts);
       counts = newCounts;
       const nextSignature = JSON.stringify(entries);
@@ -698,8 +771,8 @@
         options = new Map(entries);
         signature = nextSignature;
         sortKey.replaceChildren(new Option("ゲームの並び順を使う", ""));
-        for (const [group, groupLabel] of Object.entries(groups)) {
-          const list = entries.filter(([, option]) => option.group === group);
+        for (const [group, groupLabel] of Object.entries(groupLabels)) {
+          const list = entries.filter(([, option]) => option.group === group && option.sortable !== false);
           if (!list.length) continue;
           const groupNode = element("optgroup");
           groupNode.label = groupLabel;
@@ -737,6 +810,7 @@
       if (openPopup && openPopup !== dialog) openPopup.close();
       if (dialog.open) return;
       search.value = "";
+      if (custom) targetGroup = state.root;
       if (!dialog.isConnected) document.body.append(dialog);
       renderOptions();
       dialog.showModal();

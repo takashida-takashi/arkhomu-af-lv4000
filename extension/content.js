@@ -42,13 +42,16 @@
   const extrasApi = globalThis.hakoAfExtras;
   const GACHA_CARD = ".rv-card";
   const monsterRoots = '.fx-mlist,.fx-mfilter,[data-ha4-monster-list],input[placeholder="例: 火炎斬り"]';
-  const extrasRoots = '[data-chat-message-id],.fx-summary-page,.fx-summary,.fx-result,.fx-settings,.fx-topbar,#fx-todo,[aria-label="国のお知らせ"],[data-ha4-settings-anchor],[data-ha4-home-root],[data-ha4-market-watch-root],[data-home-tutorial-root],.fx-home,.fx-shop-buy,.shop-cell-nolp,.fx-shop-marks,.fx-race-exchange,.fx-ark-product,.fx-wbase-home__outpost,.fx-skedit,.skill-reserve-toggle,.fx-aenh__panel,.fx-bento,.fx-expd,.expedition-modal-body,[data-bento-pointer-slot],#__nuxt header,' + GACHA_CARD + ',' + monsterRoots;
+  const guildDungeonRoots = '.fx-dungeon__list,[aria-label="ギルドダンジョンの一覧"]';
+  const extrasRoots = '[data-chat-message-id],.fx-summary-page,.fx-summary,.fx-result,.fx-settings,.fx-topbar,#fx-todo,[aria-label="国のお知らせ"],[data-ha4-settings-anchor],[data-ha4-home-root],[data-ha4-market-watch-root],[data-home-tutorial-root],[data-ha4-shop-notification],.fx-home,.fx-shop-buy,.shop-cell-nolp,.fx-shop-marks,.fx-race-exchange,.fx-ark-product,.fx-wbase-home__outpost,.fx-skedit,.skill-reserve-toggle,.fx-aenh__panel,.fx-bento,.fx-expd,.expedition-modal-body,[data-bento-pointer-slot],#__nuxt header,' + GACHA_CARD + ',' + monsterRoots + ',' + guildDungeonRoots;
   const normalRoute = () => location.pathname.replace(/^\/f\//, "/");
   const isOwnProfile = () => /^\/profile\/?$/.test(normalRoute());
   let finishEstimateScan;
   let exploreAnalysis;
   let partyShare;
   let trainingRoutes;
+  let trainingPlanner;
+  let guildDungeonFilter;
   const partyRoots = '.fx-party__panel,.fx-hall-detail,aside[aria-label="投稿の詳細"],[aria-labelledby="hall-classic-comments-title"],[data-party-pointer-slot],.fx-mdetail__hero,.fx-mdetail__head,.detail-pc-fonts,[data-ha4-share-member],[data-ha4-public-training-detail]';
   const trainingRoots = ".fx-mating,.fx-mati,.fx-tgrant,.fx-tgflow,[data-ha4-training-scope],[data-inherit-row]";
   let marketWatch;
@@ -504,8 +507,8 @@
       const { total, multiple, cart: inCart } = capacity;
       const count = new Intl.NumberFormat("ja-JP");
       const pulls = count.format(Math.floor((multiple + inCart) / 5));
-      const single = total !== multiple ? ` · 単発の候補 ${count.format(total)}個` : "";
-      adorn(owner, "gacha-capacity", `連続セットの追加候補 ${count.format(multiple)}個（${inCart ? "カート込み " : ""}${pulls}連分）${single}`,
+      const manual = total !== multiple ? ` · 手動で追加できる候補 ${count.format(total)}個` : "";
+      adorn(owner, "gacha-capacity", `連続セットの追加候補 ${count.format(multiple)}個（${inCart ? "カート込み " : ""}${pulls}連分）${manual}`,
         "素材数で換算しています。指定した合計パワーによって実際に作れるセット数は変わります。");
     }
     let ui = gachaInputControls.get(owner);
@@ -1108,8 +1111,10 @@
       document.dispatchEvent(new Event("hako-af:read-list"));
     }
     partyShare?.scan();
+    guildDungeonFilter?.scan();
     renderSkinSort();
     trainingRoutes?.scan(trainingData);
+    trainingPlanner?.scan();
     finishEstimateScan?.();
     exploreAnalysis?.finishScan();
     marketWatch?.afterRead();
@@ -1277,6 +1282,7 @@
   document.addEventListener("input", nativeSortChanged, true);
   document.addEventListener("change", nativeSortChanged, true);
   document.addEventListener("hako-af:grid-rendered", requestScan);
+  document.addEventListener("hako-af:guild-filter-data", requestScan);
   document.addEventListener("click", event => {
     if (event.target instanceof Element && (event.target.closest(trainingRoots) ||
         ["/mating", "/monsters", "/soul"].includes(normalRoute()) && event.target.closest("#__nuxt"))) requestScan();
@@ -1322,7 +1328,7 @@
         }
         continue;
       }
-      const observed = `${ROOTS},${extrasRoots},${partyRoots},${trainingRoots},#__nuxt footer`;
+      const observed = `${ROOTS},${extrasRoots},${partyRoots},${trainingRoots},.home-facility-menu,section.order-2 > .ui-gloss,#__nuxt footer`;
       const matingDialog = normalRoute() === "/mating" && (target?.closest('[role="dialog"]') ||
         gameChanges.some(n => n.nodeType === 1 && (n.matches('[role="dialog"]') || n.querySelector('[role="dialog"]'))));
       if (slotPrompt || matingDialog || target?.closest(observed) || (isOwnProfile() && (target?.querySelector(titleSearch) ||
@@ -1342,9 +1348,11 @@
   globalThis.hakoAfExpedition?.start(node, () => extras?.enabled("expedition"));
   delete globalThis.hakoAfExpedition;
   trainingRoutes = globalThis.hakoAfTrainingRoutes?.start(node, () => extras?.enabled("trainingRoutes"), requestScan);
+  trainingPlanner = globalThis.hakoAfTrainingPlanner?.start(node, () => extras?.enabled("trainingRoutes"), trainingRoutes);
   partyShare = globalThis.hakoAfPartyShare?.start(node, () => extras?.enabled("partyShare"), trainingRoutes?.openMember,
     () => extras?.enabled("trainingRoutes"));
   delete globalThis.hakoAfTrainingRoutes;
+  delete globalThis.hakoAfTrainingPlanner;
   delete globalThis.hakoAfPartyShare;
   extras = extrasApi?.start({ node, requestScan, viewRule, toMetrics: dropMetrics, effectOption, makePanel,
     appendExploreReset: exploreAnalysis?.appendSettingsReset,
@@ -1353,5 +1361,6 @@
     listOptions: (items, state) => listOptions(items, null, conditionRows(state.root), "explore", null, state.sortKey) });
   finishEstimateScan = globalThis.hakoAfEnhanceEstimate?.start(node, id => extras?.enabled(id), requestScan);
   marketWatch = globalThis.hakoAfMarketWatch?.start(node, id => extras?.enabled(id), requestScan);
+  guildDungeonFilter = globalThis.hakoAfGuildDungeonFilter?.start(() => !extras || extras.enabled("guildDungeonFilter"));
   requestScan();
 })();

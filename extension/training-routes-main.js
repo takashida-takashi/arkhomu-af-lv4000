@@ -56,7 +56,8 @@
     try {
       const data = JSON.parse(event.detail);
       const nextRoutes = new Map(data.routes.map(route => [route.id, {
-        name: route.name, ordinaryNames: route.ordinary, permanentNames: route.permanent,
+        name: route.name, group: typeof route.group === "string" ? route.group : "",
+        ordinaryNames: route.ordinary, permanentNames: route.permanent, rank6Passive: route.rank6Passive,
         skills: new Set([...route.ordinary, ...route.permanent].map(nameKey)),
         permanent: new Set(route.permanent.map(nameKey))
       }]));
@@ -251,7 +252,7 @@
       label.dataset.ha4 = "training-active-route";
       anchor.prepend(label);
     }
-    const caption = `${names.trainingRoutes}　${route.name}`;
+    const caption = `${names.trainingRoutes}　${[route.group, route.name].filter(Boolean).join(" ／ ")}`;
     if (label.textContent !== caption) label.textContent = caption;
     return route;
   }
@@ -275,7 +276,7 @@
     const skills = selected === bothParentRoutes
       ? new Set(parentRoutes.flatMap(id => [...routes.get(id).skills])) : route?.skills ?? savedSkills;
     const scope = { skills, specific: !!route, bulk: parentRoutes.includes(selected), parentSignature, selected };
-    const signature = JSON.stringify([parentSignature, selected, combined, [...routes].map(([id, item]) => [id, item.name])]);
+    const signature = JSON.stringify([parentSignature, selected, combined, [...routes].map(([id, item]) => [id, item.name, item.group])]);
     if (control?.dataset.routeSignature === signature) return scope;
     control?.remove();
     control = document.createElement("label");
@@ -286,7 +287,21 @@
     select.setAttribute("aria-label", "継承候補の強調");
     select.replaceChildren(new Option("保存した全ルート（選ぶ候補のみ）", ""));
     if (combined) select.add(new Option("両親の育成ルート（選ぶ候補のみ）", bothParentRoutes));
-    for (const [id, item] of routes) select.add(new Option(item.name, id));
+    const grouped = new Map();
+    for (const [id, item] of routes) {
+      if (!grouped.has(item.group)) grouped.set(item.group, []);
+      grouped.get(item.group).push(new Option(item.name, id));
+    }
+    for (const group of [...grouped.keys()].sort((a, b) => a && b ? a.localeCompare(b, "ja") : a ? -1 : b ? 1 : 0)) {
+      const options = grouped.get(group);
+      if (!group) select.append(...options);
+      else {
+        const section = document.createElement("optgroup");
+        section.label = group;
+        section.append(...options);
+        select.append(section);
+      }
+    }
     select.value = selected;
     select.addEventListener("change", () => {
       matingChoices.set(panel, { parents: parentSignature, choice: select.value });
@@ -439,8 +454,10 @@
     const native = monster.t_user_monsters ?? monster;
     const storedPermanent = record.permanent_skills ?? native.permanent_skills;
     const permanent = Array.isArray(storedPermanent) ? storedPermanent : [];
-    const signature = JSON.stringify([id, assigned.routeId, route.ordinaryNames, route.permanentNames, record.level ?? native.level,
+    const signature = JSON.stringify([id, assigned.routeId, route.ordinaryNames, route.permanentNames, route.rank6Passive, record.level ?? native.level,
       record.monster_id ?? native.monster_id, record.rank_up ?? native.rank_up, permanent,
+      record.disabled_passives ?? native.disabled_passives, record.meta?.rank6_unique_skill ?? native.meta?.rank6_unique_skill,
+      record.rank6_unique_skill_granted ?? native.rank6_unique_skill_granted,
       record.inherited_traits ?? native.inherited_traits, record.excluded_skill_ids ?? native.excluded_skill_ids,
       record.forgotten_skills ?? native.forgotten_skills, record.forgotten_passives ?? native.forgotten_passives]);
     const previous = progressBindings.get(anchor);
@@ -471,18 +488,23 @@
           if (typeof entry !== "string") return title(entry, entry.effect === "passive" ? "passive" : "skill");
           return title({ id: entry }, masters.getActiveSkill(entry) ? "skill" : "passive");
         }).filter(Boolean));
+        const passives = skills.getPassiveSkills(member, { includeReserved: true, includeDisabled: true });
         const known = new Set([
           ...knownPermanent,
           ...skills.getActiveSkills(member, { includeReserved: true }).map(entry => title(entry, "skill")),
-          ...skills.getPassiveSkills(member, { includeReserved: true, includeDisabled: true }).map(entry => title(entry, "passive"))
+          ...passives.map(entry => title(entry, "passive"))
         ]);
         const normal = route.ordinaryNames.filter(name => !known.has(nameKey(name)));
         const missingPermanent = route.permanentNames.filter(name => !knownPermanent.has(nameKey(name)));
         const index = trainingSources?.sourceIndex(data, [...normal, ...missingPermanent], profile, translate, nameKey);
         const describe = name => ({ name, sources: index?.get(nameKey(name)) ?? [] });
+        const planned = route.rank6Passive;
+        const actual = planned && passives.find(entry => entry.id === planned.id);
+        const rank6 = planned ? { ...planned, enabled: masters.getPassiveSkill(planned.id)?.drawback === true || planned.enabled,
+          learned: !!actual, actualEnabled: !!actual && actual._userDisabled !== true } : null;
         return { ordinary: normal.map(describe), permanent: missingPermanent.map(name => ({
           ...describe(name), learned: known.has(nameKey(name))
-        })), sourcesLoaded: !!data?.monsters && !!data?.items };
+        })), rank6, sourcesLoaded: !!data?.monsters && !!data?.items };
       });
       state.ready = !!result;
       send(result ?? { unavailable: true });

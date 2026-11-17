@@ -22,6 +22,7 @@
     skillPresets: "拡張スキルプリセット",
     partyShare: "拡張編成共有",
     trainingRoutes: "拡張育成ルート",
+    trainingPlanner: "拡張育成プランナー",
     chat: "拡張チャット",
     daily: "拡張日次収支"
   });

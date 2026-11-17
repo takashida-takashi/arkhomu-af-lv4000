@@ -6,8 +6,20 @@
   const featureName = globalThis.hakoAfFeatureNames.monsterBoxes;
   const listNames = new Set(["MonsterList", "FlexMonsterList"]);
   const keyFor = owner => "hakoAf4000:monster-boxes:" + owner;
-  const monsterId = monster => monster?.user_monster_id ?? monster?.id;
+  const monsterId = monster => String(monster?.user_monster_id ?? monster?.id ?? "");
   const baseRank = monster => Number(monster.m_monsters?.rank ?? monster.rank);
+  const bounds = [
+    ["lt", "未満", (value, limit) => value < limit], ["lte", "以下", (value, limit) => value <= limit],
+    ["gte", "以上", (value, limit) => value >= limit], ["gt", "より大きい", (value, limit) => value > limit],
+    ["eq", "一致", (value, limit) => value === limit]
+  ];
+  const number = new Intl.NumberFormat("ja-JP");
+  const countLabel = count => `${number.format(count)}体`;
+  const conditionFields = [
+    ["世代", "lt", "any", monster => monster.t_user_monsters?.generation_value ?? monster.generation_value],
+    ["レベル", "gte", "1", monster => monster.t_user_monsters?.level ?? monster.level],
+    ["元ランク", "lte", "1", baseRank]
+  ];
 
   function element(tag, kind, text) {
     const el = document.createElement(tag);
@@ -36,7 +48,8 @@
       const valid = Array.isArray(ids) ? ids.filter(box => boxes.has(box)) : [];
       if (valid.length) members.set(id, new Set(valid));
     }
-    return { owner, boxes, members };
+    const skipInheritance = new Set(Array.isArray(saved?.skipInheritance) ? saved.skipInheritance.filter(id => boxes.has(id)) : []);
+    return { owner, boxes, members, skipInheritance };
   }
 
   function start({ dependencies, readThrough }) {
@@ -47,14 +60,28 @@
     let account;
     let ownRows;
     let ownedIds;
+    let ownLength;
+    let counts, refreshDialog;
     let dialog;
     const uiSelector = '[data-ha4="monster-box-toolbar"],[data-ha4="monster-box-mark"],[data-ha4="monster-rank-field"]';
 
-    function save() {
+    function save(snapshot = account) {
       try {
-        localStorage.setItem(keyFor(account.owner), JSON.stringify({ boxes: [...account.boxes],
-          members: Object.fromEntries([...account.members].map(([id, boxes]) => [id, [...boxes]])) }));
-      } catch { /* Retain the changes in this tab. */ }
+        localStorage.setItem(keyFor(snapshot.owner), JSON.stringify({ boxes: [...snapshot.boxes],
+          members: Object.fromEntries([...snapshot.members].map(([id, boxes]) => [id, [...boxes]])),
+          skipInheritance: [...snapshot.skipInheritance] }));
+        return true;
+      } catch { return false; }
+    }
+
+    function boxCounts() {
+      if (counts) return counts;
+      counts = new Map();
+      for (const [id, boxes] of account.members) {
+        if (!ownedIds.has(id)) continue;
+        for (const box of boxes) counts.set(box, (counts.get(box) ?? 0) + 1);
+      }
+      return counts;
     }
 
     function changeList(state, resetPage = true) {
@@ -66,6 +93,7 @@
     }
 
     function refreshBoxes() {
+      counts = null;
       for (const state of lists) {
         if (state.owner !== account.owner) continue;
         const box = state.box;
@@ -73,16 +101,19 @@
         if (box) changeList(state, box !== state.box);
         renderToolbar(state);
       }
+      refreshDialog?.();
       document.dispatchEvent(new Event("hako-af:grid-rendered"));
     }
 
     function saveBoxes() {
-      save();
+      const saved = save();
       refreshBoxes();
+      return saved;
     }
 
     function openDialog(title) {
       if (dialog?.open) dialog.close();
+      refreshDialog = null;
       const panel = dialog = element("dialog", "monster-box-dialog");
       panel.setAttribute("aria-label", title);
       const header = element("header", "monster-box-dialog-header");
@@ -96,7 +127,7 @@
       return body;
     }
 
-    function manageBoxes() {
+    function manageBoxes(activeBox) {
       const body = openDialog(featureName);
       const status = element("p", "monster-box-status");
       status.setAttribute("role", "status");
@@ -109,7 +140,19 @@
       const add = element("button", "monster-box-button", "追加");
       create.append(input, add);
       const entries = element("div", "monster-box-entries");
-      body.append(create, entries, status);
+      const bulk = button("monster-box-button", "条件で一括追加", () => bulkAssign(activeBox));
+      body.append(create, bulk, entries, status);
+      const countRows = new Map();
+      const inheritanceRows = new Map();
+      refreshDialog = () => {
+        if (!body.isConnected) return;
+        const totals = boxCounts();
+        for (const [id, count] of countRows) {
+          const text = countLabel(totals.get(id) ?? 0);
+          if (count.textContent !== text) count.textContent = text;
+        }
+        for (const [id, input] of inheritanceRows) input.checked = !account.skipInheritance.has(id);
+      };
       const validName = (name, id) => {
         if (!name) return "ボックス名を入力してください。";
         if (name === "すべて" || [...account.boxes].some(([key, value]) => key !== id && value === name)) {
@@ -118,6 +161,9 @@
         return "";
       };
       const render = () => {
+        countRows.clear();
+        inheritanceRows.clear();
+        bulk.hidden = !account.boxes.size;
         entries.replaceChildren(...[...account.boxes].map(([id, name]) => {
           const row = element("form", "monster-box-edit");
           const field = element("input", "monster-box-name");
@@ -125,16 +171,37 @@
           field.required = true;
           field.maxLength = 32;
           field.setAttribute("aria-label", name + "のボックス名");
-          row.append(field, element("button", "monster-box-button", "名前を保存"),
+          const count = element("span", "monster-box-count");
+          countRows.set(id, count);
+          const inherit = element("label", "monster-box-inherit");
+          const checkbox = element("input", "monster-box-check");
+          checkbox.type = "checkbox";
+          checkbox.setAttribute("aria-label", `${name}の合成後の子を入れる`);
+          checkbox.addEventListener("change", () => {
+            if (checkbox.checked) account.skipInheritance.delete(id);
+            else account.skipInheritance.add(id);
+            if (save()) {
+              status.textContent = "";
+              return;
+            }
+            if (checkbox.checked) account.skipInheritance.add(id);
+            else account.skipInheritance.delete(id);
+            checkbox.checked = !checkbox.checked;
+            status.textContent = "引き継ぎ設定を保存できませんでした。";
+          });
+          inherit.append(checkbox, "合成後の子を入れる");
+          inheritanceRows.set(id, checkbox);
+          row.append(field, count, element("button", "monster-box-button", "名前を保存"),
             button("monster-box-button", "削除", () => {
               account.boxes.delete(id);
+              account.skipInheritance.delete(id);
               for (const [monster, boxes] of account.members) {
                 if (boxes.delete(id) && !boxes.size) account.members.delete(monster);
               }
               saveBoxes();
               render();
               status.textContent = `「${name}」を削除しました。`;
-            }));
+            }), inherit);
           row.addEventListener("submit", event => {
             event.preventDefault();
             const next = field.value.trim();
@@ -147,6 +214,7 @@
           });
           return row;
         }));
+        refreshDialog();
       };
       create.addEventListener("submit", event => {
         event.preventDefault();
@@ -161,6 +229,98 @@
       });
       render();
       input.focus();
+    }
+
+    function bulkAssign(activeBox) {
+      const body = openDialog(featureName + "に条件で一括追加");
+      const form = element("form", "monster-box-bulk");
+      const label = element("label", "monster-box-choice", "追加先のボックス");
+      const target = element("select", "monster-box-rank-select");
+      target.required = true;
+      label.append(target);
+      const fields = conditionFields.map(([name, mode, step, measure]) => {
+        const row = element("div", "monster-box-rule");
+        const limit = element("input", "monster-box-number");
+        limit.type = "number";
+        limit.min = "0";
+        limit.step = step;
+        limit.placeholder = "指定なし";
+        limit.setAttribute("aria-label", name);
+        const compare = element("select", "monster-box-rank-select");
+        compare.setAttribute("aria-label", name + "の比較");
+        compare.append(...bounds.map(([id, title]) => new Option(title, id)));
+        compare.value = mode;
+        row.append(element("span", "monster-box-rule-name", name), limit, compare);
+        form.append(row);
+        return { limit, compare, measure };
+      });
+      const preview = element("p", "monster-box-status");
+      preview.setAttribute("aria-live", "polite");
+      const status = element("p", "monster-box-status");
+      status.setAttribute("role", "status");
+      const actions = element("div", "monster-box-bulk-actions");
+      const submit = element("button", "monster-box-button", "該当するホムを追加");
+      submit.type = "submit";
+      actions.append(button("monster-box-button", "ボックス管理へ", () => manageBoxes(target.value)), submit);
+      form.prepend(label, element("p", "monster-box-bulk-note", "入力した条件をすべて満たす所持ホムンクルスが対象です。"));
+      form.append(preview, actions, status);
+      body.append(form);
+
+      function matching() {
+        const rules = fields.filter(({ limit }) => limit.value !== "").map(({ limit, compare, measure }) => {
+          const test = bounds.find(([id]) => id === compare.value)[2];
+          const threshold = limit.valueAsNumber;
+          return monster => {
+            const value = measure(monster);
+            return value != null && Number.isFinite(Number(value)) && test(Number(value), threshold);
+          };
+        });
+        if (!rules.length || fields.some(({ limit }) => !limit.validity.valid)) return null;
+        return new Set(ownRows.filter(monster => monsterId(monster) != null && rules.every(test => test(monster))).map(monsterId));
+      }
+
+      function refresh() {
+        if (!body.isConnected) return;
+        const before = target.value || activeBox;
+        const totals = boxCounts();
+        const options = [...account.boxes].map(([id, name]) => [id, `${name}（${countLabel(totals.get(id) ?? 0)}）`]);
+        if (JSON.stringify(options) !== target.dataset.options) {
+          target.dataset.options = JSON.stringify(options);
+          target.replaceChildren(...options.map(([id, name]) => new Option(name, id)));
+          if (account.boxes.has(before)) target.value = before;
+        }
+        const matches = matching();
+        const additional = matches && [...matches].filter(id => !account.members.get(id)?.has(target.value)).length;
+        submit.disabled = !target.value || !additional;
+        const text = matches ? `該当 ${countLabel(matches.size)}・追加 ${countLabel(additional)}・登録済み ${countLabel(matches.size - additional)}` :
+          "条件を入力すると該当数を表示します。";
+        if (preview.textContent !== text) preview.textContent = text;
+      }
+
+      for (const event of ["input", "change"]) form.addEventListener(event, () => {
+        status.textContent = "";
+        refresh();
+      });
+      form.addEventListener("submit", event => {
+        event.preventDefault();
+        const box = target.value;
+        const matches = matching();
+        if (!matches || !account.boxes.has(box)) return;
+        let added = 0;
+        for (const id of matches) {
+          const boxes = account.members.get(id) ?? new Set();
+          if (boxes.has(box)) continue;
+          boxes.add(box);
+          account.members.set(id, boxes);
+          added++;
+        }
+        if (!added) return;
+        const saved = saveBoxes();
+        status.textContent = saved ? `「${account.boxes.get(box)}」に${countLabel(added)}を追加しました。` :
+          "このタブには反映しました。ブラウザへの保存はできませんでした。";
+      });
+      refreshDialog = refresh;
+      refresh();
     }
 
     function assignBoxes(id) {
@@ -202,6 +362,11 @@
       for (const tab of state.tabs.children) {
         const pressed = String(tab.dataset.box === state.box);
         if (tab.getAttribute("aria-pressed") !== pressed) tab.setAttribute("aria-pressed", pressed);
+        const id = tab.dataset.box;
+        if (id) {
+          const label = `${account.boxes.get(id)} ${countLabel(boxCounts().get(id) ?? 0)}`;
+          if (tab.textContent !== label) tab.textContent = label;
+        }
       }
       state.rankChip.hidden = !state.rank;
       const caption = state.rank ? `元Rank ${state.rank} ×` : "";
@@ -221,13 +386,16 @@
       const all = stores?.get("userMonsters")?.monsters;
       const rows = classicSoul ? all : instance.props?.monsters;
       if (!owner || !Array.isArray(rows) || !Array.isArray(all) || !el.isConnected) return;
-      if (account?.owner !== owner || all !== ownRows) {
+      if (account?.owner !== owner || all !== ownRows || all.length !== ownLength) {
         if (account?.owner !== owner) {
           if (dialog?.open) dialog.close();
           account = readAccount(owner);
         }
         ownRows = all;
+        ownLength = all.length;
         ownedIds = new Set(all.map(monsterId));
+        counts = null;
+        refreshDialog?.();
       }
       let state = bindings.get(instance);
       if (rows !== all && !state && (!rows.length || !rows.every(monster => ownedIds.has(monsterId(monster))))) return;
@@ -245,7 +413,7 @@
         tabs.setAttribute("aria-label", featureName + "の一覧");
         const rankChip = button("monster-box-button", "", () => setRank(state, 0));
         rankChip.setAttribute("aria-label", "元ランクの絞り込みを解除");
-        toolbar.append(tabs, rankChip, button("monster-box-button", featureName, manageBoxes));
+        toolbar.append(tabs, rankChip, button("monster-box-button", featureName, () => manageBoxes(state.box)));
         state = { owner, instance, sorted, toolbar, tabs, rankChip, classicSoul, box: "", rank: 0 };
         if (!readThrough(sorted, source => {
           if (!enabled || state.owner !== account?.owner || !Array.isArray(source) || !state.rank && !state.box) return source;
@@ -288,7 +456,7 @@
         const field = element("label", "monster-rank-field", "元ランク");
         const select = element("select", "monster-box-rank-select");
         select.setAttribute("aria-label", "元ランク");
-        select.append(new Option("指定なし", "0"), ...Array.from({ length: 6 }, (_, i) =>
+        select.append(new Option("指定なし", "0"), ...Array.from({ length: 7 }, (_, i) =>
           new Option("Rank " + (i + 1), String(i + 1))));
         select.addEventListener("change", () => setRank(state, Number(select.value)));
         field.append(select);
@@ -337,6 +505,34 @@
       }
       for (const state of lists) changeList(state, false);
     });
+
+    document.addEventListener("hako-af:mating-completed", event => {
+      if (!enabled || typeof event.detail !== "string") return;
+      let result;
+      try { result = JSON.parse(event.detail); } catch { return; }
+      const { owner, parents, child } = result ?? {};
+      if (typeof owner !== "string" || !owner || !Array.isArray(parents) || !parents.length ||
+          !parents.every(id => typeof id === "string" && id) || typeof child !== "string" || !child || parents.includes(child)) return;
+      const snapshot = readAccount(owner);
+      const childBoxes = snapshot.members.get(child) ?? new Set();
+      let changed = false;
+      for (const parent of parents) {
+        const parentBoxes = snapshot.members.get(parent);
+        if (!parentBoxes) continue;
+        for (const box of parentBoxes) {
+          if (!snapshot.skipInheritance.has(box)) childBoxes.add(box);
+        }
+        snapshot.members.delete(parent);
+        changed = true;
+      }
+      if (!changed) return;
+      if (childBoxes.size) snapshot.members.set(child, childBoxes);
+      if (save(snapshot) && account?.owner === owner) {
+        account = snapshot;
+        refreshBoxes();
+      }
+    });
+    document.dispatchEvent(new Event("hako-af:watch-mating-results"));
 
     window.addEventListener("storage", event => {
       if (!account || event.key !== keyFor(account.owner)) return;

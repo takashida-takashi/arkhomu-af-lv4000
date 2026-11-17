@@ -99,6 +99,23 @@
     return metrics;
   }
 
+  function artifactPower(artifact, config) {
+    if (!config) return null;
+    const { param_weights: params = {}, trait_weights: traits = {}, default_trait_weight: fallback, round } = config;
+    let value = 0;
+    for (const [key, amount] of Object.entries(artifact.params ?? {})) {
+      const weight = Number(params[key]);
+      if (Number.isFinite(weight)) value += (Number(amount) || 0) * weight;
+    }
+    for (const { key, value: amount } of artifact.traits ?? []) {
+      if (!key || hiddenTraits.has(key)) continue;
+      const weight = Object.hasOwn(traits, key) ? Number(traits[key]) : Number(fallback) || 0;
+      if (Number.isFinite(weight)) value += (Number(amount) || 0) * weight;
+    }
+    const scale = 10 ** Math.max(0, Math.floor(Number(round) || 0));
+    return Math.round(value * scale) / scale;
+  }
+
   function optionFor(key) {
     if (key.startsWith("stat_")) return { label: parameters[key.slice(5)] ?? key, group: "parameter", unit: "%" };
     const trait = key.slice(6);
@@ -108,5 +125,5 @@
     return { label: traitLabel(trait), group, unit: traitValue(trait, 0).unit };
   }
 
-  globalThis.hakoAfEffects = Object.freeze({ parameters, readEffects, readSnapshot, optionFor, groups });
+  globalThis.hakoAfEffects = Object.freeze({ parameters, readEffects, readSnapshot, optionFor, groups, artifactPower });
 })();

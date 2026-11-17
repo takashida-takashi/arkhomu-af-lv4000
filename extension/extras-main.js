@@ -40,6 +40,7 @@
   let lastRaidQuota;
   const jstOffset = 9 * 3600000;
   const dayMs = 86400000;
+  const npcStockCycle = 4 * 60 * 60 * 1000;
   const minuteMs = 60000;
   const slotDayStart = 210 * minuteMs;
   const slotSecondPart = 960 * minuteMs;
@@ -51,7 +52,7 @@
     ["high", "高レート", 50000, 10000], ["vip", "超高レート", 500000, 5000]];
   const slotPlaybackReaders = new WeakMap();
   const reportLinks = {
-    npcLimited: "/f/shop", npcNormal: "/f/shop", npcMedal: "/f/shop?tab=medal", npcMark: "/f/shop",
+    npcLimited: null, npcNormal: null, npcMedal: null, npcMark: null,
     guildBoss: null, guildShop: "/guild?tab=shop"
   };
   let inventoryStore;
@@ -857,6 +858,8 @@
       const saved = JSON.parse(localStorage.getItem(reportKey()));
       const now = Date.now();
       for (const [key, value] of Array.isArray(saved) ? saved : []) {
+        // Older classic reports could read the price as part of the remaining quantity.
+        if (value?.id === "npcNormal" && value.message?.startsWith("購入枠が残る品 ")) continue;
         if (value?.until > now && value.id !== "guildDungeon" && key !== "guildBoss:daily") verifiedAlerts.set(key, value);
       }
     } catch { /* The in-tab state remains available. */ }
@@ -956,9 +959,9 @@
     if (!observed) observedReports.set(source, observed = new Map());
     const old = observed.get(key);
     if (old?.owner === reportOwner && old.evidence === evidence &&
-        !(old.rotation && rotation > old.rotation + 5000)) return;
+        !(rotation && (!old.rotation || rotation > old.rotation + 5000))) return;
     observed.set(key, { owner: reportOwner, evidence, rotation });
-    verifiedAlerts.set(key, { id, message, until, to });
+    verifiedAlerts.set(key, { id, message, until, to, ...(rotation > 0 ? { rotation } : {}) });
     persistReports();
     readHome();
   }
@@ -1063,6 +1066,12 @@
     updateRaidQuota();
   }
 
+  function shopStockMessage(type, count) {
+    if (!count) return "";
+    const status = type === "special" ? "未購入の商品" : "購入上限に達していない商品";
+    return `${status} ${count}種類（前回確認時）`;
+  }
+
   function observeAlertPage(name, instance, el) {
     if (name === "SlotHallClassic" || name === "FlexSlotHall") {
       observeSlotHall(instance, instance.props.hall);
@@ -1074,6 +1083,12 @@
     const expires = nextMidnight(now);
     const remember = (id, suffix, message, until, to, evidence, rotation) =>
       rememberAlert(instance, id, suffix, message, until, to, evidence, rotation);
+    const isNpcStock = name === "FlexShopBuy" || name === "ShopNpcModal";
+    const isArkShop = name === "FlexArkShopPage" || name === "ArkShopModal";
+    if ((isNpcStock || isArkShop) && !el.hasAttribute("data-ha4-shop-notification")) {
+      el.setAttribute("data-ha4-shop-notification", "");
+    }
+    const stockUntil = rotation => rotation || now + npcStockCycle;
     const recordShop = (type, items, empty, delay) => {
       if (!["special", "normal"].includes(type) || !items.length && !empty) return;
       const id = type === "special" ? "npcLimited" : "npcNormal";
@@ -1081,8 +1096,8 @@
         ? items.filter(item => !item?.purchased_at && item?.purchased !== true).length
         : items.filter(item => Number(item?.remaining) > 0).length;
       const rotation = delay > 0 ? now + delay : 0;
-      const until = rotation ? Math.min(expires, rotation) : expires;
-      const message = count ? `${type === "special" ? "未購入" : "購入枠が残る品"} ${count}種（確認時点）` : "";
+      const until = stockUntil(rotation);
+      const message = shopStockMessage(type, count);
       const stock = type === "special" ? valueOf(instance.props.shop.stock) ?? items : items;
       remember(id, "stock", message, until, reportLinks[id],
         JSON.stringify(stock?.map(item => [item.id, item.remaining, !!item.purchased_at])), rotation);
@@ -1113,19 +1128,21 @@
       if (!selected || el.querySelector(".animate-spin")) return;
       const type = selected.textContent.includes("通常") ? "normal" : "special";
       const cards = [...el.querySelectorAll(".shop-cell-nolp")].map(cell => cell.closest('[role="button"][tabindex="0"]')).filter(Boolean);
-      const items = cards.map(card => ({
-        remaining: Number(card.textContent.match(/のこり\s*([\d,]+)/)?.[1].replaceAll(",", ""))
-      }));
+      const remaining = type === "normal" ? cards.map(card => {
+        const quantity = [...card.querySelectorAll("span")].find(span =>
+          !span.childElementCount && /^のこり\s*[\d,]+$/.test(span.textContent.trim()));
+        return quantity ? Number(quantity.textContent.replace(/[^\d]/g, "")) : null;
+      }) : [];
       const countdown = el.textContent.match(/次回更新まで\s*(\d+:\d{2}:\d{2})/);
       const empty = el.textContent.includes("陳列はありません");
-      if ((items.length || empty) && !el.textContent.includes("更新待ち")) {
+      if ((cards.length || empty) && !remaining.includes(null) && !el.textContent.includes("更新待ち")) {
         const id = type === "special" ? "npcLimited" : "npcNormal";
-        const count = type === "special" ? items.length : items.filter(item => item.remaining > 0).length;
+        const count = type === "special" ? cards.length : remaining.filter(quantity => quantity > 0).length;
         const delay = refreshDelay(countdown?.[1]);
         const rotation = delay ? now + delay : 0;
-        remember(id, "stock", count ? `${type === "special" ? "未購入" : "購入枠が残る品"} ${count}種（確認時点）` : "",
-          rotation ? Math.min(expires, rotation) : expires, reportLinks[id],
-          JSON.stringify(cards.map((card, index) => [card.querySelector("img")?.getAttribute("src"), items[index].remaining])), rotation);
+        remember(id, "stock", shopStockMessage(type, count),
+          stockUntil(rotation), reportLinks[id],
+          JSON.stringify(cards.map((card, index) => [card.querySelector("img")?.getAttribute("src"), remaining[index]])), rotation);
       }
     }
     if (name === "FlexShopMedalExchange" || name === "FlexShopMarkExchange") {
@@ -1140,11 +1157,14 @@
           until, reportLinks[medal ? "npcMedal" : "npcMark"], quotas.map(quota => quota[0]).join("|"));
       }
     }
-    if (name === "FlexArkShopPage") {
-      const products = [...el.querySelectorAll(".fx-ark-product--obon,.fx-ark-halloween__option")];
+    if (isArkShop && el.getClientRects().length) {
+      const products = name === "FlexArkShopPage"
+        ? [...el.querySelectorAll(".fx-ark-product--obon,.fx-ark-halloween__option")]
+        : [...new Set([...el.querySelectorAll("span")].filter(marker =>
+          marker.textContent.trim() === "おひとり様1回限り").map(marker => marker.closest(".relative.overflow-hidden")).filter(Boolean))];
       const labels = products.filter(row => [...row.querySelectorAll("button")].some(button =>
-        button.textContent.includes("購入する"))).map(row => row.getAttribute("aria-label") ||
-        row.querySelector("h2,h3")?.textContent.trim()).filter(Boolean);
+        button.textContent.trim() === "購入する")).map(row => row.getAttribute("aria-label") ||
+        row.querySelector("h2,h3,p.text-orange-300.font-extrabold")?.textContent.trim()).filter(Boolean);
       remember("ark", "limited", labels.length ? `限定商品 ${labels.join("、")}（確認時点）` : "", expires, "/f/ark-shop");
     }
     if (name === "GuildShopView" || name === "GuildMemberShopView") {
@@ -1167,7 +1187,7 @@
     }
   }
 
-  const homeObserverNames = new Set(["FlexShopBuy", "ShopNpcModal", "FlexShopMedalExchange", "FlexShopMarkExchange", "FlexArkShopPage",
+  const homeObserverNames = new Set(["FlexShopBuy", "ShopNpcModal", "FlexShopMedalExchange", "FlexShopMarkExchange", "FlexArkShopPage", "ArkShopModal",
     "GuildShopView", "GuildMemberShopView", "FlexWorldBaseHomeScreen",
     "SlotHallClassic", "FlexSlotHall"]);
 
@@ -1185,7 +1205,7 @@
     const owner = options.home ? accountReports(stores) : null;
     if (owner) readRaidOutcome(stores, now);
     observeRaidQuota(owner);
-    const onHome = options.home && ["/", "/f/home", "/home"].includes(location.pathname);
+    const onHome = options.home && /^\/(?:f\/?|(?:f\/)?home\/?)?$/.test(location.pathname);
     if (!onHome) {
       for (const { dispose } of homeSubscriptions.values()) dispose?.();
       homeSubscriptions.clear();
@@ -1242,7 +1262,7 @@
         if (row.id === "guildBoss" && row.guildId != null && guildId != null && row.guildId !== guildId) continue;
         const id = row.id === "slot" ? key : row.id;
         checked.add(id);
-        if (row.message) add(id, row.message, null, row.to);
+        if (row.message) add(id, row.rotation ? `${row.message}　次回更新` : row.message, row.rotation ?? null, row.to);
         next = Math.min(next, row.until);
       }
     }
@@ -1255,7 +1275,8 @@
       for (const [id, to] of Object.entries(reportLinks)) {
         if (checked.has(id) || id.startsWith("guild") && noGuild) continue;
         const caption = id === "npcMedal" ? "今週分" : "今日分";
-        const message = id === "guildBoss" ? "今日分 未実行（参加回数未確認）" : caption + " 未実行（未確認）";
+        const message = id === "npcNormal" || id === "npcLimited" ? "今回の陳列分 未確認" :
+          id === "guildBoss" ? "今日分 未実行（参加回数未確認）" : caption + " 未実行（未確認）";
         add(id, message, null, to, true);
       }
     }

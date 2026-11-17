@@ -3,7 +3,7 @@
 
   if (globalThis.hakoAfFrameContext?.active === false) return;
 
-  const { readEffects, readSnapshot } = globalThis.hakoAfEffects;
+  const { readEffects, readSnapshot, artifactPower } = globalThis.hakoAfEffects;
   const extras = globalThis.hakoAfExtrasMain;
   const hiddenTitles = globalThis.hakoAfHiddenTitles;
   const partyShare = globalThis.hakoAfPartyShareMain;
@@ -31,7 +31,6 @@
   let nextPowerConfigRead = 0;
   let planRevision = 0;
   const powerListener = new Event("hako-af:power-ready");
-  const skipPowerTraits = new Set(["all_param", "add_hp", "add_atk", "add_def", "add_mtk", "add_mdf", "add_spd"]);
   const components = new Set(["FlexItemCell", "ItemCell", "ItemDetailButton"]);
   const classicScopes = {
     ArtifactEquipPanel: "inventory",
@@ -91,20 +90,7 @@
   }
 
   function cachedPower(artifact) {
-    if (!powerConfig) return null;
-    const { param_weights: params = {}, trait_weights: traits = {}, default_trait_weight: fallback, round } = powerConfig;
-    let value = 0;
-    for (const [key, amount] of Object.entries(artifact.params ?? {})) {
-      const weight = Number(params[key]);
-      if (Number.isFinite(weight)) value += (Number(amount) || 0) * weight;
-    }
-    for (const { key, value: amount } of artifact.traits ?? []) {
-      if (!key || skipPowerTraits.has(key)) continue;
-      const weight = Object.hasOwn(traits, key) ? Number(traits[key]) : Number(fallback) || 0;
-      if (Number.isFinite(weight)) value += (Number(amount) || 0) * weight;
-    }
-    const scale = 10 ** Math.max(0, Math.floor(Number(round) || 0));
-    return Math.round(value * scale) / scale;
+    return artifactPower(artifact, powerConfig);
   }
 
   function rawProjection(source, plan, powerOf, decomposeState, allowMissingRates = false) {
@@ -310,6 +296,8 @@
   delete globalThis.hakoAfExpeditionNative;
   const monsterBoxes = globalThis.hakoAfMonsterBoxes?.start({ dependencies, readThrough });
   delete globalThis.hakoAfMonsterBoxes;
+  const guildDungeon = globalThis.hakoAfGuildDungeonMain;
+  delete globalThis.hakoAfGuildDungeonMain;
 
   function readThrough(ref, project) {
     const native = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(ref), "value");
@@ -547,6 +535,7 @@
     const matingPage = /^\/(?:f\/)?mating(?:\/|$)/.test(location.pathname);
     let legacyMatingParents;
     const translate = key => app?.config?.globalProperties?.$t?.(key) ?? key;
+    const readGuildDungeon = guildDungeon?.startScan(dependencies, translate);
     let chatReplies;
     const getChatReplies = () => chatReplies ??= extras.indexChatReplies(stores?.get("chat"));
     const tradeCategory = stores?.get("userItems")?.currentCategoryKey === "artifact";
@@ -603,6 +592,7 @@
       if (titleModal && instance) readProfileTitles(titleModal, instance);
       const el = vnode.el ?? instance?.subTree?.el;
       monsterBoxes?.read(name, instance, vnode, el, stores);
+      readGuildDungeon?.(name, instance, vnode, el);
       const expeditionView = name === "ExpeditionModal" || name === "FlexExpeditionPage" ? instance : parentExpedition;
       if (expeditionView) {
         expeditionOwners.add(expeditionView);
@@ -793,13 +783,15 @@
           }
         }
       }
-      if (name === "ShopNpcModal" && instance?.subTree && el?.nodeType !== 1) {
+      if ((name === "ShopNpcModal" || name === "ArkShopModal") && instance?.subTree && el?.nodeType !== 1) {
         const find = [instance.subTree];
         while (find.length) {
           const child = find.pop();
           if (!child || typeof child !== "object") continue;
-          if (child.el?.nodeType === 1 && child.el.isConnected &&
-              child.el.querySelector(".shop-cell-nolp,button.shadow-inner")) {
+          const openShop = child.el?.nodeType === 1 && child.el.isConnected && child.el.getClientRects().length &&
+            (name === "ShopNpcModal" ? child.el.querySelector(".shop-cell-nolp,button.shadow-inner") :
+              [...child.el.querySelectorAll("h3")].some(heading => heading.textContent.trim() === "アークショップ"));
+          if (openShop) {
             extras?.observeAlertPage(name, instance, child.el);
             break;
           }
