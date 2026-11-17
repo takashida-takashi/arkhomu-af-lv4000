@@ -28,6 +28,8 @@ p { margin: .55rem 0; color: var(--muted); }
 nav { display: flex; flex-wrap: wrap; gap: .4rem .7rem; margin-top: 1.25rem; }
 nav a { display: inline-block; padding: .35rem .7rem; border: 1px solid var(--line); border-radius: .4rem; text-decoration: none; }
 nav a:hover { background: var(--panel); }
+nav .featured-link { background: #45305c; border-color: #986bc2; color: #fff0ff; font-weight: 700; }
+nav .featured-link:hover { background: #583a75; }
 section { scroll-margin: 1rem; border-top: 1px solid var(--line); padding: 2.25rem 0 .75rem; margin-top: 2rem; }
 .cards, .pair, .flow { display: grid; gap: 1rem; align-items: start; }
 .cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }
@@ -67,6 +69,9 @@ figure:empty { display: none; }
 .zoom > button { display: block; margin: 0 0 .65rem auto; padding: .25rem .65rem; font: inherit; }
 .zoom > a { display: inline-block; margin-top: .75rem; }
 figure[data-shot="settings"] { max-width: 28rem; margin-inline: auto; }
+.planner-start-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 2.2fr); }
+.planner-save { width: min(100%, 28rem); }
+figure[data-shot="guild-dungeon-filter"] { max-width: 47rem; }
 footer { color: var(--muted); border-top: 1px solid var(--line); font-size: .85rem; margin-top: 2.5rem; }
 @media (max-width: 48rem) {
   .pair { grid-template-columns: 1fr; gap: 0; }

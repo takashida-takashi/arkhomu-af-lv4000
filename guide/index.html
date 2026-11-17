@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="はこホム拡張の画像付きガイド。導入、AF、探索、遠征、通知、編成共有、ホムンクルス育成の手順。">
+  <meta name="description" content="はこホム拡張の実画面付きガイド。拡張育成プランナー、編成共有、AF、探索、遠征、通知の手順。">
   <title>使い方｜はこホム拡張</title>
-  <link rel="stylesheet" href="./guide.css">
+  <link rel="stylesheet" href="./guide.css?v=320">
 </head>
 <body>
   <header class="top">
@@ -16,9 +16,39 @@
       <h1>はこホム拡張の使い方</h1>
       <p>やりたいことを選ぶと、ボタンの位置と操作の順番が分かります。ゲーム画面の画像は押すと拡大でき、原寸でも開けます。</p>
       <nav aria-label="目次">
-        <a href="#setup">導入・更新</a><a href="#settings">拡張設定</a><a href="#af">AF強化後予測値表示</a><a href="#explore">探索結果の見やすさ向上</a><a href="#expedition">拡張遠征</a><a href="#training">編成共有・育成ルート</a><a href="#mating">合成操作性向上</a><a href="#notices">通知項目追加</a><a href="#gacha">AFガチャ周辺の機能追加</a><a href="#other">その他</a>
+        <a class="featured-link" href="#planner">拡張育成プランナー</a><a href="#setup">導入・更新</a><a href="#settings">拡張設定</a><a href="#af">AF強化後予測値表示</a><a href="#explore">探索結果の見やすさ向上</a><a href="#expedition">拡張遠征</a><a href="#training">編成共有・育成ルート</a><a href="#mating">合成操作性向上</a><a href="#notices">通知項目追加</a><a href="#gacha">AFガチャ周辺の機能追加</a><a href="#guild-filter">ギルドダンジョン</a><a href="#monster-boxes">拡張ボックス</a><a href="#other">その他</a>
       </nav>
     </header>
+
+    <section id="planner" aria-labelledby="planner-title">
+      <h2 id="planner-title">拡張育成プランナー</h2>
+      <p>育てるホムの通常スキル・永久スキルを選び、育成ルートとして保存できます。世代値・AF・味方を指定すると、通常と公式戦それぞれの開幕ステータスを試算できます。</p>
+      <h3>新規作成・保存済みルートの編集</h3>
+      <figure data-shot="planner-home"></figure>
+      <div class="pair planner-start-pair">
+        <figure data-shot="planner-start"></figure>
+        <figure data-shot="planner-monster"></figure>
+      </div>
+
+      <h3>スキルとLvを決めて保存</h3>
+      <figure data-shot="planner-skills"></figure>
+      <p class="hint">「スキルLvあり」は本体で読み込んだ対象一覧を使って表示します。表示用のデータがない場合は「本体のスキルLv対象一覧を開く」を押してから戻ります。Lvの詳細が未取得のスキルは「Lv効果を読む」から確認できます。</p>
+      <figure class="planner-save" data-shot="planner-save"></figure>
+      <p>あとから修正するときは最初の画面で「保存済みルートを編集」を選びます。育てる個体に割り当てる操作は、個体詳細の「拡張育成ルートを読み込む」から行います。<a href="#training">個体詳細での割り当て手順</a></p>
+
+      <h3>世代値・AF・味方を指定して開幕を試算</h3>
+      <div class="pair">
+        <figure data-shot="planner-preview-inputs"></figure>
+        <figure data-shot="planner-af"></figure>
+      </div>
+      <div class="pair">
+        <figure data-shot="planner-preview-result"></figure>
+        <figure data-shot="planner-official"></figure>
+      </div>
+      <p>通常モードは世代値から最大Lvと潜在評価を算出します。「編成する味方（保存済みルート）」には自分以外に最大5体を追加できます。</p>
+      <p>公式戦モードではLv100に統一し、ゲームのランク正規化を適用します。通常モードの育成・AF補正は公式戦では除外されます。公式戦画面からシーズン終了日を取得するか、終了日時を指定すると、新スキルの使用制限も確認できます。</p>
+      <p class="hint">試算対象は対応する戦闘開始時の効果です。戦闘が進んで効果が付く場面などは、ゲーム内で確認してください。</p>
+    </section>
 
     <section id="setup" aria-labelledby="setup-title">
       <h2 id="setup-title">導入・更新</h2>
@@ -85,16 +115,13 @@
     <section id="training" aria-labelledby="training-title">
       <h2 id="training-title">編成共有・育成ルート</h2>
       <div class="pair"><figure data-shot="party-share"></figure><figure data-shot="party-import"></figure></div>
-      <ol class="flow"><li>パーティ・個体詳細・殿堂から<br><b>編成や個体を共有</b></li><li>リンクを開き、使いたい枠の<br><b>「拡張育成ルートに取り込む」</b></li><li><b>通常・永久スキルを確認して保存</b><br>新規ルートは拡張設定から作成</li><li>育てる個体を開き<br><b>「拡張育成ルートを読み込む」</b></li></ol>
+      <ol class="flow"><li>パーティ・個体詳細・殿堂から<br><b>編成や個体を共有</b></li><li>リンクを開き、使いたい枠の<br><b>「拡張育成ルートに取り込む」</b></li><li><b>通常・永久スキルを確認して保存</b><br>自分で組む場合は<a href="#planner">拡張育成プランナー</a>を開く</li><li>育てる個体を開き<br><b>「拡張育成ルートを読み込む」</b></li></ol>
       <div class="pair">
         <figure data-shot="training-editor"></figure>
         <div><figure data-shot="training-detail"></figure><figure data-shot="training-grant"></figure></div>
       </div>
       <p class="hint">保存済みのルートでは「通常・永久の入れ替え」を使えます。片方のスキルを選ぶと移動し、両方で選ぶと入れ替えます。変更後は「保存」を押します。</p>
       <p class="hint">ギルドメンバー一覧やプロフィールの「パーティを見る」から個体詳細を開くと、公開スキルを「拡張育成ルートに取り込む」で保存できます。</p>
-      <h3>拡張育成プランナーで完成形を試算する</h3>
-      <ol class="flow"><li>Homeの「その他」から<br><b>「拡張育成プランナー」</b>を開く</li><li><b>新規作成か保存済みルートの編集</b><br>を選び、ホムとスキルを決める</li><li><b>「完成形プレビュー」</b>を開き<br>世代値・AF・味方を設定</li><li><b>通常・公式戦を切り替え</b><br>開幕ステータスを比べる</li></ol>
-      <p class="hint">候補の「スキルLvあり」は、すでに本体で読み込んだ対象一覧から表示します。表示用のデータがない場合は、プランナーの「本体のスキルLv対象一覧を開く」を押し、プランナーに戻ります。</p>
     </section>
 
     <section id="mating" aria-labelledby="mating-title">
@@ -121,12 +148,23 @@
       <p class="hint">拡張ガチャ結果をオンにすると、AFガチャ・スーパーガチャで公開したAFのカードにPWとAF変換率＋ドロップ率合計が表示されます。</p>
     </section>
 
+    <section id="guild-filter" aria-labelledby="guild-filter-title">
+      <h2 id="guild-filter-title">ギルドダンジョンの拡張フィルタ</h2>
+      <p>ホームで「ダンジョン選択」を開き、「ギルド」タブの一覧にある「拡張フィルタ」を押します。</p>
+      <figure data-shot="guild-dungeon-filter"></figure>
+      <p class="hint">編成を確認するには「未確認のダンジョンも表示」をオンにして、その行を押します。道中のホムを探すときは「道中のホムンクルス」を、ボスを探すときは「ボスのホムンクルス」を指定します。複合条件では、行に「一致条件」が表示されます。</p>
+    </section>
+
+    <section id="monster-boxes" aria-labelledby="monster-boxes-title">
+      <h2 id="monster-boxes-title">拡張ボックス</h2>
+      <p>「所持ホムンクルス」の一覧上部にある「拡張ボックス」を押すと、ボックスを作成・管理できます。</p>
+      <div class="pair"><figure data-shot="box-management"></figure><figure data-shot="box-bulk"></figure></div>
+    </section>
+
     <section id="other" aria-labelledby="other-title">
       <h2 id="other-title">その他の機能</h2>
       <figure data-shot="estimate"></figure>
       <div class="cards compact">
-        <article><h3>ギルドダンジョンを条件で探す</h3><ol class="steps"><li>ダンジョン一覧の「拡張フィルタ」を開く</li><li>道中・ボスの条件や入場料などを設定</li><li>編成が未確認の行を調べるときは「未確認のダンジョンも表示」をオンにして詳細を開く</li></ol></article>
-        <article><h3>所持ホムを拡張ボックスに整理</h3><ol class="steps"><li>所持ホムンクルスの「拡張ボックス」を開く</li><li>「条件で一括追加」で世代・Lv・元ランクを指定</li><li>素材用ボックスなどは「合成後の子を入れる」をオフにできる</li></ol></article>
         <article><h3>フリマの価格追跡</h3><ol class="steps"><li>フリマで通常アイテム・永久スキルを選ぶ</li><li>「最安値を追跡」を押す</li><li>「最安値の推移」で履歴を確認</li></ol></article>
         <article><h3>控えの配置を保存</h3><ol class="steps"><li>ホムンクルス詳細のスキルを開く</li><li>プリセット名を入れ「現在の控えを保存」</li><li>読み込んだ差分を見て控えボタンで切替</li></ol></article>
         <article><h3>隠し称号・スキン</h3><ol class="steps"><li>プロフィールの「称号設定 → 隠し称号」を開く</li><li>鍵付きの称号を押して入手条件を見る</li><li>スキンは図鑑の「拡張ソート（未入手を先に）」</li></ol></article>
@@ -137,6 +175,6 @@
     </section>
   </main>
   <footer class="shell"><a href="../">← はこホム拡張の配布ページ</a><span>画像はゲーム内を撮影し、操作箇所を切り出しています。一部の名前や残高を伏せています。</span></footer>
-  <script src="./shots.js?v=roster" defer></script>
+  <script src="./shots.js?v=320" defer></script>
 </body>
 </html>
