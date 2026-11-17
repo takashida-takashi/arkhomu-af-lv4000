@@ -18,6 +18,7 @@
     enhanceEstimate: "拡張強化見積もり",
     marketWatch: "拡張価格追跡",
     hiddenTitles: "拡張称号",
+    monsterBoxes: "拡張ボックス",
     skillPresets: "拡張スキルプリセット",
     partyShare: "拡張編成共有",
     trainingRoutes: "拡張育成ルート",

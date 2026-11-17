@@ -3,6 +3,7 @@
 
   if (globalThis.hakoAfFrameContext?.active === false) return;
 
+  const featureName = globalThis.hakoAfFeatureNames.monsterBoxes;
   const listNames = new Set(["MonsterList", "FlexMonsterList"]);
   const keyFor = owner => "hakoAf4000:monster-boxes:" + owner;
   const monsterId = monster => monster?.user_monster_id ?? monster?.id;
@@ -96,7 +97,7 @@
     }
 
     function manageBoxes() {
-      const body = openDialog("ボックス管理");
+      const body = openDialog(featureName);
       const status = element("p", "monster-box-status");
       status.setAttribute("role", "status");
       const create = element("form", "monster-box-edit");
@@ -163,7 +164,7 @@
     }
 
     function assignBoxes(id) {
-      const body = openDialog("入れるボックスを選択");
+      const body = openDialog(featureName + "に入れる");
       for (const [box, name] of account.boxes) {
         const row = element("label", "monster-box-choice");
         const input = element("input", "monster-box-check");
@@ -241,10 +242,10 @@
         const toolbar = element("div", "monster-box-toolbar");
         const tabs = element("div", "monster-box-tabs");
         tabs.setAttribute("role", "group");
-        tabs.setAttribute("aria-label", "ホムンクルスのボックス");
+        tabs.setAttribute("aria-label", featureName + "の一覧");
         const rankChip = button("monster-box-button", "", () => setRank(state, 0));
         rankChip.setAttribute("aria-label", "元ランクの絞り込みを解除");
-        toolbar.append(tabs, rankChip, button("monster-box-button", "ボックス管理", manageBoxes));
+        toolbar.append(tabs, rankChip, button("monster-box-button", featureName, manageBoxes));
         state = { owner, instance, sorted, toolbar, tabs, rankChip, classicSoul, box: "", rank: 0 };
         if (!readThrough(sorted, source => {
           if (!enabled || state.owner !== account?.owner || !Array.isArray(source) || !state.rank && !state.box) return source;
@@ -316,7 +317,7 @@
       }
       mark.dataset.monster = key;
       const boxes = [...(account.members.get(key) ?? [])].map(box => account.boxes.get(box)).filter(Boolean);
-      const title = boxes.length ? "ボックスを変更　" + boxes.join("、") : "ボックスに入れる";
+      const title = boxes.length ? featureName + "を変更　" + boxes.join("、") : featureName + "に入れる";
       if (mark.title === title) return;
       mark.title = title;
       mark.setAttribute("aria-label", title);
