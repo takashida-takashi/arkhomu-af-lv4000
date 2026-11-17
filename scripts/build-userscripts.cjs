@@ -68,7 +68,7 @@ function copyPreviousDownloads(site) {
 
 const files = ["feature-names.js", "forecast.js", "artifact-effects.js", "list-rules.js", "filter-popup.js", "hidden-titles.js", "extras.js", "extras-main.js",
   "enhance-estimate.js", "explore-analysis.js", "market-watch.js", "party-share-main.js", "training-sources-main.js", "training-routes-main.js",
-  "party-share.js", "training-routes.js", "expedition.js", "content.js", "gacha-sets.js", "expedition-main.js", "expedition-native.js", "read-af.js"];
+  "party-share.js", "training-routes.js", "expedition.js", "content.js", "gacha-sets.js", "expedition-main.js", "expedition-native.js", "monster-boxes.js", "read-af.js"];
 const desktopOnly = new Set(["frame-context.js", "local-reload.js", "desktop-update.js", "slot-home.js"]);
 const bundled = new Set([...files, "market-snapshot.js", "update-check.js"]);
 const desktopModules = new Set(manifest.content_scripts.flatMap(entry => entry.js));

@@ -41,7 +41,8 @@
     "[data-ha4-list-scope]", "[data-ha4-list-scope] button[aria-expanded]"].join(",");
   const extrasApi = globalThis.hakoAfExtras;
   const GACHA_CARD = ".rv-card";
-  const extrasRoots = '[data-chat-message-id],.fx-summary-page,.fx-summary,.fx-result,.fx-settings,.fx-topbar,#fx-todo,[aria-label="国のお知らせ"],[data-ha4-settings-anchor],[data-ha4-home-root],[data-ha4-market-watch-root],[data-home-tutorial-root],.fx-home,.fx-shop-buy,.shop-cell-nolp,.fx-shop-marks,.fx-race-exchange,.fx-ark-product,.fx-wbase-home__outpost,.fx-skedit,.skill-reserve-toggle,.fx-aenh__panel,.fx-bento,.fx-expd,.expedition-modal-body,[data-bento-pointer-slot],#__nuxt header,' + GACHA_CARD;
+  const monsterRoots = '.fx-mlist,.fx-mfilter,[data-ha4-monster-list],input[placeholder="例: 火炎斬り"]';
+  const extrasRoots = '[data-chat-message-id],.fx-summary-page,.fx-summary,.fx-result,.fx-settings,.fx-topbar,#fx-todo,[aria-label="国のお知らせ"],[data-ha4-settings-anchor],[data-ha4-home-root],[data-ha4-market-watch-root],[data-home-tutorial-root],.fx-home,.fx-shop-buy,.shop-cell-nolp,.fx-shop-marks,.fx-race-exchange,.fx-ark-product,.fx-wbase-home__outpost,.fx-skedit,.skill-reserve-toggle,.fx-aenh__panel,.fx-bento,.fx-expd,.expedition-modal-body,[data-bento-pointer-slot],#__nuxt header,' + GACHA_CARD + ',' + monsterRoots;
   const normalRoute = () => location.pathname.replace(/^\/f\//, "/");
   const isOwnProfile = () => /^\/profile\/?$/.test(normalRoute());
   let finishEstimateScan;
@@ -1100,7 +1101,7 @@
     marketWatch?.beforeRead();
     if (extras?.enabled("daily")) document.dispatchEvent(new Event("hako-af:read-balance"));
     if (extras?.enabled("home")) document.dispatchEvent(new Event("hako-af:read-home"));
-    if (["/market", "/explore-result", "/expedition", "/guild", "/guild-raid-result", "/base", "/items", "/slot", "/mating", "/monsters", "/hall-of-fame"].includes(normalRoute()) ||
+    if (["/market", "/explore-result", "/expedition", "/guild", "/guild-raid-result", "/base", "/items", "/slot", "/mating", "/monsters", "/soul", "/hall-of-fame"].includes(normalRoute()) ||
         document.querySelector(GACHA_INPUT) ||
         (isOwnProfile() && document.querySelector(titleSearch)) || document.querySelector(extrasRoots) ||
         document.querySelector(`${FLEX_LISTS},${CLASSIC_GRID},${MARKET_SORT},[data-base-modal-root],${TRADE_ROOTS},${partyRoots},${trainingRoots}`)) {
@@ -1278,7 +1279,7 @@
   document.addEventListener("hako-af:grid-rendered", requestScan);
   document.addEventListener("click", event => {
     if (event.target instanceof Element && (event.target.closest(trainingRoots) ||
-        ["/mating", "/monsters"].includes(normalRoute()) && event.target.closest("#__nuxt"))) requestScan();
+        ["/mating", "/monsters", "/soul"].includes(normalRoute()) && event.target.closest("#__nuxt"))) requestScan();
   }, true);
   document.addEventListener("change", event => {
     if (event.target instanceof Element && (event.target.matches(MARKET_SORT) ||
@@ -1326,7 +1327,7 @@
         gameChanges.some(n => n.nodeType === 1 && (n.matches('[role="dialog"]') || n.querySelector('[role="dialog"]'))));
       if (slotPrompt || matingDialog || target?.closest(observed) || (isOwnProfile() && (target?.querySelector(titleSearch) ||
           gameChanges.some(n => n.nodeType === 1 && (n.matches(titleSearch) || n.querySelector(titleSearch))))) ||
-          (["/explore-result", "/expedition", "/guild", "/guild-raid-result", "/base", "/items", "/slot", "/mating", "/monsters", "/hall-of-fame", "/encyclopedia"].includes(normalRoute()) && target?.closest("#__nuxt")) ||
+          (["/explore-result", "/expedition", "/guild", "/guild-raid-result", "/base", "/items", "/slot", "/mating", "/monsters", "/soul", "/hall-of-fame", "/encyclopedia"].includes(normalRoute()) && target?.closest("#__nuxt")) ||
           gameChanges.some(n => n.nodeType === 1 &&
         (n.matches(observed) || n.querySelector(observed)))) {
         requestScan();

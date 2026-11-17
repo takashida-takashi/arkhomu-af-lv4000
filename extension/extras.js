@@ -20,6 +20,7 @@
     expedition: `${names.expedition}（弁当の配分・経過時間）`,
     hiddenTitles: `${names.hiddenTitles}（未取得の隠し称号）`,
     gacha: `${names.gacha}（AFガチャ・スーパーガチャの性能表示）`,
+    monsterBoxes: "ホムンクルスのボックス・元ランク絞り込み",
     skillPresets: `${names.skillPresets}（ホムンクルスの使用中・控え）`,
     partyShare: names.partyShare,
     trainingRoutes: `${names.trainingRoutes}（目印・優先表示・引き継ぎ）`,

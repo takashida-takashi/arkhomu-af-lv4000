@@ -308,6 +308,8 @@
     owner => expeditionPlanner?.presetState(owner), (owner, vnode) => expeditionPlanner?.observePresets(owner, vnode));
   delete globalThis.hakoAfExpeditionMain;
   delete globalThis.hakoAfExpeditionNative;
+  const monsterBoxes = globalThis.hakoAfMonsterBoxes?.start({ dependencies, readThrough });
+  delete globalThis.hakoAfMonsterBoxes;
 
   function readThrough(ref, project) {
     const native = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(ref), "value");
@@ -538,6 +540,7 @@
     const app = root?.__vue_app__;
     if (!root?._vnode) return;
     const stores = app?.config?.globalProperties?.$pinia?._s;
+    monsterBoxes?.prune();
     const expedition = stores?.get("expedition");
     const expeditionOwners = new Set();
     trainingRoutes?.rememberOwned();
@@ -599,6 +602,7 @@
       const titleModal = profileTitles && (titleModals.has(name) ? instance : parentTitleModal);
       if (titleModal && instance) readProfileTitles(titleModal, instance);
       const el = vnode.el ?? instance?.subTree?.el;
+      monsterBoxes?.read(name, instance, vnode, el, stores);
       const expeditionView = name === "ExpeditionModal" || name === "FlexExpeditionPage" ? instance : parentExpedition;
       if (expeditionView) {
         expeditionOwners.add(expeditionView);

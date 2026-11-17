@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "はこホム拡張",
-  "version": "3.1.5",
+  "version": "3.1.6",
   "description": "AFの予測・絞り込み、探索統計、通知、編成共有、ホムンクルスの育成を補助します。",
   "permissions": ["storage", "downloads"],
   "host_permissions": ["https://arkhomu.com/*"],
@@ -13,7 +13,7 @@
   }, {
     "matches": ["https://arkhomu.com/*"],
     "all_frames": true,
-    "js": ["frame-context.js", "feature-names.js", "market-snapshot.js", "forecast.js", "artifact-effects.js", "list-rules.js", "hidden-titles.js", "extras-main.js", "party-share-main.js", "training-sources-main.js", "training-routes-main.js", "gacha-sets.js", "expedition-main.js", "expedition-native.js", "read-af.js"],
+    "js": ["frame-context.js", "feature-names.js", "market-snapshot.js", "forecast.js", "artifact-effects.js", "list-rules.js", "hidden-titles.js", "extras-main.js", "party-share-main.js", "training-sources-main.js", "training-routes-main.js", "gacha-sets.js", "expedition-main.js", "expedition-native.js", "monster-boxes.js", "read-af.js"],
     "run_at": "document_start",
     "world": "MAIN"
   }, {
