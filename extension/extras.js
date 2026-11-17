@@ -15,6 +15,7 @@
     market: `${filterAndSort}（フリマ・オークション・個人間取引）`,
     marketWatch: `${names.marketWatch}（フリマ最安値）`,
     explore: `${names.explore}（${filterAndSort}・ページ表示）`,
+    skipExploreLogs: "戦闘ログスキップ（通常探索・ボス戦・ギルドダンジョン）",
     exploreAnalysis: `${names.exploreAnalysis}（獲得量・勝率・経過時間）`,
     expedition: `${names.expedition}（弁当の配分・経過時間）`,
     hiddenTitles: `${names.hiddenTitles}（未取得の隠し称号）`,
@@ -83,10 +84,10 @@
   }
   function loadSettings() {
     const stored = get(configKey) ?? {};
+    const featurePreferences = { skipExploreLogs: stored.skipExploreLogs, ...stored.features };
     return {
-      features: Object.fromEntries(Object.keys(features).map(id => [id, stored.features?.[id] !== false])),
+      features: Object.fromEntries(Object.keys(features).map(id => [id, featurePreferences[id] !== false])),
       paging: ["standard", "all", "priority"].includes(stored.paging) ? stored.paging : "priority",
-      skipExploreLogs: stored.skipExploreLogs !== false,
       candidates: ["mark", "first", "only"].includes(stored.candidates) ? stored.candidates : "first",
       matchColor: matchColors.some(([color]) => color === stored.matchColor) ? stored.matchColor : "red",
       thresholdName: typeof stored.thresholdName === "string" ? stored.thresholdName : "",
@@ -156,7 +157,7 @@
       return button;
     }
     function tellMain() {
-      const detail = JSON.stringify({ ...settings.features, skipExploreLogs: settings.skipExploreLogs });
+      const detail = JSON.stringify(settings.features);
       document.dispatchEvent(new CustomEvent("hako-af:extra-settings", { detail }));
       if (!enabled("chat")) {
         closeChatPreview();
@@ -465,8 +466,6 @@
       }
       const drops = subsection(dialog, names.explore);
       appendExploreReset?.(drops);
-      field(drops, "戦闘ログを飛ばして探索サマリを開く（通常・ボス・ギルダン）", "checkbox", settings.skipExploreLogs,
-        value => { settings.skipExploreLogs = value; });
       select(drops, "ページ表示", [["standard", "標準の件数"], ["all", "全件表示"], ["priority", "優先度別ページ"]],
         settings.paging, value => { settings.paging = value; });
       select(drops, "しきい値に合ったAF", [["first", "目印を付けて先頭へ"], ["mark", "目印を付ける"], ["only", "該当AFだけ表示"]],
