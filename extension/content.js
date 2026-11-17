@@ -142,7 +142,7 @@
 
   function exploreValueLine(kind, label, value) {
     const line = node("span", kind);
-    const formatted = value.value == null ? "—" : text(value.value, value.unit, false);
+    const formatted = value.absent ? "なし" : value.value == null ? "—" : text(value.value, value.unit, false);
     line.append(node("span", "explore-value-label", label),
       node("span", "explore-value-number", value.predicted ? `→${formatted}` : formatted));
     return line;
@@ -150,6 +150,7 @@
 
   function matchDescription(match) {
     const { label } = effectOption(match.key);
+    if (match.absent) return label + "を含まない";
     const conditions = [match.min && `${match.min}${match.unit}以上`, match.max && `${match.max}${match.unit}以下`,
       match.minimumStars && `★${match.minimumStars}以上`].filter(Boolean);
     const reading = text(match.value, match.unit, false) + (match.stars > 0 ? `・★${match.stars}` : "");
@@ -850,7 +851,8 @@
   }
 
   function inventorySectionLabels({ source, condition }, index) {
-    const labels = conditionRows({ children: [condition] }).map(({ key }) => effectOption(key).label);
+    const labels = conditionRows({ children: [condition] }).map(({ key, absent }) =>
+      effectOption(key).label + (absent ? "なし" : ""));
     const fullName = [...new Set(labels)].join(" ＋ ");
     const defaultName = fullName.length <= 24 ? fullName : `${fullName.slice(0, 21)}…`;
     function describe(node) {
@@ -860,6 +862,7 @@
         return `（${entries.join(node.join === "or" ? " または " : " かつ ")}）`;
       }
       const { label, unit } = effectOption(node.key);
+      if (node.absent) return label + "を含まない";
       return [label, node.min && `${node.min}${unit}以上`, node.max && `${node.max}${unit}以下`,
         node.stars && `★${node.stars}以上`].filter(Boolean).join(" ");
     }
@@ -996,17 +999,24 @@
     const { active, error, discard, checked } = rule;
     const gridData = gridReports.get(grid);
     const sections = rule.sections.map(inventorySectionLabels);
-    const nameCounts = new Map();
-    for (const { name } of sections) nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1);
-    sections.forEach((section, index) => {
-      if (nameCounts.get(section.name) > 1) section.name += `（${index + 1}）`;
+    const pages = rule.pages.map(({ name, indexes }) => {
+      const members = indexes.map(index => sections[index]);
+      return { name: name || members[0].name, groupName: name,
+        sources: members.map(member => member.source), color: members[0].color,
+        description: members.map(member => member.description).join(" または ") };
     });
-    const hasSectionPages = sections.length > 1 && !!grid && (!!gridData || !virtual);
-    const section = hasSectionPages ? sections.findIndex(({ source }) => source === state.sectionTarget) : -1;
+    const nameCounts = new Map([["すべて", 1]]);
+    for (const { name } of pages) nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1);
+    pages.forEach((page, index) => {
+      if (nameCounts.get(page.name) > 1) page.name += `（${index + 1}）`;
+    });
+    const hasSectionPages = (sections.length > 1 || rule.pages.some(page => page.name)) &&
+      !!grid && (!!gridData || !virtual);
+    const section = hasSectionPages ? pages.findIndex(({ sources }) => sources.includes(state.sectionTarget)) : -1;
     if (section === -1) state.sectionTarget = null;
     setGridPlan(type, plan, section);
     const report = plan.enabled || type === "gacha" ? gridData?.report : null;
-    const sectionCounts = sections.map(() => 0);
+    const sectionCounts = pages.map(() => 0);
     const matches = sections.length ? [] : undefined;
     let matched = 0;
     let unknown = 0;
@@ -1017,9 +1027,10 @@
       if (matches) matches.length = 0;
       const status = rule.check(item, matches);
       const hits = matches && status.result === true ? rule.matchedSections(matches) : null;
+      const pageHits = hits && rule.matchedPages(hits);
       if (hits) {
         if (state.highlightSections !== false) renderSectionMarks(item.card, hits, sections);
-        for (const index of hits) sectionCounts[index]++;
+        for (const index of pageHits) sectionCounts[index]++;
       }
       if (status.kept) keptCount++;
       if (state.kept && item.keepId && (active || checked || status.kept)) renderKeepControl(item, state.kept);
@@ -1027,7 +1038,7 @@
       if (status.unknown) unknown++;
       if (status.protected) protectedCount++;
       if (status.show && (checked || discard || status.result === true)) matched++;
-      if (!gridData && !virtual && (!status.show || (section >= 0 && !hits?.includes(section)))) {
+      if (!gridData && !virtual && (!status.show || (section >= 0 && !pageHits?.includes(section)))) {
         item.card.dataset.ha4Filtered = "page";
         filtered.add(item.card);
       }
@@ -1056,7 +1067,7 @@
     panel.refresh(listOptions(items, nativeSort, conditionRows(state.root), type, report, state.sortKey), counts, {
       active: active || checked, matched, unknown: discard || checked || type === "gacha" ? 0 : unknown, message, resultLabel,
       matchingIds: virtual && !gridData ? [] : report?.matchingIds ?? matchingIds,
-      sections, section, hasSectionPages, sectionCounts: gridData ? report?.sectionCounts : sectionCounts,
+      sections, pages, section, hasSectionPages, sectionCounts: gridData ? report?.sectionCounts : sectionCounts,
       decomposeNotice: type === "decompose" && (active || discard || checked || state.kept.size > 0),
       selectionNotice: type === "gacha" ? "絞り込み条件は標準の自動セットと拡張セットの追加候補にも反映されます。" : ""
     });

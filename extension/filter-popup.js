@@ -4,7 +4,7 @@
   const names = globalThis.hakoAfFeatureNames;
   const { normalize } = globalThis.hakoAf4000;
   const { groups } = globalThis.hakoAfEffects;
-  const { activeGroup, minimumMatches } = globalThis.hakoAfListRules;
+  const { activeGroup, minimumMatches, supportsAbsence } = globalThis.hakoAfListRules;
   const PRESET_PREFIX = "af-filter-preset:";
   const SHARE_FORMAT = "hako-af-filter";
   let openPopup;
@@ -18,7 +18,7 @@
     if (text.length > 256 * 1024) throw new Error("共有テキストが長すぎます。");
     let data;
     try { data = JSON.parse(text); } catch { throw new Error("プリセットの共有テキストを確認してください。"); }
-    if (data?.format !== SHARE_FORMAT || data.version !== 1 || !Array.isArray(data.root?.children)) {
+    if (data?.format !== SHARE_FORMAT || ![1, 2].includes(data.version) || !Array.isArray(data.root?.children)) {
       throw new Error("この共有データの形式には対応していません。");
     }
     let visited = 0;
@@ -35,12 +35,21 @@
       const annotation = {};
       if (typeof node?.sectionName === "string" && node.sectionName.trim()) annotation.sectionName = node.sectionName.trim().slice(0, 48);
       if (typeof node?.sectionColor === "string" && /^#[0-9a-f]{6}$/i.test(node.sectionColor)) annotation.sectionColor = node.sectionColor;
+      if (data.version === 2 && typeof node?.sectionPage === "string" && node.sectionPage.trim()) {
+        annotation.sectionPage = node.sectionPage.trim().slice(0, 48);
+      }
       if (Array.isArray(node?.children)) {
         if (!["and", "or", "count"].includes(node.join) || (node.minimum != null &&
             (!Number.isSafeInteger(node.minimum) || node.minimum < 1))) throw new Error("グループの一致条件を確認してください。");
         return { join: node.join, minimum: node.minimum, children: node.children.map(child => readNode(child, depth + 1)), ...annotation };
       }
       if (!metric(node?.key)) throw new Error("条件の項目名を確認してください。");
+      if (node.absent !== undefined) {
+        if (data.version !== 2 || node.absent !== true || !supportsAbsence(node.key)) {
+          throw new Error("「含まない」の対象を確認してください。");
+        }
+        annotation.absent = true;
+      }
       const stars = node.stars == null ? "" : String(node.stars);
       if (stars && !/^[1-5]$/.test(stars)) throw new Error("★の数は1～5で指定してください。");
       return { key: node.key, min: readNumber(node.min), max: readNumber(node.max), stars, ...annotation };
@@ -156,6 +165,7 @@
     const sectionBar = inventory ? element("div") : null;
     const sectionSettings = inventory ? element("details", "section-settings") : null;
     const sectionFields = inventory ? element("div", "section-fields") : null;
+    const pageNames = inventory ? element("datalist") : null;
     const highlight = inventory ? toggle("一致した条件の色でAFを強調", state.highlightSections !== false, checked => {
       state.highlightSections = checked;
       onChange();
@@ -166,7 +176,10 @@
       sectionBar.setAttribute("role", "group");
       sectionBar.setAttribute("aria-label", "AFの条件別ページ");
       sectionSettings.hidden = true;
-      sectionSettings.append(element("summary", null, "条件別の色・ページ"), highlight.wrapper, sectionFields);
+      pageNames.id = title.id + "-pages";
+      sectionSettings.append(element("summary", null, "条件別の色・ページ"), highlight.wrapper,
+        element("small", "section-description", "同じページに表示する条件には、共通のまとめ先を入力します。"),
+        sectionFields, pageNames);
     }
     const categories = element("div", "categories");
     const noResults = element("p", "empty", "一致する項目がありません。");
@@ -304,7 +317,10 @@
       }
     });
     copyPreset.addEventListener("click", async () => {
-      shareText.value = JSON.stringify({ format: SHARE_FORMAT, version: 1, name: presetName.value.trim(), ...currentPreset() });
+      const preset = currentPreset();
+      const needsCurrentFormat = node => node.sectionPage || node.absent || node.children?.some(needsCurrentFormat);
+      const version = needsCurrentFormat(preset.root) ? 2 : 1;
+      shareText.value = JSON.stringify({ format: SHARE_FORMAT, version, name: presetName.value.trim(), ...preset });
       updatePresetButtons();
       try {
         await navigator.clipboard.writeText(shareText.value);
@@ -384,6 +400,20 @@
       const row = element("div", "condition");
       row.dataset.ha4Condition = condition.key;
       row.append(element("strong", "condition-name", label));
+      const bounds = [];
+      if (supportsAbsence(condition.key)) {
+        const operator = element("select");
+        operator.setAttribute("aria-label", label + "の有無");
+        operator.append(new Option("含む", "present"), new Option("含まない", "absent"));
+        operator.value = condition.absent ? "absent" : "present";
+        operator.addEventListener("change", () => {
+          if (operator.value === "absent") condition.absent = true;
+          else delete condition.absent;
+          for (const field of bounds) field.hidden = condition.absent === true;
+          onChange();
+        });
+        row.append(operator);
+      }
       for (const [field, caption] of [["min", "下限"], ["max", "上限"]]) {
         const input = element("input");
         input.type = "number";
@@ -395,9 +425,9 @@
           condition[field] = input.value;
           onChange();
         });
-        row.append(input);
+        bounds.push(input);
       }
-      row.append(element("span", "unit", unit));
+      bounds.push(element("span", "unit", unit));
       if (condition.key !== "power" && condition.key !== "rate_sum") {
         const stars = element("select");
         stars.setAttribute("aria-label", label + "の★の数");
@@ -408,8 +438,10 @@
           condition.stars = stars.value;
           onChange();
         });
-        row.append(stars);
+        bounds.push(stars);
       }
+      for (const field of bounds) field.hidden = condition.absent === true;
+      row.append(...bounds);
       const remove = button("×", "remove");
       remove.setAttribute("aria-label", label + "の条件を外す");
       remove.addEventListener("click", () => setCondition(condition.key, false, group));
@@ -563,7 +595,7 @@
       updateSelected();
     }
 
-    function refreshSections(sections, selected, hasPages, sectionCounts) {
+    function refreshSections(sections, pages, selected, hasPages, sectionCounts) {
       if (!inventory) return;
       sectionSettings.hidden = !sections.length;
       highlight.field.checked = state.highlightSections !== false;
@@ -589,8 +621,23 @@
             source.sectionColor = color.value;
             onChange();
           });
-          row.append(name, color, description);
-          return { row, source, name, color, description };
+          const page = element("input", "section-page");
+          page.type = "text";
+          page.maxLength = 48;
+          page.placeholder = "まとめ先（空欄は個別ページ）";
+          page.setAttribute("aria-label", `条件${index + 1}のまとめ先`);
+          page.setAttribute("list", pageNames.id);
+          page.addEventListener("change", () => {
+            page.value = page.value.trim();
+            if (page.value) source.sectionPage = page.value;
+            else delete source.sectionPage;
+            onChange();
+          });
+          page.addEventListener("keydown", event => {
+            if (event.key === "Enter" && !event.isComposing) page.blur();
+          });
+          row.append(name, color, description, page);
+          return { row, source, name, color, description, page };
         });
         sectionFields.replaceChildren(...sectionEditors.map(({ row }) => row));
       }
@@ -598,20 +645,25 @@
         const editor = sectionEditors[index];
         editor.name.placeholder = defaultName;
         if (document.activeElement !== editor.name) editor.name.value = editor.source.sectionName || "";
+        if (document.activeElement !== editor.page) editor.page.value = editor.source.sectionPage || "";
         if (editor.color.value !== color) editor.color.value = color;
         if (editor.description.textContent !== description) editor.description.textContent = description;
       });
+      const names = pages.map(page => page.groupName).filter(Boolean);
+      if (names.length !== pageNames.options.length || names.some((name, i) => name !== pageNames.options[i].value)) {
+        pageNames.replaceChildren(...names.map(name => new Option(name)));
+      }
       sectionBar.hidden = !hasPages;
       if (!hasPages) return;
-      pageSections = sections;
-      const entries = [{ name: "すべて" }, ...sections];
+      pageSections = pages;
+      const entries = [{ name: "すべて" }, ...pages];
       while (sectionButtons.length > entries.length) sectionButtons.pop().remove();
       entries.forEach(({ name, color, description }, index) => {
         let tab = sectionButtons[index];
         if (!tab) {
           tab = button("");
           tab.addEventListener("click", () => {
-            state.sectionTarget = pageSections[index - 1]?.source ?? null;
+            state.sectionTarget = pageSections[index - 1]?.sources[0] ?? null;
             onChange();
           });
           sectionButtons.push(tab);
@@ -639,7 +691,7 @@
         ? "残すチェックはこのタブ内の目印です。分解候補を表示して、ゲームの一括解体モードで対象を選んでください。"
         : selectionNotice ?? "";
       unknown.wrapper.hidden = unknownCount === 0;
-      refreshSections(result.sections ?? [], result.section, result.hasSectionPages, result.sectionCounts);
+      refreshSections(result.sections ?? [], result.pages ?? [], result.section, result.hasSectionPages, result.sectionCounts);
       counts = newCounts;
       const nextSignature = JSON.stringify(entries);
       if (signature !== nextSignature) {
@@ -671,6 +723,7 @@
       delete state.root.minimum;
       delete state.root.sectionName;
       delete state.root.sectionColor;
+      delete state.root.sectionPage;
       state.sectionTarget = null;
       state.sortKey = sortKey.value = "";
       state.sortDirection = sortDirection.value = "desc";

@@ -57,8 +57,13 @@
     return Number.isSafeInteger(group.minimum) && group.minimum > 0 ? group.minimum : 2;
   }
 
+  function supportsAbsence(key) {
+    return key.startsWith("trait:") || key.startsWith("stat_");
+  }
+
   function evaluate(item, condition, forecast) {
     const metric = item.metrics.get(condition.key);
+    if (condition.absent === true) return metric ? false : item.complete ? true : null;
     if (!metric) return item.complete && condition.key !== POWER ? false : null;
     if (condition.stars) {
       if (metric.stars == null) return null;
@@ -107,7 +112,22 @@
       sections.push({ source: origins.get(node) ?? node, condition: node });
     }
     visit(group);
-    return { sections, indexes };
+
+    const pages = [];
+    const grouped = new Map();
+    const pageBySection = sections.map(({ source }, index) => {
+      const name = typeof source.sectionPage === "string" ? source.sectionPage.trim() : "";
+      if (name && grouped.has(name)) {
+        const page = grouped.get(name);
+        pages[page].indexes.push(index);
+        return page;
+      }
+      const page = pages.length;
+      if (name) grouped.set(name, page);
+      pages.push({ name, indexes: [index] });
+      return page;
+    });
+    return { sections, indexes, pages, pageBySection };
   }
 
   function viewRule({ root, view, useForecast, showUnknown, kept, groupSections }) {
@@ -120,20 +140,27 @@
         }
         return node.children.map(validationError).find(Boolean);
       }
-      if (node.min && node.max && Number(node.min) > Number(node.max)) return "下限は上限以下にしてください。";
+      if (!node.absent && node.min && node.max && Number(node.min) > Number(node.max)) {
+        return "下限は上限以下にしてください。";
+      }
     }(group);
     const active = !error && group.children.length > 0;
     const unchecked = view === "unchecked";
     const discard = view === "discard" || unchecked;
     const checked = view === "kept";
     const keptIds = kept instanceof Set ? kept : new Set(kept);
-    const { sections, indexes } = active && origins ? sectionLayout(group, origins) : { sections: [] };
+    const { sections, indexes, pages, pageBySection } = active && origins
+      ? sectionLayout(group, origins) : { sections: [], pages: [] };
     return {
-      active, error, discard, checked, sections,
+      active, error, discard, checked, sections, pages,
       matchedSections(matches) {
         if (!indexes) return [];
         // evaluateGroup only returns leaves from branches that satisfied their own operator.
         return [...new Set(matches.map(condition => indexes.get(condition)))].sort((a, b) => a - b);
+      },
+      matchedPages(hits) {
+        if (pages.length === sections.length) return hits;
+        return [...new Set(hits.map(index => pageBySection[index]))];
       },
       check(item, matches) {
         const kept = keptIds.has(item.keepId);
@@ -162,5 +189,5 @@
   }
 
   globalThis.hakoAfListRules = Object.freeze({ POWER, SUM, DROP, CONVERSION, sumRates, dropMetrics, metricValue,
-    activeGroup, minimumMatches, viewRule, orderItems });
+    activeGroup, minimumMatches, supportsAbsence, viewRule, orderItems });
 })();

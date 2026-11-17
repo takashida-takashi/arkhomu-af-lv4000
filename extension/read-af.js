@@ -3,7 +3,7 @@
 
   if (globalThis.hakoAfFrameContext?.active === false) return;
 
-  const { readEffects } = globalThis.hakoAfEffects;
+  const { readEffects, readSnapshot } = globalThis.hakoAfEffects;
   const extras = globalThis.hakoAfExtrasMain;
   const hiddenTitles = globalThis.hakoAfHiddenTitles;
   const partyShare = globalThis.hakoAfPartyShareMain;
@@ -116,7 +116,7 @@
     let protectedCount = 0;
     let keptCount = 0;
     const matchingIds = [];
-    const sectionItems = rule.sections.map(() => []);
+    const sectionItems = rule.pages.map(() => []);
     const matches = sectionItems.length ? [] : undefined;
     for (const original of source) {
       const id = original?.id;
@@ -140,11 +140,11 @@
       if (status.protected) protectedCount++;
       if (status.result === true && record.keepId) matchingIds.push(record.keepId);
       if (status.show && (rule.checked || rule.discard || status.result === true)) matched++;
-      if (matches && status.result === true) record.sections = rule.matchedSections(matches);
+      if (matches && status.result === true) record.pages = rule.matchedPages(rule.matchedSections(matches));
       if (status.show) records.push(record);
     }
-    const items = orderItems(records, plan.sort).map(({ original, sections }) => {
-      if (sections) for (const index of sections) sectionItems[index].push(original);
+    const items = orderItems(records, plan.sort).map(({ original, pages }) => {
+      if (pages) for (const index of pages) sectionItems[index].push(original);
       return original;
     });
     return { items, sectionItems, total: source.length, matched, unknown, protectedCount, keptCount, matchingIds, metrics: [...metrics] };
@@ -284,20 +284,8 @@
   }
 
   function snapshot(artifact, decomposeState, itemId) {
-    const { params, traits, rarities } = artifact ?? {};
-    const level = Number(artifact?.level);
-    if (!Number.isSafeInteger(level) || level < 1 || !params || !Array.isArray(traits)) return null;
-    const stars = key => {
-      const rank = rarities?.[key];
-      return rank == null ? 0 : Math.min(5, Math.max(1, Math.floor(Number(rank) || 1)));
-    };
-    const parameters = Object.entries(params)
-      .filter(([key, value]) => /^[a-z]+$/.test(key) && Number.isFinite(value))
-      .map(([key, value]) => [key, value, stars(key)]);
-    const effects = traits
-      .filter(trait => /^[a-z][a-z0-9_-]{0,79}$/.test(trait?.key ?? "") && Number.isFinite(Number(trait.value)))
-      .map(({ key, value }) => [key, Number(value), stars(key)]);
-    const data = { level, parameters, effects };
+    const data = readSnapshot(artifact);
+    if (!data) return null;
     if (decomposeState) {
       if (typeof itemId === "string" || typeof itemId === "number") data.id = String(itemId);
       data.decomposable = artifact.is_favorite || artifact.is_equipped || decomposeState.protectedIds.has(itemId) ? false :
@@ -451,7 +439,7 @@
         const status = artifact ? rule.check(item, conditions) : null;
         const matches = status?.result === true ? conditions.map(condition => ({
           ...measure(item, condition.key, plan.useForecast), min: condition.min, max: condition.max,
-          minimumStars: condition.stars
+          minimumStars: condition.stars, absent: condition.absent
         })) : [];
         return { ...item, original, status, matches,
           group: plan.groups[extras.dropType(original, original.m_items)] ?? plan.groups.other };
@@ -564,6 +552,7 @@
       bubbles: true, detail: '["controls","trade"]'
     }));
     let foundSummary = false;
+    let summaryShown = false;
     let foundDropTotal = false;
     let foundAnalysis = false;
     let exploreGrid;
@@ -701,6 +690,7 @@
           extras.readGachaCard(gacha, vnode, props, el, snapshot, cachedPower, configFromCache);
         }
         if ((!foundSummary || !foundAnalysis) && ["FlexExploreSummary", "ExploreResultSummaryPage", "ResultSummaryPage"].includes(name)) {
+          summaryShown = true;
           const drops = !foundSummary && extras?.readDrops(snapshot, cachedPower, powerConfig, configFromCache, props);
           const toolbar = exploreToolbar(el);
           const view = drops && exploreView(instance, toolbar, name);
@@ -833,6 +823,7 @@
         for (let i = vnode.children.length - 1; i >= 0; i--) pending.push([vnode.children[i], ...context]);
       }
     }
+    extras?.skipExploreLogs(root, stores, summaryShown);
     for (const owner of expeditionOwners) expeditionNative?.sync(owner);
     if (matingPage) trainingRoutes?.legacyMating(legacyMatingParents);
     if (estimateAnchors.size && enhanceDetail) {

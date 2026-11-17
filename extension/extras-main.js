@@ -4,6 +4,7 @@
   if (globalThis.hakoAfFrameContext?.active === false) return;
 
   const names = globalThis.hakoAfFeatureNames;
+  const { readSnapshot } = globalThis.hakoAfEffects;
   const settingsEvent = "hako-af:extra-settings";
   const chatRow = "[data-chat-message-id]";
   const chatLog = ".fx-chat-room__log,[role='log'],.overflow-y-auto";
@@ -13,6 +14,7 @@
   let lastBalance = "";
   let midnightTimer;
   const dropCache = new WeakMap();
+  const openedExploreSummaries = new WeakSet();
   const exploreCounts = new WeakMap();
   const exploreTimingKey = "hakoAf4000:explore-timing";
   const previousExploreResults = new WeakMap();
@@ -496,6 +498,46 @@
     if (master?.type === "homunculus_egg" || item.type === "homunculus_egg") return "egg";
     if (master?.type || item.type) return "special";
     return master || item.item_id ? "normal" : "other";
+  }
+
+  function skipExploreLogs(root, stores, summaryShown) {
+    if (options.skipExploreLogs !== true || !/^\/(?:f\/)?explore-result\/?$/.test(location.pathname)) return;
+    const store = stores?.get("exploreResult");
+    const current = store?.current;
+    const result = current?.result;
+    if (!["step", "boss"].includes(current?.kind) || !result || typeof result !== "object" ||
+        result.debugNoSave || openedExploreSummaries.has(result)) return;
+    const guild = result.dungeon?.is_guild === true || Boolean(result.guildSessionId);
+    const returnTo = new URLSearchParams(location.search).get("return");
+    if (!guild && ["tower", "guild", "map", "world-map"].includes(returnTo)) return;
+    if (summaryShown) {
+      openedExploreSummaries.add(result);
+      return;
+    }
+    const profile = stores.get("userProfile");
+    const tutorial = (profile?.isLoaded ? profile.tutorialStep : null) ?? current.viewerSnapshot?.tutorialStep;
+    if ([10, 13, 14].includes(Number(tutorial)) || Number(result.tutorialStepAfter) === 13) return;
+    // Guild and boss results can render before their profile snapshot is ready.
+    if (tutorial == null && !guild && current.kind !== "boss") return;
+    const total = store.totalPages;
+    if (!Number.isSafeInteger(total) || total < 2 || store.getPageKind?.(total) !== "result_summary") return;
+    const page = root.querySelector(".explore-result-page,.fx-result");
+    if (!page?.getClientRects().length) return;
+    let button = page.querySelector(
+      'button[title="最終サマリへ"],button[title="結果までスキップ"],button.fx-timeline__marker--result[aria-label="結果"],button[aria-label="次: 結果"]'
+    );
+    if (!button) {
+      const controls = [...page.querySelectorAll("button")];
+      const next = page.querySelector('button[aria-label="次のイベント"]');
+      // The compact timeline can omit the final marker when the next page is already the summary.
+      button = controls.find(control => control.textContent.trim() === "結果までスキップ") ??
+        [...(next?.parentElement.querySelectorAll("button") ?? [])].find(control => control.textContent.trim() === "結果") ??
+        (total === 2 ? next ?? controls
+          .find(control => /^(?:次の探索(?:\s*→)?|次へ)$/.test(control.textContent.trim())) : null);
+    }
+    if (!button || button.disabled) return;
+    openedExploreSummaries.add(result);
+    button.click();
   }
 
   function readDrops(artifactSnapshot, powerOf, powerVersion, requestPower, summaryProps) {
@@ -1274,11 +1316,24 @@
     }
   }
 
+  async function readChatArtifactName(target, artifact, props) {
+    if (!artifact.sourceItemId) return;
+    const build = props?.$config?.public?.buildId ?? props?.$nuxt?.$config?.public?.buildId ??
+      globalThis.__NUXT__?.config?.public?.buildId;
+    const data = await globalThis.hakoAfTrainingSources?.readMasters(build, "items");
+    const master = data?.items?.find(item => item?.id === artifact.sourceItemId);
+    const name = textName(master?.name_key, master?.name, props);
+    if (name && target.isConnected) {
+      publish(target, "hako-af:chat-reply-artifact-name", { sourceItemId: artifact.sourceItemId, name });
+    }
+  }
+
   function findReply(target) {
     const origin = target.closest(chatRow);
     const list = origin?.parentElement;
     if (!list) return;
-    const chat = appProperties()?.$pinia?._s?.get("chat");
+    const props = appProperties();
+    const chat = props?.$pinia?._s?.get("chat");
     const id = origin.dataset.chatMessageId;
     const room = Object.values(chat?.messagesByRoom ?? {}).find(messages =>
       Array.isArray(messages) && messages.some(message => String(message.id) === id));
@@ -1292,10 +1347,18 @@
       const parent = parentId == null || parentId === id ? null : room?.find(message => String(message.id) === parentId);
       const hasText = message => typeof message?.text === "string" && message.text.trim();
       const message = hasText(parent) ? parent : parentId !== id && hasText(reply) ? reply : null;
-      if (message) {
+      const source = parentId !== id ? parent?.meta?.artifact ?? reply?.artifact ?? reply?.meta?.artifact : null;
+      const artifact = readSnapshot(source);
+      if (artifact) {
+        if (typeof source.source_item_id === "string") artifact.sourceItemId = source.source_item_id;
+        if (Number.isFinite(source.power)) artifact.power = source.power;
+      }
+      if (message || artifact) {
         publish(target, "hako-af:chat-reply-preview", {
-          name: message.user_name || reply?.user_name || "プレイヤー", text: message.text, quoted: message === reply
+          name: message?.user_name || parent?.user_name || reply?.user_name || "プレイヤー",
+          text: message?.text ?? "", quoted: !parent, artifact
         });
+        if (artifact) void readChatArtifactName(target, artifact, props);
         return;
       }
       publish(target, "hako-af:chat-missing", "返信元は表示範囲にありません。上にスクロールして前の発言を表示してください。");
@@ -1322,7 +1385,8 @@
   document.addEventListener("click", handleQuote, true);
   document.addEventListener("keydown", handleQuote, true);
   globalThis.hakoAfExtrasMain = { readDrops, readExploreAnalysis, dropType, readInventoryItem, readSkillEditor, readSkillToggle, gachaStage, readGachaCard,
-    prepareQuote, indexChatReplies, observeAlertPage, homeObserverNames, openWatchedItem, readSlotBonus, hiddenTitlesEnabled: () => options.hiddenTitles === true,
+    prepareQuote, indexChatReplies, skipExploreLogs, observeAlertPage, homeObserverNames, openWatchedItem, readSlotBonus,
+    hiddenTitlesEnabled: () => options.hiddenTitles === true,
     enhanceEstimateEnabled: () => options.enhanceEstimate === true, readEnhanceEstimate, watchMarketPrices,
     marketWatchEnabled: () => options.marketWatch === true, readMarketItemPrices, readMarketWatchItem, readMarketWatchSkill };
 })();

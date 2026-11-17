@@ -1,7 +1,9 @@
 (() => {
   "use strict";
 
-  const { activeGroup } = globalThis.hakoAfListRules;
+  const { activeGroup, sumRates } = globalThis.hakoAfListRules;
+  const { readEffects } = globalThis.hakoAfEffects;
+  const { text: formatMetric } = globalThis.hakoAf4000;
   const names = globalThis.hakoAfFeatureNames;
   const slotHome = globalThis.hakoAfSlotHome;
   const filterAndSort = `${names.filter}・${names.sort}`;
@@ -84,6 +86,7 @@
     return {
       features: Object.fromEntries(Object.keys(features).map(id => [id, stored.features?.[id] !== false])),
       paging: ["standard", "all", "priority"].includes(stored.paging) ? stored.paging : "priority",
+      skipExploreLogs: stored.skipExploreLogs !== false,
       candidates: ["mark", "first", "only"].includes(stored.candidates) ? stored.candidates : "first",
       matchColor: matchColors.some(([color]) => color === stored.matchColor) ? stored.matchColor : "red",
       thresholdName: typeof stored.thresholdName === "string" ? stored.thresholdName : "",
@@ -153,7 +156,7 @@
       return button;
     }
     function tellMain() {
-      const detail = JSON.stringify(settings.features);
+      const detail = JSON.stringify({ ...settings.features, skipExploreLogs: settings.skipExploreLogs });
       document.dispatchEvent(new CustomEvent("hako-af:extra-settings", { detail }));
       if (!enabled("chat")) {
         closeChatPreview();
@@ -462,6 +465,8 @@
       }
       const drops = subsection(dialog, names.explore);
       appendExploreReset?.(drops);
+      field(drops, "戦闘ログを飛ばして探索サマリを開く（通常・ボス・ギルダン）", "checkbox", settings.skipExploreLogs,
+        value => { settings.skipExploreLogs = value; });
       select(drops, "ページ表示", [["standard", "標準の件数"], ["all", "全件表示"], ["priority", "優先度別ページ"]],
         settings.paging, value => { settings.paging = value; });
       select(drops, "しきい値に合ったAF", [["first", "目印を付けて先頭へ"], ["mark", "目印を付ける"], ["only", "該当AFだけ表示"]],
@@ -504,6 +509,7 @@
         const parts = group.children.map(row => {
           if (row.children) return `（${format(row)}）`;
           const { label, unit } = effectOption(row.key);
+          if (row.absent) return label + "を含まない";
           return label + (row.min ? ` ${row.min}${unit}以上` : "") +
             (row.max ? ` ${row.max}${unit}以下` : "") + (row.stars ? ` ★${row.stars}以上` : "");
         });
@@ -998,6 +1004,25 @@
       chatPreviewQuote?.removeAttribute("aria-expanded");
       chatPreview = chatPreviewQuote = null;
     }
+    function chatArtifactDetails(artifact) {
+      const details = node("details", "chat-reply-artifact");
+      details.dataset.itemId = artifact.sourceItemId ?? "";
+      const summary = node("summary", "chat-reply-artifact-summary",
+        `AFの詳細（Lv${artifact.level.toLocaleString("ja-JP")}）`);
+      const name = node("strong", "chat-reply-artifact-name");
+      name.hidden = true;
+      const effects = node("dl", "chat-reply-artifact-metrics");
+      const metrics = readEffects(artifact);
+      const total = sumRates(metrics, true);
+      const append = (label, n, unit, stars = 0) => effects.append(
+        node("dt", "chat-reply-artifact-label", label + (stars ? "★".repeat(stars) : "")),
+        node("dd", "chat-reply-artifact-value", formatMetric(n, unit, false)));
+      if (Number.isFinite(artifact.power)) append("パワー", artifact.power, "");
+      if (total.parts.length) append("AF変換率＋ドロップ率合計", total.n, total.unit);
+      for (const [key, { n, unit, stars }] of metrics) append(effectOption(key).label, n, unit, stars);
+      details.append(summary, name, effects);
+      return details;
+    }
     document.addEventListener("hako-af:chat-reply-preview", event => receive(event, reply => {
       const quote = event.target;
       if (!enabled("chat") || !(quote instanceof Element)) return;
@@ -1009,11 +1034,24 @@
       chatPreview = node("section", "chat-reply-preview");
       chatPreview.setAttribute("aria-label", caption);
       chatPreview.setAttribute("aria-live", "polite");
-      chatPreview.append(node("strong", "chat-reply-author", `${caption}　${reply.name}`),
-        node("p", "chat-reply-text", reply.text));
+      chatPreview.append(node("strong", "chat-reply-author", `${caption}　${reply.name}`));
+      if (reply.text) chatPreview.append(node("p", "chat-reply-text", reply.text));
+      if (Array.isArray(reply.artifact?.parameters) && Array.isArray(reply.artifact?.effects)) {
+        chatPreview.append(chatArtifactDetails(reply.artifact));
+      } else if (/アーティファクト.*(?:発見しました|引き当てました)/.test(reply.text)) {
+        chatPreview.append(node("small", "chat-reply-artifact-unavailable", "返信元のデータにAFの詳細がありません。"));
+      }
       quote.after(chatPreview);
       chatPreviewQuote = quote;
       quote.setAttribute("aria-expanded", "true");
+    }));
+    document.addEventListener("hako-af:chat-reply-artifact-name", event => receive(event, ({ sourceItemId, name }) => {
+      if (event.target !== chatPreviewQuote || !chatPreview?.isConnected) return;
+      const details = chatPreview.querySelector('[data-ha4="chat-reply-artifact"]');
+      if (details?.dataset.itemId !== sourceItemId) return;
+      const label = details.querySelector('[data-ha4="chat-reply-artifact-name"]');
+      label.textContent = name;
+      label.hidden = false;
     }));
     document.addEventListener("hako-af:chat-missing", event => receive(event, message => {
       closeChatPreview();

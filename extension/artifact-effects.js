@@ -66,6 +66,23 @@
     return { n: Number((raw * 100).toFixed(2)), unit: "%" };
   }
 
+  function readSnapshot(artifact) {
+    const { params, traits, rarities } = artifact ?? {};
+    const level = Number(artifact?.level);
+    if (!Number.isSafeInteger(level) || level < 1 || !params || !Array.isArray(traits)) return null;
+    const stars = key => {
+      const rank = rarities?.[key];
+      return rank == null ? 0 : Math.min(5, Math.max(1, Math.floor(Number(rank) || 1)));
+    };
+    const parameters = Object.entries(params)
+      .filter(([key, value]) => /^[a-z]+$/.test(key) && Number.isFinite(value))
+      .map(([key, value]) => [key, value, stars(key)]);
+    const effects = traits
+      .filter(trait => /^[a-z][a-z0-9_-]{0,79}$/.test(trait?.key ?? "") && Number.isFinite(Number(trait.value)))
+      .map(({ key, value }) => [key, Number(value), stars(key)]);
+    return { level, parameters, effects };
+  }
+
   function readEffects(snapshot) {
     const metrics = new Map();
     for (const [key, n, stars] of snapshot.parameters) {
@@ -91,5 +108,5 @@
     return { label: traitLabel(trait), group, unit: traitValue(trait, 0).unit };
   }
 
-  globalThis.hakoAfEffects = Object.freeze({ parameters, readEffects, optionFor, groups });
+  globalThis.hakoAfEffects = Object.freeze({ parameters, readEffects, readSnapshot, optionFor, groups });
 })();
