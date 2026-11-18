@@ -654,6 +654,7 @@
       if (warehouse && warehouse === instance) extras?.openWatchedItem(warehouse);
       const auctionList = name === "MarketArtifactAuction" && el?.nodeType === 1 && el.isConnected
         ? auctionUI(el) : parentAuctionList;
+      extras?.observeGachaReveal(name, instance);
       const gacha = extras?.gachaStage(name, props, parentGacha);
       const monster = name === "MonsterDetailPanel" || name === "FlexMonsterDetail"
         ? props?.monster : parentMonster;

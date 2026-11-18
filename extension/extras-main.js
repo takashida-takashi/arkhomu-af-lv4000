@@ -16,6 +16,8 @@
   const dropCache = new WeakMap();
   const openedExploreSummaries = new WeakSet();
   const exploreCounts = new WeakMap();
+  const artifactGachaReveals = new Set(["RevealGachaStage", "ArtifactGachaRevealModal", "FlexArtifactGachaReveal"]);
+  const watchedGachaReveals = new WeakSet();
   const exploreTimingKey = "hakoAf4000:explore-timing";
   const previousExploreResults = new WeakMap();
   const exploreObservations = new WeakMap();
@@ -817,6 +819,34 @@
     });
   }
 
+  function observeGachaReveal(name, instance) {
+    if (!artifactGachaReveals.has(name) || typeof instance?.update !== "function" || watchedGachaReveals.has(instance)) return;
+    watchedGachaReveals.add(instance);
+    const update = instance.update;
+    instance.update = function (...args) {
+      const next = instance.next?.props;
+      const matchMedia = window.matchMedia;
+      if (options.skipGachaReveal !== true || instance.props.modelValue || next?.modelValue !== true ||
+          !next.rewards?.length || typeof matchMedia !== "function") {
+        return Reflect.apply(update, this, args);
+      }
+
+      // Vue runs the reveal's prop watcher before rendering the result. Use the game's
+      // reduced-motion path for that first query, during this component update only.
+      const preferLessMotion = function (query) {
+        if (query !== "(prefers-reduced-motion: reduce)") return Reflect.apply(matchMedia, this, [query]);
+        window.matchMedia = matchMedia;
+        return { matches: true };
+      };
+      window.matchMedia = preferLessMotion;
+      try {
+        return Reflect.apply(update, this, args);
+      } finally {
+        if (window.matchMedia === preferLessMotion) window.matchMedia = matchMedia;
+      }
+    };
+  }
+
   function gachaStage(name, props, parent) {
     if (!options.gacha) return null;
     if (name !== "RevealGachaStage" && name !== "RevealTicketStage") return parent;
@@ -1405,7 +1435,7 @@
   }
   document.addEventListener("click", handleQuote, true);
   document.addEventListener("keydown", handleQuote, true);
-  globalThis.hakoAfExtrasMain = { readDrops, readExploreAnalysis, dropType, readInventoryItem, readSkillEditor, readSkillToggle, gachaStage, readGachaCard,
+  globalThis.hakoAfExtrasMain = { readDrops, readExploreAnalysis, dropType, readInventoryItem, readSkillEditor, readSkillToggle, observeGachaReveal, gachaStage, readGachaCard,
     prepareQuote, indexChatReplies, skipExploreLogs, observeAlertPage, homeObserverNames, openWatchedItem, readSlotBonus,
     hiddenTitlesEnabled: () => options.hiddenTitles === true,
     enhanceEstimateEnabled: () => options.enhanceEstimate === true, readEnhanceEstimate, watchMarketPrices,

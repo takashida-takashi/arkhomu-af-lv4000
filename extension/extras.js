@@ -20,6 +20,7 @@
     expedition: `${names.expedition}（弁当の配分・経過時間）`,
     hiddenTitles: `${names.hiddenTitles}（未取得の隠し称号）`,
     gacha: `${names.gacha}（AFガチャ・スーパーガチャの性能表示）`,
+    skipGachaReveal: "AFガチャの演出を省略（結果をすぐ表示）",
     monsterBoxes: `${names.monsterBoxes}（個体の分類・元ランクの絞り込み）`,
     guildDungeonFilter: `${names.filter}（ギルドダンジョン）`,
     skillPresets: `${names.skillPresets}（ホムンクルスの使用中・控え）`,
