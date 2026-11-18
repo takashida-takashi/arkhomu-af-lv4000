@@ -6,6 +6,7 @@
   "permissions": ["storage", "downloads"],
   "host_permissions": ["https://arkhomu.com/*"],
   "background": { "service_worker": "local-reload-worker.js" },
+  "options_ui": { "page": "desktop-update-folder.html", "open_in_tab": true },
   "content_scripts": [{
     "matches": ["https://arkhomu.com/*"],
     "js": ["local-reload.js"],

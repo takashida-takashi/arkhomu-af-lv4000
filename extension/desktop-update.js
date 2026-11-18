@@ -35,6 +35,18 @@
     }
   }
 
+  async function applyArchive(version, reload = false) {
+    try {
+      return await chrome.runtime.sendMessage({ type: "hako-af:apply-update", version, reload });
+    } catch {
+      return false;
+    }
+  }
+
+  function openFolderSettings() {
+    void chrome.runtime.sendMessage({ type: "hako-af:open-update-folder" }).catch(() => {});
+  }
+
   function archiveUrl(bytes) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -51,7 +63,10 @@
     if (!/^[a-f0-9]{64}$/.test(release.sha256)) throw new Error("Invalid release hash");
     const previous = await storage.getValue(archiveKey, null);
     if (usable(previous)) {
-      if (!manual && !newerArkHomuRelease(release.version, previous.version)) return previous.version;
+      if (!manual && !newerArkHomuRelease(release.version, previous.version)) {
+        if (!previous.applied && !state.busy && enabled()) await applyArchive(previous.version);
+        return previous.version;
+      }
       if (manual && previous.version === release.version && previous.sha256 === release.sha256) return release.version;
     }
 
@@ -64,7 +79,7 @@
     const record = { version: release.version, sha256: release.sha256, url };
     await storage.setValue(archiveKey, record);
     setArchive(record);
-    if (!manual && !state.busy && enabled()) saveArchive(record);
+    if (!manual && !state.busy && enabled() && !await applyArchive(record.version) && enabled()) await saveArchive(record);
     return record.version;
   }
 
@@ -88,9 +103,16 @@
         setState("最新です", false);
         return;
       }
+      setState("更新先フォルダーを確認中…", true);
+      const samePage = page === location.href;
+      if (await applyArchive(available, samePage)) {
+        setState(samePage ? `v${available} に更新しました。再読み込みします…` : `v${available} を適用できます`, samePage);
+        if (samePage) setTimeout(() => setState(`v${available} をフォルダーに適用しました。タブを再読み込みしてください`, false), 5000);
+        return;
+      }
       downloading = true;
       token = crypto.randomUUID();
-      pendingDownload = { token, page, version: available };
+      pendingDownload = { token, version: available };
       setState("ZIPをダウンロード中…", true);
       const started = await chrome.runtime.sendMessage({ type: "hako-af:download-update", token, version: available });
       if (!started) throw new Error("Could not start the ZIP download");
@@ -103,16 +125,13 @@
 
   function onDownloadFinished(message) {
     if (message?.type !== "hako-af:update-download-finished" || !pendingDownload || message.token !== pendingDownload.token) return;
-    const { page, version: downloaded } = pendingDownload;
+    const { version: downloaded } = pendingDownload;
     pendingDownload = null;
     if (message.complete !== true) {
       setState("ZIPのダウンロードが中断されました", false, true);
       return;
     }
-    if (page === location.href) {
-      setState(`v${downloaded} のZIPを保存しました。再読み込みします…`, true);
-      location.reload();
-    } else setState(`v${downloaded} のZIPを保存しました`, false);
+    setState(`v${downloaded} のZIPを保存しました。更新先フォルダーを設定できます`, false);
   }
 
   function onArchiveChanged(changes, area) {
@@ -135,5 +154,5 @@
   storage.getValue(archiveKey, null).then(setArchive).catch(() => {});
   const updates = startArkHomuReleaseCheck(distribution, storage, "hakoAfDesktopUpdateNextCheck", "arkhomu-af-desktop-update", receive, version);
   globalThis.hakoAfDesktopUpdates = { version, archiveVersion: () => archive?.version,
-    saveArchive: () => saveArchive(), checkNow, status: () => state };
+    archiveApplied: () => archive?.applied === true, openFolderSettings, saveArchive: () => saveArchive(), checkNow, status: () => state };
 })();

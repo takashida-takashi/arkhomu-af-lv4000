@@ -1,6 +1,6 @@
 "use strict";
 
-importScripts("update-check.js");
+importScripts("update-check.js", "desktop-update-files.js");
 
 const gameOrigin = "https://arkhomu.com";
 const pendingKey = "hakoAfPendingLocalReload";
@@ -83,6 +83,28 @@ async function checkLocalUpdate(tabId, url) {
   chrome.runtime.reload();
 }
 
+async function applyUpdate(version) {
+  const current = chrome.runtime.getManifest().version;
+  if (!newerArkHomuRelease(version, current) || (await chrome.management.getSelf()).installType !== "development") return false;
+  const folder = await arkHomuUpdateFiles.readFolder();
+  if (!folder || await folder.queryPermission({ mode: "readwrite" }) !== "granted") return false;
+
+  const installed = await arkHomuUpdateFiles.readManifest(folder);
+  if (!arkHomuUpdateFiles.matchesExtension(installed) || ![current, version].includes(installed.version)) return false;
+  const { [archiveKey]: record } = await chrome.storage.local.get(archiveKey);
+  if (record?.version !== version || typeof record.url !== "string" ||
+      !record.url.startsWith(zipDataPrefix) || record.url.length > 2_667_000) return false;
+  if (installed.version === current) {
+    const archive = await (await fetch(record.url)).arrayBuffer();
+    if (!await matchesArkHomuReleaseHash(archive, record.sha256)) return false;
+    await arkHomuUpdateFiles.install(folder, archive, version);
+  }
+
+  const latest = (await chrome.storage.local.get(archiveKey))[archiveKey];
+  if (latest?.version === version) await chrome.storage.local.set({ [archiveKey]: { ...latest, applied: true } });
+  return true;
+}
+
 async function finishUpdateDownload(id, state) {
   if (state !== "complete" && state !== "interrupted") return;
   const key = downloadKey(id);
@@ -118,6 +140,18 @@ chrome.downloads.onErased.addListener(id => { void finishUpdateDownload(id, "int
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.frameId !== 0 || sender.origin !== gameOrigin || !sender.url || !Number.isInteger(sender.tab?.id)) return;
+  if (message?.type === "hako-af:open-update-folder") {
+    void chrome.runtime.openOptionsPage().then(() => respond(true), () => respond(false));
+    return true;
+  }
+  if (message?.type === "hako-af:apply-update") {
+    void queueZipOperation(() => applyUpdate(message.version)).then(applied => {
+      respond(applied);
+      if (applied && message.reload === true)
+        void queueZipOperation(() => checkLocalUpdate(sender.tab.id, sender.url)).catch(() => {});
+    }, () => respond(false));
+    return true;
+  }
   if (message?.type === "hako-af:download-update") {
     void queueZipOperation(() => downloadUpdate(message, sender)).then(respond, () => respond(false));
     return true;
@@ -125,7 +159,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (message?.type !== "hako-af:check-local-update") return;
 
   void cleanUpAppliedZips();
-  checking ??= checkLocalUpdate(sender.tab.id, sender.url).catch(() => {}).finally(() => { checking = null; });
+  checking ??= queueZipOperation(() => checkLocalUpdate(sender.tab.id, sender.url)).catch(() => {}).finally(() => { checking = null; });
   void checking.then(() => respond());
   return true;
 });

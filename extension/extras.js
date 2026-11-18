@@ -426,7 +426,7 @@
           refreshUpdateHistory();
           document.dispatchEvent(new Event("hako-af:read-update-history"));
           updates.append(node("p", "extra-note", desktop
-            ? "はこホムを表示している間に2時間に1回確認し、新版は同じ名前の更新ZIPに上書き保存します。現在の拡張機能フォルダーに上書き展開して、はこホムのタブを再読み込みします。新版が読み込まれると、拡張が保存したZIPは削除されます。"
+            ? "はこホムを表示している間に2時間に1回確認します。更新先を登録すると、取得した新版をフォルダーに適用し、タブの再読み込みで反映します。書き込めない場合は更新ZIPを保存します。"
             : "はこホムを表示している間に2時間に1回確認し、次にページが読み込まれるときに反映します。"));
         }
         if (desktop) {
@@ -434,12 +434,15 @@
           status.setAttribute("role", "status");
           const saveZip = makeButton("更新ZIPを保存");
           saveZip.addEventListener("click", desktop.saveArchive);
+          const folder = makeButton("更新先フォルダーを設定");
+          folder.addEventListener("click", desktop.openFolderSettings);
           const showArchive = () => {
             const available = desktop.archiveVersion();
-            status.textContent = available ? "v" + available + "のZIPを取得済み" : "";
+            const applied = desktop.archiveApplied();
+            status.textContent = available ? `v${available} ${applied ? "をフォルダーに適用済み" : "のZIPを取得済み"}` : "";
             saveZip.hidden = !available;
           };
-          updates.append(status, saveZip);
+          updates.append(folder, status, saveZip);
           showArchive();
           document.addEventListener("hako-af:desktop-update-archive", showArchive);
           dialog.addEventListener("close", () => document.removeEventListener("hako-af:desktop-update-archive", showArchive), { once: true });
@@ -874,9 +877,10 @@
       document.dispatchEvent(new Event("hako-af:read-userscript-update"));
     }
 
-    function makeUpdateNotice(available) {
+    function makeUpdateNotice(available, applied) {
       const notice = node("aside", "update-notice");
       notice.dataset.version = available;
+      notice.dataset.applied = String(applied);
       notice.setAttribute("aria-label", "拡張機能の更新案内");
       const head = node("div", "update-notice-head");
       const close = makeButton("×", "update-notice-close");
@@ -887,11 +891,11 @@
         placeUpdateNotice();
       });
       head.append(node("strong", "update-notice-title", `拡張 v${available} に更新できます`), close);
-      const status = node("p", "update-notice-status", desktop ? "更新ZIPを取得済みです。" : "新版を取得済みです。再読み込みすると適用されます。");
+      const status = node("p", "update-notice-status", desktop && !applied ? "更新ZIPを取得済みです。" : "新版を取得済みです。再読み込みすると適用されます。");
       status.setAttribute("role", "status");
-      if (!desktop) {
+      if (!desktop || applied) {
         const reload = makeButton("再読み込みして適用");
-        reload.addEventListener("click", () => location.reload());
+        reload.addEventListener("click", desktop ? desktop.checkNow : () => location.reload());
         notice.append(head, status, reload);
         return notice;
       }
@@ -902,22 +906,25 @@
         node("li", "update-notice-step", "はこホムのタブを再読み込みします。"));
       const saveZip = makeButton("ZIPを再保存");
       saveZip.addEventListener("click", desktop.saveArchive);
+      const folder = makeButton("更新先フォルダーを設定");
+      folder.addEventListener("click", desktop.openFolderSettings);
       steps.append(node("summary", "update-notice-summary", "更新手順"), instructions,
         node("p", "update-notice-note", "自動更新がオフの場合は、先にChromeの拡張機能画面で拡張機能を再読み込みしてください。"), saveZip);
-      notice.append(head, status, steps);
+      notice.append(head, status, folder, steps);
       return notice;
     }
 
     function placeUpdateNotice() {
       const available = desktop?.archiveVersion() ?? userscriptUpdateReady;
+      const applied = desktop?.archiveApplied() === true;
       if (!available || available === closedUpdateVersion) {
         updateNotice?.remove();
         updateNotice = null;
         return;
       }
-      if (updateNotice?.dataset.version !== available) {
+      if (updateNotice?.dataset.version !== available || updateNotice.dataset.applied !== String(applied)) {
         updateNotice?.remove();
-        updateNotice = makeUpdateNotice(available);
+        updateNotice = makeUpdateNotice(available, applied);
       }
       const settingsSection = settingsDialog?.open && settingsDialog.querySelector("[data-ha4-update-settings]");
       const owner = settingsSection || document.body;

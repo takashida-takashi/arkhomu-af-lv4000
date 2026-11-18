@@ -6,23 +6,36 @@ const { execFileSync } = require("node:child_process");
 const project = path.resolve(__dirname, "..");
 const outputs = path.join(project, "dist");
 const source = path.join(project, "extension");
-const read = file => fs.readFileSync(path.join(source, file), "utf8").replace(/\r\n/g, "\n").trim();
-const manifest = JSON.parse(read("manifest.json"));
-const { name, description } = manifest;
+const readSource = file => fs.readFileSync(path.join(project, file), "utf8").replace(/\r\n/g, "\n").trim();
+const manifest = JSON.parse(readSource("extension/manifest.json"));
 const buildPages = process.argv.includes("--pages");
 const git = (...args) => execFileSync("git", args, { cwd: project, encoding: "utf8" }).trim();
-const version = buildPages ? releaseVersion() : manifest.version;
+const releaseSources = ["extension", "scripts/arkhomu-af-auto-update.js", "scripts/arkhomu-af-legacy-update.js"];
+const mobileRef = buildPages ? previousMobileRelease() : null;
+const readMobileSource = file => mobileRef ? git("show", `${mobileRef}:${file}`) : readSource(file);
+const read = file => readMobileSource(`extension/${file}`);
+const mobileManifest = mobileRef ? JSON.parse(read("manifest.json")) : manifest;
+const { name, description } = mobileManifest;
+const desktopVersion = buildPages ? releaseVersion("HEAD", manifest.version) : manifest.version;
+const version = mobileRef ? releaseVersion(mobileRef, mobileManifest.version) : desktopVersion;
 
-function releaseVersion() {
-  // Use the extension manifest as the version baseline for every distribution.
+function previousMobileRelease() {
+  const commits = git("log", "--first-parent", "--format=%H%x09%s", "--", ...releaseSources).split("\n");
+  const pcOnly = entry => /\[pc-only\]$/.test(entry);
+  if (!pcOnly(commits[0])) return null;
+  const previous = commits.find(entry => !pcOnly(entry));
+  if (!previous) throw new Error("A PC-only release requires an earlier mobile release.");
+  return previous.split("\t", 1)[0];
+}
+
+function releaseVersion(ref, manifestVersion) {
   let baseline;
-  for (const commit of git("log", "--first-parent", "--format=%H", "--", "extension/manifest.json").split("\n")) {
-    if (JSON.parse(git("show", `${commit}:extension/manifest.json`)).version !== manifest.version) break;
+  for (const commit of git("log", "--first-parent", "--format=%H", ref, "--", "extension/manifest.json").split("\n")) {
+    if (JSON.parse(git("show", `${commit}:extension/manifest.json`)).version !== manifestVersion) break;
     baseline = commit;
   }
-  const releaseSources = ["extension", "scripts/arkhomu-af-auto-update.js", "scripts/arkhomu-af-legacy-update.js"];
-  const depth = baseline ? Number(git("rev-list", "--first-parent", "--count", `${baseline}..HEAD`, "--", ...releaseSources)) : 0;
-  const [major, minor, patch] = manifest.version.split(".").map(Number);
+  const depth = baseline ? Number(git("rev-list", "--first-parent", "--count", `${baseline}..${ref}`, "--", ...releaseSources)) : 0;
+  const [major, minor, patch] = manifestVersion.split(".").map(Number);
   if (patch + depth > 65535) throw new Error("Release patch exceeds the Chrome manifest limit.");
   return [major, minor, patch + depth].join(".");
 }
@@ -33,7 +46,7 @@ function makePcZip(destination) {
   try {
     const target = path.join(staging, folder);
     fs.cpSync(source, target, { recursive: true });
-    fs.writeFileSync(path.join(target, "manifest.json"), JSON.stringify({ ...manifest, version }, null, 2) + "\n");
+    fs.writeFileSync(path.join(target, "manifest.json"), JSON.stringify({ ...manifest, version: desktopVersion }, null, 2) + "\n");
     const archive = path.join(staging, "extension.zip");
     if (process.platform === "win32") {
       execFileSync("tar.exe", ["-a", "-cf", archive, "-C", staging, folder], { stdio: "inherit" });
@@ -54,7 +67,8 @@ function renderPage(zipName) {
   const badge = /(<div class="version">)v\d+\.\d+\.\d+(<\/div>)/;
   const download = /href="\.\/arkhomu-af-lv4000-v\d+\.\d+\.\d+\.zip"/;
   if (!badge.test(template) || !download.test(template)) throw new Error("Missing release fields in index.html.");
-  return template.replace(badge, (_, open, close) => `${open}v${version}${close}`)
+  const releaseLabel = desktopVersion === version ? `v${version}` : `PC v${desktopVersion} / スマホ v${version}`;
+  return template.replace(badge, (_, open, close) => `${open}${releaseLabel}${close}`)
     .replace(download, `href="./${zipName}"`);
 }
 
@@ -72,7 +86,7 @@ const files = ["feature-names.js", "forecast.js", "artifact-effects.js", "list-r
   "expedition-main.js", "expedition-native.js", "monster-boxes.js", "guild-dungeon-main.js", "read-af.js"];
 const desktopOnly = new Set(["frame-context.js", "local-reload.js", "desktop-update.js", "slot-home.js"]);
 const bundled = new Set([...files, "market-snapshot.js", "update-check.js"]);
-const desktopModules = new Set(manifest.content_scripts.flatMap(entry => entry.js));
+const desktopModules = new Set(mobileManifest.content_scripts.flatMap(entry => entry.js));
 const missing = [...desktopModules].filter(file => !desktopOnly.has(file) && !bundled.has(file));
 const extra = [...bundled].filter(file => !desktopModules.has(file));
 if (missing.length || extra.length) {
@@ -114,7 +128,7 @@ const header = `// ==UserScript==
 
 const distribution = "https://takashida-takashi.github.io/arkhomu-af-lv4000/";
 const checks = read("update-check.js");
-const legacyUpdates = fs.readFileSync(path.join(__dirname, "arkhomu-af-legacy-update.js"), "utf8").replace(/\r\n/g, "\n").trim();
+const legacyUpdates = readMobileSource("scripts/arkhomu-af-legacy-update.js");
 const start = `(() => {
   "use strict";
   if (location.origin !== "https://arkhomu.com" || window.top !== window.self) return;
@@ -178,7 +192,7 @@ const installerGrants = [
   "// @inject-into  content"
 ];
 const grantsMarker = "// @grant        none\n// @sandbox      raw\n// @inject-into  page";
-const loader = fs.readFileSync(path.join(__dirname, "arkhomu-af-auto-update.js"), "utf8").replace(/\r\n/g, "\n").trim();
+const loader = readMobileSource("scripts/arkhomu-af-auto-update.js");
 const installerBody = `\n\n(() => {\n${checks}\n\n(${loader})(${JSON.stringify(distribution)}, ${JSON.stringify(version)}, ${JSON.stringify(runtime)});\n})();\n`;
 const installer = header.replace(grantsMarker, [
   ...installerGrants, "// @sandbox      DOM", "// @downloadURL  none"
@@ -203,7 +217,7 @@ if (buildPages) {
     marker
   ].join("\n"));
   const sha256 = createHash("sha256").update(runtime).digest("hex");
-  const zipName = `arkhomu-af-lv4000-v${version}.zip`;
+  const zipName = `arkhomu-af-lv4000-v${desktopVersion}.zip`;
   fs.mkdirSync(safari, { recursive: true });
   copyPreviousDownloads(site);
   makePcZip(path.join(site, zipName));
@@ -216,5 +230,5 @@ if (buildPages) {
   fs.writeFileSync(path.join(site, metaName), migrationHeader + "\n");
   fs.writeFileSync(path.join(site, "runtime.js"), runtime);
   fs.writeFileSync(path.join(site, "runtime.json"), JSON.stringify({ version, sha256 }, null, 2) + "\n");
-  fs.writeFileSync(path.join(site, "pc.json"), JSON.stringify({ version, sha256: archiveHash }, null, 2) + "\n");
+  fs.writeFileSync(path.join(site, "pc.json"), JSON.stringify({ version: desktopVersion, sha256: archiveHash }, null, 2) + "\n");
 }
