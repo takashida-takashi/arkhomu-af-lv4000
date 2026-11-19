@@ -635,8 +635,8 @@
         if (el.id === "fx-expd-member-title" || /^遠征メンバー\s*\(/.test(title))
           expeditionNative?.read(el, expeditionView, "ready");
       }
-      if (matingPage && el?.nodeType === 1 && typeof vnode.key === "string" && /^auto-[sp]:/.test(vnode.key)) {
-        trainingRoutes?.rememberLegacyAuto(el, vnode.key.slice(5));
+      if (matingPage && el?.nodeType === 1 && typeof vnode.key === "string" && /^(?:auto-)?[sp]:/.test(vnode.key)) {
+        trainingRoutes?.rememberLegacyAuto(el, vnode.key.replace(/^auto-/, ""));
       }
       if (trainingRoutes?.accepts(name)) trainingRoutes.read(name, instance, props, el, translate, dependencies, readThrough);
       if (name === "FlexMonsterDetail" || name === "MonsterDetailPanel") {

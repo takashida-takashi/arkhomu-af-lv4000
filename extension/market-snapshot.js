@@ -2,6 +2,9 @@
   "use strict";
 
   if (globalThis.hakoAfFrameContext?.active === false) return;
+  const guardKey = Symbol.for("hako-af.monster-operation-guards");
+  const monsterGuards = globalThis[guardKey] ??= new Set();
+  globalThis.hakoAfMonsterGuards = monsterGuards;
 
   const key = Symbol.for("hako-af.market-prices");
   if (globalThis[key]) {
@@ -10,6 +13,8 @@
   }
   const prices = new Map();
   const wrapped = new WeakSet();
+  const approvedOperations = new Map();
+  let invokingOperation;
   const expeditionSources = new Map([
     ["/api/expedition/repeat-status", ["repeat", data => data && {
       open: data.open, gateLevel: data.gateLevel, passActive: data.passActive
@@ -244,50 +249,84 @@
     const proxy = new Proxy(native, {
       apply(target, thisArg, args) {
         const operation = args[1]?.method === "POST" && irreversibleMonsterRequest(args[0], args[1].body);
-        if (operation && Array.isArray(operation[1]) && operation[1].length && operation[1].every(validId) &&
-            !document.dispatchEvent(new CustomEvent("hako-af:guard-monster-operation", {
-              cancelable: true, detail: JSON.stringify([operation[0], operation[1].map(String)])
-            }))) {
-          const statusMessage = "拡張育成ルートの警告で操作をキャンセルしました。";
-          return Promise.reject(Object.assign(new Error(statusMessage), { statusCode: 400, data: { statusMessage } }));
-        }
-        const response = Reflect.apply(target, thisArg, args);
-        if (args[0] === "/api/guild-dungeons/browse") observeGuildBrowse(args[1], response);
-        if (args[0] === "/api/pvp/season") observeOfficialSeason(response);
-        if (["/api/skill-levels", "/api/skill-levels/mine", "/api/skill-levels/notice", "/api/skill-levels/notice-levels"].includes(args[0])) {
-          observePlannerSkillLevels(args[0], args[1]?.query, response);
-        }
-        else if (typeof args[0] === "string" && args[0].startsWith("/api/guild-dungeons/public/")) {
-          observeGuildPublicDetail(args[0], args[1], response);
-        }
-        const expeditionSource = expeditionSources.get(args[0]);
-        if (expeditionSource) {
-          const [type, select] = expeditionSource;
-          Promise.resolve(response).then(payload => {
-            const value = select(payload);
-            if (value == null) return;
-            expeditionData.set(type, value);
-            publishExpedition(type, value);
-          }).catch(() => {});
-        }
-        if (args[0] === "/api/market/stats") {
-          // Observe the data already returned to the marketplace. Return its original promise to the caller.
-          Promise.resolve(response).then(payload => {
-            if (!Array.isArray(payload?.stats)) return;
-            const at = Date.now();
-            const requested = args[1]?.query?.item_ids;
-            if (typeof requested === "string") {
-              for (const id of requested.split(",")) prices.delete(id);
-            } else prices.clear();
-            for (const entry of payload.stats) {
-              const price = Number(entry?.cheapest_price);
-              if (typeof entry?.item_id === "string" && Number.isSafeInteger(price) && price > 0) prices.set(entry.item_id, { price, at });
+        const guarded = operation && Array.isArray(operation[1]) && operation[1].length && operation[1].every(validId);
+        const signature = guarded && JSON.stringify([args[0], operation[1].map(String)]);
+        // Delegating $fetch wrappers must not ask again for the same native call.
+        if (guarded && invokingOperation === signature) return Reflect.apply(target, thisArg, args);
+        const invoke = () => {
+          const previous = invokingOperation;
+          let response;
+          try {
+            invokingOperation = signature;
+            response = Reflect.apply(target, thisArg, args);
+          } finally { invokingOperation = previous; }
+          if (args[0] === "/api/guild-dungeons/browse") observeGuildBrowse(args[1], response);
+          if (args[0] === "/api/pvp/season") observeOfficialSeason(response);
+          if (["/api/skill-levels", "/api/skill-levels/mine", "/api/skill-levels/notice", "/api/skill-levels/notice-levels"].includes(args[0])) {
+            observePlannerSkillLevels(args[0], args[1]?.query, response);
+          }
+          else if (typeof args[0] === "string" && args[0].startsWith("/api/guild-dungeons/public/")) {
+            observeGuildPublicDetail(args[0], args[1], response);
+          }
+          const expeditionSource = expeditionSources.get(args[0]);
+          if (expeditionSource) {
+            const [type, select] = expeditionSource;
+            Promise.resolve(response).then(payload => {
+              const value = select(payload);
+              if (value == null) return;
+              expeditionData.set(type, value);
+              publishExpedition(type, value);
+            }).catch(() => {});
+          }
+          if (args[0] === "/api/market/stats") {
+            // Observe the data already returned to the marketplace. Return its original promise to the caller.
+            Promise.resolve(response).then(payload => {
+              if (!Array.isArray(payload?.stats)) return;
+              const at = Date.now();
+              const requested = args[1]?.query?.item_ids;
+              if (typeof requested === "string") {
+                for (const id of requested.split(",")) prices.delete(id);
+              } else prices.clear();
+              for (const entry of payload.stats) {
+                const price = Number(entry?.cheapest_price);
+                if (typeof entry?.item_id === "string" && Number.isSafeInteger(price) && price > 0) prices.set(entry.item_id, { price, at });
+              }
+              document.dispatchEvent(new Event("hako-af:market-snapshot"));
+            }).catch(() => {});
+          }
+          if (args[0] === "/api/mating/execute" || args[0] === "/api/mating/r6-execute") observeMating(args, response);
+          return response;
+        };
+        if (!guarded) return invoke();
+        const body = args[1].body;
+        // The game's recovery request reuses requestId. Confirm that logical operation once,
+        // while changed parents or inheritance selections still require a new confirmation.
+        const requestKey = typeof body?.requestId === "string" && body.requestId.length <= 200
+          ? JSON.stringify([signature, body.requestId, body.targetMonsterId, body.selectedTraitKeys,
+            body.permanentKeepKeys, body.forgetKeys, body.inheritanceMode]) : null;
+        let approval = requestKey && approvedOperations.get(requestKey);
+        if (!approval) {
+          approval = Promise.resolve().then(async () => {
+            const ids = operation[1].map(String);
+            const allowed = document.dispatchEvent(new CustomEvent("hako-af:guard-monster-operation", {
+              cancelable: true, detail: JSON.stringify([operation[0], ids])
+            }));
+            let accepted = allowed;
+            if (accepted) for (const guard of monsterGuards) {
+              if (await guard(operation[0], ids, body) === false) { accepted = false; break; }
             }
-            document.dispatchEvent(new Event("hako-af:market-snapshot"));
-          }).catch(() => {});
+            if (!accepted) {
+              const statusMessage = "拡張育成ルートの警告で操作をキャンセルしました。";
+              throw Object.assign(new Error(statusMessage), { statusCode: 400, data: { statusMessage } });
+            }
+          });
+          if (requestKey) {
+            approvedOperations.set(requestKey, approval);
+            if (approvedOperations.size > 64) approvedOperations.delete(approvedOperations.keys().next().value);
+            void approval.catch(() => { if (approvedOperations.get(requestKey) === approval) approvedOperations.delete(requestKey); });
+          }
         }
-        if (args[0] === "/api/mating/execute" || args[0] === "/api/mating/r6-execute") observeMating(args, response);
-        return response;
+        return approval.then(invoke);
       }
     });
     wrapped.add(proxy);

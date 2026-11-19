@@ -5,6 +5,7 @@
 
   const kinds = ["skills", "passives", "monsters", "items", "monster-categories", "races", "game-config", "skill-categories", "skill-tags"];
   const versionOrder = new Intl.Collator("en", { numeric: true });
+  const identity = globalThis.hakoAfSkillIdentity;
   let pending;
   let cached;
   let readAt = 0;
@@ -74,23 +75,29 @@
     const id = monster?.rank6_unique_skill;
     if (!id) return;
     const skill = data.skills?.find(skill => skill.id === id) ?? data.passives?.find(skill => skill.id === id);
-    return label(skill, translate) ?? id;
+    return identity.typed(label(skill, translate) ?? id, data.skills?.includes(skill) ? "skill" : "passive");
   }
 
-  function sourceIndex(data, needs, profile, translate, normalize) {
+  function sourceIndex(data, needs, profile, translate, normalize, inheritanceNeeds = needs, selectedIds = {}) {
     if (!data) return new Map();
     const matching = new Set(needs.map(normalize));
     const byId = new Map();
     const matches = new Map();
+    const selected = new Map(Object.entries(selectedIds).map(([name, id]) => [normalize(name), id]));
     for (const [kind, key] of [["skill", "skills"], ["passive", "passives"]]) {
       for (const master of data[key] ?? []) {
         if (!isPublic(master)) continue;
         const id = `${kind}:${master.id}`;
         byId.set(id, master);
         const name = normalize(label(master, translate));
-        if (!matching.has(name)) continue;
-        if (!matches.has(name)) matches.set(name, []);
-        matches.get(name).push(id);
+        for (const wanted of matching) {
+          const target = identity.parse(wanted);
+          if (target.name !== name || target.kind && target.kind !== kind) continue;
+          const requested = selected.get(wanted);
+          if (/^[sp]\./.test(requested ?? "") && requested !== `${kind === "skill" ? "s" : "p"}.${master.id}`) continue;
+          if (!matches.has(wanted)) matches.set(wanted, []);
+          matches.get(wanted).push(id);
+        }
       }
     }
     const wanted = new Set([...matches.values()].flat());
@@ -100,7 +107,10 @@
       if (!wanted.has(key)) return;
       if (!sources.has(key)) sources.set(key, []);
       const entries = sources.get(key);
-      if (!entries.some(entry => entry.text === text)) entries.push({ text, ...(path ? { path } : {}), ...details });
+      if (!entries.some(entry => entry.text === text && entry.monsterId === details.monsterId)) entries.push({
+        text, ...(path ? { path } : {}), skillKind: kind, skillId: id, ...details,
+        ...(details.kind === "monster" ? { inheritable: details.inheritable !== false && byId.get(key)?.inheritability !== false } : {})
+      });
     };
     for (const monster of data.monsters ?? []) {
       if (!isPublic(monster) || monster.summon_only) continue;
@@ -110,20 +120,22 @@
       const path = known ? `/encyclopedia?monster=${encodeURIComponent(monster.id)}` : "";
       const rank = known && Number.isInteger(Number(monster.rank)) && Number(monster.rank) > 0 ? Number(monster.rank) : null;
       const rankLabel = rank == null ? "元ランク未確認" : `元ランク${rank}`;
+      const source = { kind: "monster", ...(known ? { monsterId: monster.id } : {}), rank };
       for (const [kind, entries] of [["skill", monster.skills], ["passive", monster.passives]]) {
         for (const entry of Array.isArray(entries) ? entries : []) {
           const id = typeof entry === "string" ? entry : entry?.[`${kind}_id`] ?? entry?.id;
           const level = Math.max(1, Math.floor(Number(entry?.level_unlocked) || 1));
-          add(kind, id, `${name} Lv${level}（${rankLabel}）`, path, { kind: "monster", level, rank });
+          add(kind, id, `${name} Lv${level}（${rankLabel}）`, path, { ...source, level,
+            inheritable: id !== monster.rank6_unique_skill && !(kind === "skill" && id === monster.attack_skill) });
         }
       }
       if (monster.attack_skill) {
-        add("skill", monster.attack_skill, `${name} Lv1（通常攻撃・${rankLabel}）`, path, { kind: "monster", level: 1, rank });
+        add("skill", monster.attack_skill, `${name} Lv1（通常攻撃・${rankLabel}）`, path, { ...source, level: 1, inheritable: false });
       }
       if (typeof monster.rank6_unique_skill === "string") {
         const id = monster.rank6_unique_skill.trim();
         const kind = byId.has(`skill:${id}`) ? "skill" : byId.has(`passive:${id}`) ? "passive" : null;
-        if (kind) add(kind, id, `${name} Rank6で習得（${rankLabel}）`, path, { kind: "monster", rank });
+        if (kind) add(kind, id, `${name} Rank6で習得（${rankLabel}）`, path, { ...source, inheritable: false });
       }
     }
     for (const item of data.items ?? []) {
@@ -135,7 +147,7 @@
         }
       }
     }
-    return new Map([...matches].map(([name, ids]) => {
+    const index = new Map([...matches].map(([name, ids]) => {
       const entries = [];
       for (const id of ids) {
         const master = byId.get(id);
@@ -145,11 +157,12 @@
         for (const row of recipes) {
           const materials = [...new Set(row)].map(skill => byId.get(`skill:${skill}`) ?? byId.get(`passive:${skill}`));
           if (materials.length && materials.every(Boolean)) {
-            entries.push({ text: `合成レシピ ${materials.map(skill => label(skill, translate)).join(" ＋ ")}` });
+            entries.push({ text: `合成レシピ ${materials.map(skill => label(skill, translate)).join(" ＋ ")}`,
+              skillKind: id.split(":")[0], skillId: master.id });
           }
         }
       }
-      const ordered = [...new Map(entries.map(entry => [entry.text, entry])).values()];
+      const ordered = [...new Map(entries.map(entry => [JSON.stringify([entry.monsterId, entry.skillKind, entry.skillId, entry.text]), entry])).values()];
       ordered.sort((a, b) => {
         const monsterA = a.kind === "monster", monsterB = b.kind === "monster";
         if (monsterA !== monsterB) return monsterA ? -1 : 1;
@@ -159,6 +172,84 @@
       });
       return [name, ordered];
     }));
+    // Only outstanding ordinary skills can be collected together through inheritance.
+    // Match species IDs, since level text and displayed names need not identify a species.
+    const inheritance = new Map(inheritanceNeeds.map(name => [normalize(name), name]));
+    const byMonster = new Map();
+    for (const [name, entries] of index) {
+      if (!inheritance.has(name)) continue;
+      for (const entry of entries) {
+        if (!entry.monsterId || !entry.inheritable) continue;
+        if (!byMonster.has(entry.monsterId)) byMonster.set(entry.monsterId, new Map());
+        const skills = byMonster.get(entry.monsterId);
+        if (!skills.has(name) || entry.level < skills.get(name).level)
+          skills.set(name, { name: inheritance.get(name), level: entry.level, skillKind: entry.skillKind });
+      }
+    }
+    for (const [name, entries] of index) {
+      if (!inheritance.has(name)) continue;
+      for (const entry of entries) {
+        if (!entry.monsterId || !entry.inheritable) continue;
+        const overlaps = [...(byMonster.get(entry.monsterId) ?? [])].filter(([other]) => other !== name).map(([, skill]) => skill);
+        if (overlaps.length) entry.overlaps = overlaps;
+      }
+    }
+    return index;
+  }
+
+  function matingAdvice(data, route, recipientSkills, donorSkills, donor, translate, normalize, selectedKeys) {
+    const masters = new Map([["skill", data?.skills ?? []], ["passive", data?.passives ?? []]].flatMap(([kind, rows]) =>
+      rows.map(master => [`${kind}:${master.id}`, master])));
+    const keyOf = skill => `${skill.skillKind}:${skill.id}`;
+    const known = new Set(recipientSkills.map(keyOf));
+    const donorKnown = new Set(donorSkills.map(keyOf));
+    const selectionKey = value => typeof value === "string" && /^(s|p|skill|passive)[:.](.+)$/.test(value)
+      ? value.replace(/^(s|p|skill|passive)[:.]/, (_, kind) => (kind === "s" || kind === "skill" ? "skill:" : "passive:")) : null;
+    const chosen = Array.isArray(selectedKeys) && selectedKeys.every(value => selectionKey(value))
+      ? new Set(selectedKeys.map(selectionKey)) : null;
+    const raw = donor?.t_user_monsters ?? donor;
+    const meta = raw?.m_monsters ?? donor?.m_monsters;
+    const id = meta?.id ?? raw?.monster_id ?? donor?.monster_id;
+    const species = data?.monsters?.find(monster => monster.id === id) ?? data?.monsters?.find(monster =>
+      meta?.name_key && monster.name_key === meta.name_key);
+    const eligible = key => {
+      const master = masters.get(key);
+      return master && master.inheritability !== false && master.used !== false && !master.enemy_only &&
+        isPublic(master) && !(key.startsWith("passive:") && master.display === "none") &&
+        key !== `skill:${species?.attack_skill}` && key.split(":")[1] !== species?.rank6_unique_skill;
+    };
+    const needs = (route.ordinaryNames ?? []).flatMap(name => {
+      const selected = route.previewSkillIds?.[name], target = identity.parse(name);
+      const keys = /^[sp]\./.test(selected ?? "") ? [selectionKey(selected)] : [...masters].filter(([, master]) =>
+        normalize(label(master, translate)) === target.name).map(([key]) => key)
+        .filter(key => !target.kind || key.startsWith(target.kind + ":"));
+      const inheritable = keys.filter(eligible);
+      return keys.some(key => known.has(key)) || !inheritable.length ? [] : [{ name, keys: inheritable }];
+    });
+    const current = needs.flatMap(need => need.keys.filter(key => donorKnown.has(key) && (!chosen || chosen.has(key)))
+      .map(key => ({ name: need.name, skillKind: key.split(":")[0] })));
+    const level = Number(raw?.level ?? donor?.level);
+    const limit = Number(raw?.max_level ?? raw?.maxLevel ?? donor?.max_level ?? donor?.maxLevel);
+    const future = [];
+    for (const [kind, rows] of [["skill", raw?.skills ?? donor?.skills ?? species?.skills],
+      ["passive", raw?.passives ?? donor?.passives ?? species?.passives]]) {
+      const forgotten = new Set((raw?.forgotten_skills ?? []).filter(value => typeof value === "string")
+        .flatMap(value => /^[sp]:/.test(value) ? value.startsWith(kind === "skill" ? "s:" : "p:") ? [value.slice(2)] : [] : [value]));
+      for (const entry of Array.isArray(rows) ? rows : []) {
+        const id = typeof entry === "string" ? entry : entry?.[`${kind}_id`] ?? entry?.id;
+        const key = `${kind}:${id}`, required = Number(entry?.level_unlocked ?? 1);
+        if (!Number.isFinite(level) || !Number.isFinite(required) || required <= level ||
+            Number.isFinite(limit) && limit > 0 && required > limit || forgotten.has(id) || donorKnown.has(key) || !eligible(key)) continue;
+        const need = needs.find(need => need.keys.includes(key));
+        if (need) future.push({ name: need.name, skillKind: kind, level: required });
+      }
+    }
+    const earliest = new Map();
+    for (const entry of future.sort((a, b) => a.level - b.level)) {
+      const key = `${entry.skillKind}:${entry.name}`;
+      if (!earliest.has(key)) earliest.set(key, entry);
+    }
+    return { current, future: [...earliest.values()], remaining: needs.length };
   }
 
   const plannerKinds = [["s", "skill", "skills"], ["p", "passive", "passives"]];
@@ -189,7 +280,7 @@
   }
 
   async function readPlannerTaxonomy(data) {
-    if (plannerTaxonomy?.buildId === data.buildId) return plannerTaxonomy;
+    if (plannerTaxonomy && plannerTaxonomy.buildId === data.buildId) return plannerTaxonomy;
     return pendingTaxonomy ??= Promise.all(["categories", "tags"].map(async kind => {
       const cached = data[`skill-${kind}`];
       if (cached?.labels) return cached;
@@ -391,5 +482,5 @@
     }));
   });
 
-  globalThis.hakoAfTrainingSources = { readMasters, sourceIndex, rank6UniqueName };
+  globalThis.hakoAfTrainingSources = { readMasters, sourceIndex, rank6UniqueName, matingAdvice };
 })();

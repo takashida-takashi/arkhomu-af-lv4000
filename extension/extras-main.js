@@ -473,7 +473,7 @@
           const id = group.type + ":" + item.id;
           const row = el.querySelector(`[data-fx-drag-id="${CSS.escape(id)}"]`);
           const control = row?.querySelector(".skill-reserve-toggle");
-          if (control) publish(control, "hako-af:skill-preset-entry", { identity, id, reserved, name: props.api.name(group.type, item) });
+          if (control) publish(control, "hako-af:skill-preset-entry", { identity, id, reserved, kind: group.type === "passive" ? "passive" : "skill", name: props.api.name(group.type, item) });
         }
       }
     }
@@ -490,7 +490,8 @@
     const imageSource = image?.getAttribute("src") ?? image?.querySelector("[src]")?.getAttribute("src");
     const id = (imageSource ? imageSource.split("?")[0] : "") + "|" + props.name;
     publish(root, "hako-af:skill-preset-editor", identity);
-    publish(el, "hako-af:skill-preset-entry", { identity, id, reserved: props.reserved === true, name: props.name });
+    publish(el, "hako-af:skill-preset-entry", { identity, id, reserved: props.reserved === true,
+      kind: globalThis.hakoAfSkillIdentity.elementKind(el), name: props.name });
   }
   function dropType(item, master) {
     if (item._artifact) {

@@ -2,8 +2,16 @@
   "use strict";
 
   if (globalThis.hakoAfFrameContext?.active === false) return;
+  const singleton = Symbol.for("hako-af.training-routes-main");
+  if (globalThis[singleton]) {
+    globalThis.hakoAfTrainingRoutesMain = globalThis[singleton];
+    return;
+  }
 
   const names = globalThis.hakoAfFeatureNames;
+  const identity = globalThis.hakoAfSkillIdentity;
+  const routeKey = (name, route) => /^[sp]\./.test(route?.previewSkillIds?.[name] ?? "")
+    ? identity.typed(name, identity.kind(route.previewSkillIds[name])) : nameKey(name);
   const getReaders = globalThis.hakoAfPartyShareMain?.getReaders;
   const trainingSources = globalThis.hakoAfTrainingSources;
   const matingComponents = new Set(["FlexMatingInherit", "MatingNewUiPanel"]);
@@ -28,6 +36,7 @@
   let quickAttempt;
   let previousRows;
   let protectedRows = new Map();
+  const matingRecords = new Map();
 
   const nameKey = value => typeof value === "string" ? value.normalize("NFKC").trim().replace(/\s+/g, " ") : "";
   const componentName = vnode => (vnode.component?.type ?? vnode.type)?.__name;
@@ -60,9 +69,10 @@
       const nextRoutes = new Map(data.routes.map(route => [route.id, {
         name: route.name, group: typeof route.group === "string" ? route.group : "",
         ordinaryNames: route.ordinary, permanentNames: route.permanent, rank6Passive: route.rank6Passive,
-        reserved: Array.isArray(route.reserved) ? new Set(route.reserved.map(nameKey)) : null,
-        skills: new Set([...route.ordinary, ...route.permanent].map(nameKey)),
-        permanent: new Set(route.permanent.map(nameKey))
+        previewSkillIds: route.previewSkillIds,
+        reserved: Array.isArray(route.reserved) ? new Set(route.reserved.map(name => routeKey(name, route))) : null,
+        skills: new Set([...route.ordinary, ...route.permanent].map(name => routeKey(name, route))),
+        permanent: new Set(route.permanent.map(name => routeKey(name, route)))
       }]));
       const nextTargets = new Map(data.bindings.map(binding => [binding.monsterId, binding]));
       routes = nextRoutes;
@@ -86,19 +96,19 @@
     const route = binding && routes.get(binding.routeId);
     if (!route?.reserved || !Array.isArray(binding.pendingSkillStates) || !binding.pendingSkillStates.length) return;
     const pending = new Set(binding.pendingSkillStates.map(nameKey));
-    const add = (control, label, reserved) => {
-      const key = nameKey(label);
-      if (!control || control.disabled || !control.getClientRects().length || !pending.has(key)) return;
-      skillStateControls.push({ control, key, reserved, desired: route.reserved.has(key), id, routeId: binding.routeId });
+    const add = (control, label, reserved, kind) => {
+      const key = binding.pendingSkillStates.find(name => identity.matches(new Set([routeKey(name, route)]), label, kind));
+      if (!control || control.disabled || !control.getClientRects().length || !key || !pending.has(nameKey(key))) return;
+      skillStateControls.push({ control, key, reserved, desired: identity.matches(route.reserved, label, kind), id, routeId: binding.routeId });
     };
     if (name === "SkillReserveToggle" && !root.closest(".fx-skedit")) {
-      add(root, props.name, props.reserved === true);
+      add(root, props.name, props.reserved === true, identity.elementKind(root));
     } else if (name === "FlexMonsterSkillEditor" && props.reserveEnabled && !props.pending) {
       for (const group of props.groups ?? []) {
         for (const [items, reserved] of [[group.inUse, false], [group.reserved, true]]) {
           for (const item of items ?? []) {
             const row = root.querySelector(`[data-fx-drag-id="${CSS.escape(group.type + ":" + item.id)}"]`);
-            add(row?.querySelector(".skill-reserve-toggle"), props.api?.name(group.type, item), reserved);
+            add(row?.querySelector(".skill-reserve-toggle"), props.api?.name(group.type, item), reserved, group.type === "passive" ? "passive" : "skill");
           }
         }
       }
@@ -135,7 +145,7 @@
     skillStateAttempts.set(control, signature);
     queueMicrotask(() => {
       if (!enabled || !control.isConnected || control.disabled || !control.getClientRects().length ||
-          signatureOf(next) !== signature || routes.get(routeId)?.reserved?.has(next.key) !== desired) return;
+          signatureOf(next) !== signature || routes.get(routeId)?.reserved?.has(routeKey(next.key, routes.get(routeId))) !== desired) return;
       control.click();
       document.dispatchEvent(new Event("hako-af:grid-rendered"));
     });
@@ -169,18 +179,21 @@
     return new Map(rows.filter(record => wanted.has(String(parentId(record)))).map(record => [String(parentId(record)), record]));
   }
 
-  document.addEventListener("hako-af:guard-monster-operation", event => {
-    if (!enabled) return;
-    let operation, ids;
-    try { [operation, ids] = JSON.parse(event.detail); } catch { return; }
-    if (!Array.isArray(ids)) return;
-    const { rows, translate } = ownedRecords();
-    const records = recordsFor(ids, rows);
-    for (const id of ids) if (!records.has(id) && protectedRows.has(id)) records.set(id, protectedRows.get(id));
+  function rememberMatingRecords(parents) {
+    const { rows } = ownedRecords();
+    for (const value of parents ?? []) {
+      const id = String(typeof value === "object" ? parentId(value) : value);
+      const record = rows.find(row => String(parentId(row)) === id) ?? (typeof value === "object" ? value : null);
+      if (record) matingRecords.set(id, record);
+    }
+    while (matingRecords.size > 8) matingRecords.delete(matingRecords.keys().next().value);
+  }
+
+  function generationWarning(operation, ids, records, translate) {
     const normalMating = operation === "合成";
     const twoMothers = normalMating && ids.filter(id => mothers.has(id)).length >= 2;
     const protectedIds = ids.filter(id => mothers.has(id) ? !normalMating || twoMothers : generation(records.get(id)) >= 1000);
-    if (!protectedIds.length) return;
+    if (!protectedIds.length) return "";
     const details = protectedIds.map(id => {
       const raw = records.get(id);
       const record = raw?.t_user_monsters ?? raw;
@@ -190,13 +203,74 @@
       return title + (value == null ? "" : "（世代 " + value.toLocaleString("ja-JP") + "）") +
         (mothers.has(id) ? "［世代上げ母体］" : "");
     });
-    if (!window.confirm("拡張育成ルート　" + operation + "の警告\n\n" +
-        (twoMothers ? "世代上げ母体が2体選ばれています。通常は母体1体と素材1体を選びます。\n\n" : "") +
-        details.join("\n") + "\n\nこの個体を消費します。続けますか？")) event.preventDefault();
-  });
+    return (twoMothers ? "世代上げ母体が2体選ばれています。通常は母体1体と素材1体を選びます。\n\n" : "") +
+      details.join("\n") + "\nこの個体を消費します。";
+  }
+
+  async function routeMatingWarnings(ids, records, body) {
+    const assigned = ids.filter(id => routes.has(targets.get(id)?.routeId));
+    if (!assigned.length || ids.length !== 2 || ids.some(id => !records.has(id))) return [];
+    const app = document.getElementById("__nuxt")?.__vue_app__;
+    const properties = app?.config?.globalProperties;
+    if (!getReaders || !properties || !trainingSources?.matingAdvice) return [];
+    let timer;
+    const loaded = await Promise.race([
+      Promise.all([getReaders(), trainingSources.readMasters(properties.$config?.public?.buildId)]).catch(() => null),
+      new Promise(resolve => { timer = setTimeout(() => resolve(null), 2500); })
+    ]).finally(() => clearTimeout(timer));
+    if (!loaded || !enabled) return [];
+    const [readers, data] = loaded;
+    if (!Array.isArray(data?.skills) || !Array.isArray(data?.passives) || !Array.isArray(data?.monsters)) return [];
+    const run = properties.$nuxt?.runWithContext?.bind(properties.$nuxt) ?? app.runWithContext.bind(app);
+    return run(() => {
+      const skills = readers.learned();
+      if (readers.masters().isLoaded?.value !== true) return [];
+      const translate = key => properties.$t?.(key) ?? key;
+      const learned = (member, includePermanent) => {
+        const normal = [...skills.getActiveSkills(member, { includeReserved: true }).map(entry => ({ id: entry.id, skillKind: "skill" })),
+          ...skills.getPassiveSkills(member, { includeReserved: true, includeDisabled: true })
+            .filter(entry => includePermanent || !entry._artifactGranted).map(entry => ({ id: entry.id, skillKind: "passive" }))];
+        if (includePermanent) for (const entry of (member.t_user_monsters ?? member).permanent_skills ?? []) {
+          if (typeof entry === "object" && entry?.id) normal.push({ id: entry.id, skillKind: entry.effect === "passive" ? "passive" : "skill" });
+        }
+        return normal;
+      };
+      return assigned.flatMap(id => {
+        const route = routes.get(targets.get(id)?.routeId);
+        const recipient = records.get(id), donor = records.get(ids.find(other => other !== id));
+        const advice = trainingSources.matingAdvice(data, route, learned(recipient, true), learned(donor, false), donor,
+          translate, nameKey, body?.selectedTraitKeys);
+        const warning = [];
+        if (advice.remaining && !advice.current.length) warning.push(`育成ルート「${route.name}」に必要な未習得スキルは、${Array.isArray(body?.selectedTraitKeys) ? "今回選択した継承内容では" : "この相方からは"}増えません。`);
+        if (advice.future.length) warning.push(`相方のレベルを上げると継承候補が増える不足スキルがあります。\n` +
+          advice.future.map(skill => `・${identity.parse(skill.name).name}（${skill.skillKind === "skill" ? "アクティブ" : "パッシブ"}） Lv${skill.level}`).join("\n") +
+          "\n現在のレベル上限も確認してください。");
+        return warning;
+      });
+    });
+  }
+
+  async function guardMonsterOperation(operation, ids, body) {
+    if (!enabled) return true;
+    const { rows, translate } = ownedRecords();
+    const records = recordsFor(ids, rows);
+    for (const id of ids) if (!records.has(id)) {
+      const saved = matingRecords.get(id) ?? protectedRows.get(id);
+      if (saved) records.set(id, saved);
+    }
+    const warnings = [generationWarning(operation, ids, records, translate)];
+    if (operation === "合成") {
+      try { warnings.push(...await routeMatingWarnings(ids, records, body)); } catch { /* Preserve the generation guard if skill data is unavailable. */ }
+    }
+    const message = [...new Set(warnings.filter(Boolean))].join("\n\n");
+    const accepted = !message || window.confirm(`拡張育成ルート　${operation}の確認\n\n${message}\n\n続けますか？`);
+    if (!accepted) stopQuick();
+    return accepted;
+  }
+  globalThis.hakoAfMonsterGuards?.add(guardMonsterOperation);
 
   document.addEventListener("hako-af:mating-completed", event => {
-    try { for (const id of JSON.parse(event.detail).parents ?? []) protectedRows.delete(id); } catch { /* Ignore malformed results. */ }
+    try { for (const id of JSON.parse(event.detail).parents ?? []) { protectedRows.delete(id); matingRecords.delete(id); } } catch { /* Ignore malformed results. */ }
   });
 
   const clickedButton = event => event.target instanceof Element ? event.target.closest("button") : null;
@@ -388,10 +462,10 @@
 
   function advise(row, name, label, scope, state) {
     const visible = !!label && !/^[？?]/.test(label);
-    const desired = visible && scope?.skills.has(nameKey(label));
+    const desired = visible && identity.matches(scope?.skills, label, state.kind);
     // A single selected route is the only basis for suggesting removals.
     const outside = visible && scope?.specific && !desired;
-    const reserve = desired && scope?.reserved?.has(nameKey(label));
+    const reserve = desired && identity.matches(scope?.reserved, label, state.kind);
     let caption = desired ? (state.auto ? (state.forgot ? "覚えるに戻す" : "残す")
       : state.selected ? "選択済み" : state.blocked ? "選ぶ候補・枠を確認" : "選ぶ") :
       outside ? (state.auto ? (state.forgettable && !state.forgot ? "覚えない候補" : "")
@@ -467,13 +541,13 @@
     // Free available slots before attempting to add skills through the game's validators.
     for (const { key, label } of forget) {
       if (!visibleSkill(label)) continue;
-      const desired = scope.skills.has(nameKey(label));
+      const desired = identity.matches(scope.skills, label, identity.kind(key));
       if (!desired && ctx.lockedInheritanceKeys?.has(key)) continue;
       if (ctx.selectedForgetKeys?.has(key) === desired) ctx.toggleForgetKey(key);
     }
     for (const entry of ctx.inheritSelectablePool ?? []) {
       const label = entry.hidden ? "" : ctx.formatInheritEntryLabel?.(entry);
-      if (visibleSkill(label) && scope.skills.has(nameKey(label)) && !ctx.selectedInheritKeys?.has(entry.key) &&
+      if (visibleSkill(label) && identity.matches(scope.skills, label, entry.kind ?? identity.kind(entry.key)) && !ctx.selectedInheritKeys?.has(entry.key) &&
           ctx.canSelectInheritItem(entry.key)) ctx.toggleInheritKey(entry.key);
     }
   }
@@ -507,6 +581,7 @@
       const label = entry?.hidden ? "" : (entry && ctx.formatInheritEntryLabel?.(entry)) ||
         checkbox?.getAttribute("aria-label") || name?.textContent || row.firstChild?.textContent;
       advise(row, name, label, scope, {
+        kind: entry?.kind ?? identity.kind(key),
         auto, forgot: auto && ctx.selectedForgetKeys?.has(key),
         forgettable: auto && ctx.forgettableKeySet?.has(key),
         selected: ctx?.selectedInheritKeys?.has(key) || checkbox?.getAttribute("aria-checked") === "true",
@@ -523,7 +598,7 @@
     const native = monster.t_user_monsters ?? monster;
     const storedPermanent = record.permanent_skills ?? native.permanent_skills;
     const permanent = Array.isArray(storedPermanent) ? storedPermanent : [];
-    const signature = JSON.stringify([id, assigned.routeId, route.ordinaryNames, route.permanentNames, route.rank6Passive, record.level ?? native.level,
+    const signature = JSON.stringify([id, assigned.routeId, route.ordinaryNames, route.permanentNames, route.previewSkillIds, route.rank6Passive, record.level ?? native.level,
       record.monster_id ?? native.monster_id, record.rank_up ?? native.rank_up, permanent,
       record.disabled_passives ?? native.disabled_passives, record.meta?.rank6_unique_skill ?? native.meta?.rank6_unique_skill,
       record.rank6_unique_skill_granted ?? native.rank6_unique_skill_granted,
@@ -557,15 +632,25 @@
           if (typeof entry !== "string") return title(entry, entry.effect === "passive" ? "passive" : "skill");
           return title({ id: entry }, masters.getActiveSkill(entry) ? "skill" : "passive");
         }).filter(Boolean));
+        for (const entry of permanent) if (typeof entry === "object" && entry?.id) {
+          const kind = entry.effect === "passive" ? "passive" : "skill";
+          knownPermanent.add(identity.typed(title(entry, kind), kind));
+        }
         const passives = skills.getPassiveSkills(member, { includeReserved: true, includeDisabled: true });
+        const active = skills.getActiveSkills(member, { includeReserved: true });
+        const knownIds = new Set([...active.map(entry => `s.${entry.id}`), ...passives.map(entry => `p.${entry.id}`),
+          ...permanent.flatMap(entry => typeof entry === "object" && entry?.id ? [`${entry.effect === "passive" ? "p" : "s"}.${entry.id}`] : [])]);
         const known = new Set([
           ...knownPermanent,
-          ...skills.getActiveSkills(member, { includeReserved: true }).map(entry => title(entry, "skill")),
+          ...active.map(entry => title(entry, "skill")),
           ...passives.map(entry => title(entry, "passive"))
         ]);
-        const normal = route.ordinaryNames.filter(name => !known.has(nameKey(name)));
-        const missingPermanent = route.permanentNames.filter(name => !knownPermanent.has(nameKey(name)));
-        const index = trainingSources?.sourceIndex(data, [...normal, ...missingPermanent], profile, translate, nameKey);
+        for (const entry of active) known.add(identity.typed(title(entry, "skill"), "skill"));
+        for (const entry of passives) known.add(identity.typed(title(entry, "passive"), "passive"));
+        const normal = route.ordinaryNames.filter(name => /^[sp]\./.test(route.previewSkillIds?.[name] ?? "")
+          ? !knownIds.has(route.previewSkillIds[name]) : !known.has(nameKey(name)));
+        const missingPermanent = route.permanentNames.filter(name => !knownPermanent.has(routeKey(name, route)));
+        const index = trainingSources?.sourceIndex(data, [...normal, ...missingPermanent], profile, translate, nameKey, normal, route.previewSkillIds);
         const describe = name => ({ name, sources: index?.get(nameKey(name)) ?? [] });
         const planned = route.rank6Passive;
         const actual = planned && passives.find(entry => entry.id === planned.id);
@@ -598,13 +683,15 @@
       const label = name?.textContent;
       const selected = row.classList.contains("border-secondary") || row.querySelector('[aria-checked="true"]');
       if (visibleSkill(label)) {
-        const desired = scope.skills.has(nameKey(label));
+        const kind = identity.kind(legacyAutoKeys.get(row)) ?? identity.elementKind(row);
+        const desired = identity.matches(scope.skills, label, kind);
         const lock = locked.has(legacyAutoKeys.get(row)) || row.querySelector('[aria-label*="ロック"],[title*="ロック"]');
         if (forget && !forget.disabled && (desired || !lock)) {
           changes.push({ input: forget, desired });
         } else if (!auto && desired && !selected) additions.push(row);
       }
       advise(row, name, label, scope, {
+        kind: identity.kind(legacyAutoKeys.get(row)) ?? identity.elementKind(row),
         auto, forgot: forget?.checked, forgettable: !!forget,
         selected,
         blocked: row.classList.contains("opacity-60")
@@ -615,6 +702,7 @@
 
   function legacyMating(parentIds) {
     legacyParents = Array.isArray(parentIds) ? parentIds : [];
+    rememberMatingRecords(legacyParents);
     const heading = [...document.querySelectorAll('[role="dialog"] h3,[data-base-modal-root] h3')]
       .find(el => el.textContent.trim() === "継承するスキル / パッシブを選択" && el.getClientRects().length);
     const modal = heading?.closest(dialogSelector);
@@ -721,7 +809,8 @@
     const matches = route?.permanent.size ? row => {
       const skill = row?.skill;
       if (!skill || acquired.has(row.key) || acquired.has(skill.id)) return false;
-      return route.permanent.has(nameKey(skill.name_key ? translate(skill.name_key) : skill.name ?? skill.id));
+      return identity.matches(route.permanent, skill.name_key ? translate(skill.name_key) : skill.name ?? skill.id,
+        row.kind === "passive" || identity.kind(row.key) === "passive" ? "passive" : "skill");
     } : null;
     const signature = matches ? JSON.stringify([id, [...route.permanent], [...acquired]]) : null;
     prioritize(instance, listNode, list?.items, matches, signature, () => {
@@ -736,18 +825,20 @@
     }
     const visible = root.querySelectorAll(".fx-tgrant__rows > li,.fx-tgflow__rows > li");
     const names = matches && new Set(list?.items.filter(matches).map(row =>
-      nameKey(row.skill.name_key ? translate(row.skill.name_key) : row.skill.name ?? row.skill.id)));
+      identity.typed(row.skill.name_key ? translate(row.skill.name_key) : row.skill.name ?? row.skill.id,
+        row.kind === "passive" || identity.kind(row.key) === "passive" ? "passive" : "skill")));
     const needed = new Set();
     for (const el of visible) {
       const label = el.querySelector(".fx-tgrant__row-name,.fx-tgflow__skill-name");
       const text = label && [...label.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent).join("");
-      if (names?.has(nameKey(text)) && !el.querySelector(".fx-tgrant__granted,.fx-tgflow__granted")) needed.add(el);
+      if (identity.matches(names, text, identity.elementKind(el)) && !el.querySelector(".fx-tgrant__granted,.fx-tgflow__granted")) needed.add(el);
     }
     mark(visible, needed);
   }
 
   function read(name, instance, props, root, translate, dependencies, readThrough) {
     if (!instance || !root?.getClientRects().length) return;
+    if (props?.ctx?.matingSlots) rememberMatingRecords(props.ctx.matingSlots);
     if (name === "FlexMatingCandidates") {
       flexCandidate = props;
       return;
@@ -758,7 +849,7 @@
     else if (grantComponents.has(name)) grant(instance, root, translate, dependencies, readThrough);
   }
 
-  globalThis.hakoAfTrainingRoutesMain = { read, readMonster, legacyMating, rememberOwned,
+  globalThis.hakoAfTrainingRoutesMain = globalThis[singleton] = { read, readMonster, legacyMating, rememberOwned,
     readSkillState, applySkillStates,
     rememberLegacyAuto: (element, key) => legacyAutoKeys.set(element, key),
     accepts: name => matingComponents.has(name) || grantComponents.has(name) || name === "FlexMatingCandidates" };

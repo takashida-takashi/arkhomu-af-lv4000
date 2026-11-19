@@ -285,11 +285,21 @@
       const normalize = name => name.normalize("NFKC").trim().replace(/\s+/g, " ");
       const names = new Set([...route.ordinary, ...route.permanent].map(normalize));
       const reserved = new Set(route.reserved.map(normalize));
+      const identity = globalThis.hakoAfSkillIdentity;
+      for (const name of [...route.ordinary, ...route.permanent]) {
+        const kind = identity.kind(route.previewSkillIds?.[name]);
+        if (kind) { names.delete(normalize(name)); names.add(identity.typed(name, kind)); }
+      }
+      for (const name of route.reserved) {
+        const kind = identity.kind(route.previewSkillIds?.[name]);
+        if (kind) { reserved.delete(normalize(name)); reserved.add(identity.typed(name, kind)); }
+      }
       const current = presets.find(item => item.trainingRouteId === route.id);
-      const entries = new Map((current?.entries ?? []).filter(item => names.has(normalize(item.name)))
+      const entries = new Map((current?.entries ?? []).filter(item => identity.matches(names, item.name, item.kind ?? identity.kind(item.id)))
         .map(item => [item.id, item]));
-      for (const { id, name } of rows) {
-        if (names.has(normalize(name))) entries.set(id, { id, name, reserved: reserved.has(normalize(name)) });
+      for (const { id, name, kind } of rows) {
+        if (identity.matches(names, name, kind ?? identity.kind(id))) entries.set(id, { id, name, kind,
+          reserved: identity.matches(reserved, name, kind ?? identity.kind(id)) });
       }
       const base = `${[route.group, route.name].filter(Boolean).join(" ／ ")}（育成ルート）`;
       let label = base, suffix = 2;

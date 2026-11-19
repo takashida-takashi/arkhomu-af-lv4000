@@ -27,4 +27,22 @@
     chat: "拡張チャット",
     daily: "拡張日次収支"
   });
+  // Typed route names keep the existing editable string format and name-only routes readable.
+  const normalize = value => typeof value === "string" ? value.normalize("NFKC").trim().replace(/\s+/g, " ") : "";
+  const parse = value => {
+    const text = normalize(value), match = /^(.*)【(アクティブ|パッシブ)】$/.exec(text);
+    return match ? { name: match[1], kind: match[2] === "パッシブ" ? "passive" : "skill" } : { name: text, kind: null };
+  };
+  const typed = (value, kind) => `${parse(value).name}【${kind === "passive" || kind === "p" ? "パッシブ" : "アクティブ"}】`;
+  globalThis.hakoAfSkillIdentity = Object.freeze({ parse, typed,
+    elementKind: root => {
+      const header = root?.closest(".skill-header") ?? root?.parentElement?.closest(".w-full")?.querySelector(".skill-header") ?? root;
+      const badge = [...(header?.querySelectorAll("span") ?? [])].map(el => el.textContent.trim())
+        .find(text => ["パッシブ", "アクティブ", "スキル"].includes(text));
+      return badge ? badge === "パッシブ" ? "passive" : "skill" : null;
+    },
+    kind: value => typeof value === "string" && /^(?:auto-)?(?:[sp]|skill|passive|active)[:.]/.test(value)
+      ? /^(?:auto-)?(?:p|passive)[:.]/.test(value) ? "passive" : "skill" : null,
+    matches: (set, value, kind) => !!set && (set.has(parse(value).name) || !!kind && set.has(typed(value, kind)))
+  });
 })();

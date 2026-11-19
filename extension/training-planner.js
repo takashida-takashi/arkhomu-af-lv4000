@@ -2,6 +2,7 @@
   "use strict";
 
   const title = globalThis.hakoAfFeatureNames.trainingPlanner;
+  const identity = globalThis.hakoAfSkillIdentity;
   const createPreview = globalThis.hakoAfTrainingPreview;
   const hash = "#ha4-training-planner";
   const otherLabels = ".home-facility-menu .facility-band-tile, section.order-2 .custom-scrollbar h4";
@@ -208,6 +209,7 @@
         for (const skill of catalog.skills) {
           const name = skillKey(skill.name);
           catalog.byName.set(name, catalog.byName.has(name) ? null : skill);
+          catalog.byName.set(skillKey(identity.typed(skill.name, skill.passive ? "passive" : "skill")), skill);
         }
       }
       renderCatalog?.();
@@ -433,11 +435,11 @@
         const draft = { id: currentId, baseMonsterId, rank6Passive, name: routeName.value, group: routeGroup.value,
           preview: preview?.getValues(), previewSkillIds: {} };
         for (const group of groupKeys) for (const skill of picked[group]) {
-          if (skill.id) draft.previewSkillIds[skill.name] = skill.id;
+          if (skill.id) draft.previewSkillIds[routeSkillName(skill)] = skill.id;
         }
-        for (const group of groupKeys) draft[group] = picked[group].map(skill => skill.name);
+        for (const group of groupKeys) draft[group] = picked[group].map(routeSkillName);
         if (reservedNames) draft.reserved = [...new Set([...draft.ordinary, ...draft.permanent])]
-          .filter(name => reservedNames.has(skillKey(name)));
+          .filter(name => reservedNames.has(skillKey(name)) || reservedNames.has(skillKey(identity.parse(name).name)));
         return draft;
       }
 
@@ -447,14 +449,17 @@
 
       function attachSkill(name, id) {
         const skill = catalog?.byId.get(id) ?? catalog?.byName.get(skillKey(name));
-        return { name, id: skill?.id, unique: skill?.unique, passive: skill?.passive };
+        return { name: skill?.name ?? name, id: skill?.id, unique: skill?.unique, passive: skill?.passive };
       }
+
+      function routeSkillName(skill) { return skill.id ? identity.typed(skill.name, skill.passive ? "passive" : "skill") : skill.name; }
+      const isReserved = skill => !!reservedNames && (reservedNames.has(skillKey(routeSkillName(skill))) || reservedNames.has(skillKey(skill.name)));
 
       function setRank6Passive(skill) {
         const id = skill.id.slice(2);
         const enabled = skill.canDisable && rank6Passive?.id === id ? rank6Passive.enabled : true;
         rank6Passive = { id, name: skill.name, enabled };
-        picked.ordinary = picked.ordinary.filter(item => item.id !== skill.id && skillKey(item.name) !== skillKey(skill.name));
+        picked.ordinary = picked.ordinary.filter(item => item.id ? item.id !== skill.id : skillKey(item.name) !== skillKey(skill.name));
       }
 
       function syncRank6Passive() {
@@ -541,16 +546,16 @@
       }
 
       function duplicate(group, skill) {
-        return picked[group].some(item => !!item.id && item.id === skill.id || skillKey(item.name) === skillKey(skill.name));
+        return picked[group].some(item => item.id && skill.id ? item.id === skill.id : skillKey(item.name) === skillKey(skill.name));
       }
 
       const isInnate = skill => monster?.innate.some(([id]) => id === skill.id);
 
       function canAdd(group, skill) {
         const allowed = !skill.unique || group === "ordinary" && !isRank6Passive(skill) && isInnate(skill);
-        const used = picked[group].filter(item => !reservedNames?.has(skillKey(item.name))).length;
+        const used = picked[group].filter(item => !isReserved(item)).length;
         return allowed && !duplicate(group, skill) &&
-          (reservedNames?.has(skillKey(skill.name)) || used < groups[group][1]);
+          (isReserved(skill) || used < groups[group][1]);
       }
 
       function add(group, skill) {
@@ -673,7 +678,7 @@
       function skillRow(skill, level) {
         const row = node("li", "planner-skill");
         const text = nameButton(skill);
-        const kind = node("small", "planner-type", level > 0 ? `習得 Lv${level}` : skill.passive ? "パッシブ" : "アクティブ");
+        const kind = node("small", "planner-type", (skill.passive ? "パッシブ" : "アクティブ") + (level > 0 ? `・習得 Lv${level}` : ""));
         kind.dataset.passive = String(skill.passive);
         row.append(text, kind);
         if (skill.unique) row.append(specialMark(skill));
@@ -842,7 +847,7 @@
           const other = group === "ordinary" ? "permanent" : "ordinary";
           const [name, limit] = groups[group];
           const section = node("section", "planner-group");
-          const reserveCount = picked[group].filter(skill => reservedNames?.has(skillKey(skill.name))).length;
+          const reserveCount = picked[group].filter(isReserved).length;
           const count = reserveCount ? `使用中 ${picked[group].length - reserveCount} / ${limit}・控え ${reserveCount}`
             : `${picked[group].length} / ${limit}`;
           section.append(node("h4", "planner-section-title", `${name} ${count}`));
@@ -852,16 +857,18 @@
             rows.append(...picked[group].map((skill, index) => {
               const row = node("li", "planner-skill");
               row.append(nameButton(skill));
+              row.append(node("small", "planner-type", skill.id ? skill.passive ? "パッシブ" : "アクティブ" : "種別未指定"));
               if (skill.unique) row.append(specialMark(skill));
               if (skill.id && preview) row.append(preview.skillLevelField(skill));
               const reserve = node("input", "training-reserve");
               reserve.type = "checkbox";
-              reserve.checked = reservedNames?.has(skillKey(skill.name)) === true;
-              reserve.setAttribute("aria-label", `${skill.name}を控えにする`);
+              reserve.checked = isReserved(skill);
+              reserve.setAttribute("aria-label", `${routeSkillName(skill)}を控えにする`);
               reserve.addEventListener("change", () => {
                 reservedNames ??= new Set();
-                if (reserve.checked) reservedNames.add(skillKey(skill.name));
-                else reservedNames.delete(skillKey(skill.name));
+                reservedNames.delete(skillKey(skill.name));
+                if (reserve.checked) reservedNames.add(skillKey(routeSkillName(skill)));
+                else reservedNames.delete(skillKey(routeSkillName(skill)));
                 resetStatus();
                 render();
               });

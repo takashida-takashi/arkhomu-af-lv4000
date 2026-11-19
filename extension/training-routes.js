@@ -2,6 +2,7 @@
   "use strict";
 
   const names = globalThis.hakoAfFeatureNames;
+  const identity = globalThis.hakoAfSkillIdentity;
   const loadRouteLabel = `${names.trainingRoutes}を読み込む`;
   const storageKey = "ha4-training-routes-v2";
   const legacyKey = "ha4-training-routes-v1";
@@ -120,7 +121,8 @@
       for (const [key, [label, limit]] of Object.entries(groups)) {
         route[key] = skillLines(draft[key].join("\n"));
         if (key === "ordinary" && route.rank6Passive) {
-          route[key] = route[key].filter(name => nameKey(name) !== nameKey(route.rank6Passive.name));
+          route[key] = route[key].filter(name => nameKey(name) !== nameKey(route.rank6Passive.name) &&
+            nameKey(name) !== identity.typed(route.rank6Passive.name, "passive"));
         }
         if (route[key].filter(name => !reservedKeys.has(nameKey(name))).length > limit) {
           status.textContent = `${label}の使用中は${limit}件まで保存できます。`;
@@ -235,7 +237,7 @@
       name.maxLength = 120;
       form.append(field("保存済みのルート", picker), field("ルート名（任意）", name),
         field("グループ名（任意）", group), groupList,
-        node("p", "extra-note", `スキル名を1行に1つ入力してください。保存後、ホムンクルス詳細の「${loadRouteLabel}」から設定できます。`));
+        node("p", "extra-note", `スキル名を1行に1つ入力してください。同名のスキルは下の種別で区別できます。保存後、ホムンクルス詳細の「${loadRouteLabel}」から設定できます。`));
       const fields = node("div", "training-skill-fields");
       let reservedNames;
       const reserveFields = node("fieldset", "training-reserves");
@@ -262,7 +264,22 @@
           });
           const label = node("label", "training-reserve-choice");
           label.append(input, name, node("span", "extra-note", "控え"));
-          reserveList.append(label);
+          const kind = node("select", "training-input");
+          kind.setAttribute("aria-label", `${name}の種別`);
+          kind.append(new Option("種別未指定（従来の判定）", ""), new Option("アクティブ", "skill"), new Option("パッシブ", "passive"));
+          kind.value = identity.parse(name).kind ?? "";
+          kind.addEventListener("change", () => {
+            const replacement = kind.value ? identity.typed(name, kind.value) : identity.parse(name).name;
+            if (reservedNames?.delete(nameKey(name))) reservedNames.add(nameKey(replacement));
+            for (const { input, refresh } of Object.values(inputs)) {
+              input.value = skillLines(input.value).map(value => value === name ? replacement : value).join("\n");
+              refresh();
+            }
+            refreshTransfers();refreshReserves();
+          });
+          const row = node("div", "training-reserve-entry");
+          row.append(label, kind);
+          reserveList.append(row);
         }
       }
       const inputs = Object.fromEntries(Object.entries(groups).map(([key, [label, limit]]) => {
@@ -409,15 +426,15 @@
     }
 
     function readSharedUnique(member, source) {
-      if (member.rank6Unique || !source) return Promise.resolve(member.rank6Unique);
+      if (!source || identity.parse(member.rank6Unique).kind) return Promise.resolve(member.rank6Unique);
       return new Promise(resolve => {
         const timer = setTimeout(() => {
           source.removeEventListener("hako-af:training-unique", receive);
-          resolve("");
+          resolve(member.rank6Unique ?? "");
         }, 2500);
         function receive(event) {
           clearTimeout(timer);
-          resolve(typeof event.detail === "string" ? event.detail : "");
+          resolve(typeof event.detail === "string" && event.detail || member.rank6Unique || "");
         }
         source.addEventListener("hako-af:training-unique", receive, { once: true });
         source.dispatchEvent(new CustomEvent("hako-af:read-training-unique", { bubbles: true,
@@ -428,11 +445,13 @@
     async function openMember(member, slot, party, source) {
       const unique = nameKey(await readSharedUnique(member, source) ?? "");
       if (source && !source.getClientRects().length) return;
-      const entries = [...member.active, ...member.passive];
+      const entries = [...member.active.map(skill => ({ ...skill, kind: "skill" })),
+        ...member.passive.map(skill => ({ ...skill, kind: "passive" }))];
+      const routeName = skill => identity.typed(skill.name, skill.kind);
       open({ name: slot == null ? member.name : `${party} ${slot}枠目 ${member.name}`.slice(0, 120),
-        ordinary: entries.filter(skill => !skill.permanent && nameKey(skill.name) !== unique).map(skill => skill.name),
-        permanent: entries.filter(skill => skill.permanent).map(skill => skill.name),
-        reserved: member.skillStates || entries.some(skill => skill.reserved) ? entries.filter(skill => skill.reserved).map(skill => skill.name) : null });
+        ordinary: entries.filter(skill => !skill.permanent && nameKey(skill.name) !== unique && routeName(skill) !== unique).map(routeName),
+        permanent: entries.filter(skill => skill.permanent).map(routeName),
+        reserved: member.skillStates || entries.some(skill => skill.reserved) ? entries.filter(skill => skill.reserved).map(routeName) : null });
     }
 
     function assign(target) {
@@ -554,6 +573,21 @@
                 link.textContent = entry.text;
                 line.append(link);
               } else line.textContent = entry.text;
+              if (["skill", "passive"].includes(entry.skillKind)) {
+                const kind = node("span", "training-source-kind", entry.skillKind === "skill" ? "アクティブ" : "パッシブ");
+                kind.dataset.kind = entry.skillKind;
+                line.prepend(kind, " ");
+              }
+              if (!isPermanent && entry.overlaps?.length) {
+                const overlap = node("details", "training-source-overlaps");
+                const summary = node("summary", "training-source-overlap-title", `※別スキルも重複あり（ほか${entry.overlaps.length}件）`);
+                const skills = node("ul", "training-source-overlap-skills");
+                for (const other of entry.overlaps) skills.append(node("li", "training-source-overlap-skill",
+                  `${identity.parse(other.name).name}${other.skillKind ? `（${other.skillKind === "skill" ? "アクティブ" : "パッシブ"}）` : ""}${Number.isSafeInteger(other.level) && other.level > 0 ? ` Lv${other.level}` : ""}`));
+                summary.title = [...skills.children].map(skill => skill.textContent).join("、");
+                overlap.append(summary, skills);
+                line.append(" ", overlap);
+              }
               sources.append(line);
             }
             item.append(sources);

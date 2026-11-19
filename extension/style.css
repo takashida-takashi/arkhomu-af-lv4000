@@ -977,6 +977,14 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
 [data-ha4="training-progress-list"] { display: grid; gap: .25rem; margin: 0 0 .45rem; padding: 0; list-style: none; }
 [data-ha4="training-progress-skill"] { padding: .35rem .45rem; border-inline-start: 2px solid #9c6fd6; background: #181225; overflow-wrap: anywhere; }
 [data-ha4="training-progress-sources"] { margin: .25rem 0 0; padding-inline-start: 1.25em; list-style: disc; color: #e1d3eb; }
+[data-ha4="training-source-overlaps"] { display: inline-block; max-inline-size: 100%; vertical-align: top; font-size: .76rem; }
+[data-ha4="training-source-overlap-title"] { color: #ffd27a; cursor: pointer; overflow-wrap: anywhere; }
+[data-ha4="training-source-overlap-skills"] { margin: .2rem 0; padding-inline-start: 1.3em; color: #e9dbfa; list-style: disc; }
+[data-ha4="training-source-kind"] { display: inline-block; border-radius: .2rem; padding: 0 .25rem; font-size: .72rem; line-height: 1.5; }
+[data-ha4="training-source-kind"][data-kind="skill"] { background: #592831; color: #ffbec2; }
+[data-ha4="training-source-kind"][data-kind="passive"] { background: #233c59; color: #b9d7ff; }
+[data-ha4="training-reserve-entry"] { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+[data-ha4="training-reserve-entry"] > select { width: auto; max-width: 100%; }
 [data-ha4="training-progress-body"] a { color: #a8e6fb; text-decoration: underline; }
 textarea[data-ha4="training-input"] { width: 100%; resize: vertical; }
 [data-ha4="training-active-route"] {
