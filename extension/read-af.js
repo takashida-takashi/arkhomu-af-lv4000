@@ -47,6 +47,15 @@
     "fx-artifact-list-title": "inventory", "fx-aenh-title": "enhance", "fx-adec-title": "decompose"
   };
 
+  function elementRoots(vnode) {
+    if (!vnode || typeof vnode !== "object") return [];
+    const el = vnode.el ?? vnode.component?.subTree?.el;
+    if (el?.nodeType === 1) return [el];
+    if (vnode.component?.subTree) return elementRoots(vnode.component.subTree);
+    if (vnode.suspense?.activeBranch) return elementRoots(vnode.suspense.activeBranch);
+    return Array.isArray(vnode.children) ? vnode.children.flatMap(elementRoots) : [];
+  }
+
   function configFromCache() {
     if (powerConfig || pendingPowerConfig || !globalThis.indexedDB || performance.now() < nextPowerConfigRead) return;
     nextPowerConfigRead = performance.now() + 15000;
@@ -567,6 +576,7 @@
       document.querySelector('input[aria-label="称号を探す"]');
     const estimateEnabled = extras?.enhanceEstimateEnabled();
     const estimateAnchors = new Set();
+    const enhanceRoots = new Set();
     let enhanceDetail;
     const marketPage = /^\/(?:f\/)?market\/?$/.test(location.pathname);
     if (estimateEnabled && marketPage) extras.watchMarketPrices(stores?.get("marketInfo"));
@@ -647,8 +657,15 @@
         : name === "FlexArtifactDecompose" ? "decompose" : name === "FlexArtifactEnhance" ? "enhance"
           : Object.hasOwn(classicScopes, name) ? classicScopes[name] : parentScope;
       if (estimateEnabled && scope === "enhance") {
+        if (name === "ArtifactEnhancePanel" || name === "FlexArtifactEnhance") {
+          for (const area of elementRoots(instance.subTree)) if (area.getClientRects().length) enhanceRoots.add(area);
+        }
         if ((name === "ItemDetailPanel" || name === "FlexArtifactDetailDialog" && props.modelValue) && props.item?._artifact) {
-          enhanceDetail = { item: props.item, translate: key => instance.proxy?.$t?.(key) ?? key };
+          const areas = elementRoots(instance.subTree).filter(area => area.getClientRects().length);
+          if (areas.length) {
+            enhanceDetail = { item: props.item, translate: key => instance.proxy?.$t?.(key) ?? key };
+            for (const area of areas) enhanceRoots.add(area);
+          }
         }
         if ((vnode.type === "span" || vnode.type === "dt") && vnode.children === "必要素材" && el?.getClientRects().length) {
           estimateAnchors.add(el.parentElement.parentElement);
@@ -830,7 +847,14 @@
     extras?.skipExploreLogs(root, stores, summaryShown);
     for (const owner of expeditionOwners) expeditionNative?.sync(owner);
     if (matingPage) trainingRoutes?.legacyMating(legacyMatingParents);
-    if (estimateAnchors.size && enhanceDetail) {
+    if (enhanceDetail) {
+      // Vue can cache or clone the requirements markup without retaining individual label VNodes.
+      // Read its live labels inside the rendered enhancement view as well.
+      for (const area of enhanceRoots) for (const label of area.querySelectorAll("span,dt")) {
+        if (label.textContent.trim() === "必要素材" && label.getClientRects().length && label.parentElement?.parentElement) {
+          estimateAnchors.add(label.parentElement.parentElement);
+        }
+      }
       configFromCache();
       for (const anchor of estimateAnchors) extras.readEnhanceEstimate(anchor, enhanceDetail, gameConfig, stores?.get("userProfile"));
     }

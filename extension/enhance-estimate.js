@@ -82,6 +82,7 @@
     const manual = new Map();
     const results = new Map();
     let lookup;
+    let expanded = false;
 
     function updatePriceInput(panel) {
       const value = manual.get(panel.data.source) ?? panel.data.market?.price;
@@ -180,12 +181,14 @@
       });
       body.append(label, market, marketStatus, source, status, table);
       root.append(node("summary", "estimate-heading", `${names.enhanceEstimate}（Lv${target}）`), body);
+      root.open = expanded;
       anchor.after(root);
       const panel = { root, price, market, marketStatus, source, status, table, rows, ticket: 0 };
       market.addEventListener("click", event => {
         if (event.isTrusted && panel.data?.source && root.open) readMarket(panel);
       });
       root.addEventListener("toggle", () => {
+        if (root.isConnected) expanded = root.open;
         if (root.open) refresh(panel);
         else {
           if (lookup?.panel === panel) closeLookup();
@@ -274,7 +277,17 @@
       const anchor = event.target;
       current.add(anchor);
       const panel = panels.get(anchor) ?? mount(anchor);
-      if (panel.signature === event.detail) return;
+      const detached = !panel.root.isConnected;
+      if (detached) {
+        if (lookup?.panel === panel) closeLookup();
+        panel.ticket++;
+        panel.calculating = false;
+      }
+      if (panel.root.previousElementSibling !== anchor) anchor.after(panel.root);
+      if (panel.signature === event.detail) {
+        if (detached) refresh(panel);
+        return;
+      }
       const sourceChanged = panel.data?.source !== data.source;
       if (sourceChanged) {
         if (lookup?.panel === panel) closeLookup();
