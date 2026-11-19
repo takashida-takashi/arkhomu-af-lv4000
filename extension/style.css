@@ -884,6 +884,10 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
 [data-ha4="training-form"] { display: grid; gap: .6rem; padding: .7rem .9rem; }
 [data-ha4="training-field"] { display: grid; gap: .2rem; min-width: 0; }
 [data-ha4="training-skill-fields"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
+[data-ha4="training-reserves"] { min-width: 0; border: 1px solid #66517c; border-radius: 6px; padding: .6rem; }
+[data-ha4="training-reserve-list"] { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: .35rem .7rem; max-height: 260px; overflow: auto; }
+[data-ha4="training-reserve-choice"] { display: inline-flex; align-items: center; gap: .35rem; overflow-wrap: anywhere; }
+[data-ha4="training-reserve"] { flex: 0 0 auto; accent-color: #bd85e8; }
 [data-ha4="training-transfer"]:not([hidden]) {
   display: grid;
   gap: .45rem;
@@ -1475,6 +1479,19 @@ html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
   font: inherit;
   font-size: 12px;
   cursor: pointer;
+}
+[data-ha4-market-launcher] {
+  flex: 0 0 auto;
+}
+[data-ha4-market-launcher="heading"] {
+  align-self: center;
+  margin: 0 0 0 auto;
+  padding: .1rem .45rem;
+  line-height: 1.25;
+}
+[data-ha4-market-launcher="below"] {
+  display: block;
+  margin: 0;
 }
 [data-ha4="market-watch-dialog"] {
   inset: 0;

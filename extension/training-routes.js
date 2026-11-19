@@ -114,13 +114,16 @@
         const { id, name, enabled } = rank6;
         if (id && name.trim()) route.rank6Passive = { id, name, enabled };
       }
+      const reserved = draft.reserved ?? current?.reserved;
+      const reservedKeys = new Set((Array.isArray(reserved) ? reserved : [])
+        .filter(name => typeof name === "string").map(nameKey));
       for (const [key, [label, limit]] of Object.entries(groups)) {
         route[key] = skillLines(draft[key].join("\n"));
         if (key === "ordinary" && route.rank6Passive) {
           route[key] = route[key].filter(name => nameKey(name) !== nameKey(route.rank6Passive.name));
         }
-        if (route[key].length > limit) {
-          status.textContent = `${label}は${limit}件まで保存できます。`;
+        if (route[key].filter(name => !reservedKeys.has(nameKey(name))).length > limit) {
+          status.textContent = `${label}の使用中は${limit}件まで保存できます。`;
           return;
         }
       }
@@ -129,6 +132,9 @@
         const id = skillIds[name];
         return typeof id === "string" && /^[sp]\./.test(id) ? [[name, id]] : [];
       }));
+      if (Array.isArray(reserved)) {
+        route.reserved = [...new Set([...route.ordinary, ...route.permanent])].filter(name => reservedKeys.has(nameKey(name)));
+      }
       if (current) data.routes[data.routes.indexOf(current)] = route;
       else data.routes.push(route);
       return persist(data, status) ? route : undefined;
@@ -150,10 +156,33 @@
       if (inherited.size === 1) {
         data.bindings = data.bindings.filter(binding => !parents.has(binding.monsterId));
         if (!data.bindings.some(binding => binding.monsterId === result.child)) {
-          data.bindings.push({ monsterId: result.child, routeId: inherited.values().next().value });
+          const routeId = inherited.values().next().value;
+          data.bindings.push(routeBinding(result.child, data.routes.find(route => route.id === routeId)));
         }
       }
       data.mothers = [...new Set(data.mothers.filter(id => !parents.has(id)).concat(wasMother ? [result.child] : []))];
+      persist(data);
+    });
+
+    function routeBinding(monsterId, route) {
+      return { monsterId, routeId: route.id, ...(Array.isArray(route.reserved) ? {
+        pendingSkillStates: [...new Set([...route.ordinary, ...route.permanent])],
+        skillStateRevision: crypto.randomUUID()
+      } : {}) };
+    }
+
+    document.addEventListener("hako-af:training-skill-states-applied", event => {
+      if (!enabled()) return;
+      let result;
+      try { result = JSON.parse(event.detail); } catch { return; }
+      if (!Array.isArray(result?.names) || !result.names.every(name => typeof name === "string")) return;
+      const data = load();
+      const binding = data.bindings.find(item => item.monsterId === result.monsterId && item.routeId === result.routeId);
+      if (!Array.isArray(binding?.pendingSkillStates)) return;
+      const applied = new Set(result.names.map(nameKey));
+      const next = binding.pendingSkillStates.filter(name => !applied.has(nameKey(name)));
+      if (next.length === binding.pendingSkillStates.length) return;
+      binding.pendingSkillStates = next;
       persist(data);
     });
 
@@ -208,6 +237,34 @@
         field("グループ名（任意）", group), groupList,
         node("p", "extra-note", `スキル名を1行に1つ入力してください。保存後、ホムンクルス詳細の「${loadRouteLabel}」から設定できます。`));
       const fields = node("div", "training-skill-fields");
+      let reservedNames;
+      const reserveFields = node("fieldset", "training-reserves");
+      const reserveList = node("div", "training-reserve-list");
+      reserveFields.append(node("legend", "training-transfer-title", "使用中・控え"),
+        node("p", "extra-note", "チェックしたスキルを控えとして保存します。チェックがないスキルは使用中です。"), reserveList);
+      function refreshReserves() {
+        reserveList.replaceChildren();
+        const skills = skillLines(Object.values(inputs).map(({ input }) => input.value).join("\n"));
+        if (!skills.length) {
+          reserveList.append(node("p", "extra-note", "スキルを入力すると、控えを指定できます。"));
+        }
+        for (const name of skills) {
+          const input = node("input", "training-reserve");
+          input.type = "checkbox";
+          input.checked = reservedNames?.has(nameKey(name)) === true;
+          input.setAttribute("aria-label", `${name}を控えにする`);
+          input.addEventListener("change", () => {
+            reservedNames ??= new Set();
+            if (input.checked) reservedNames.add(nameKey(name));
+            else reservedNames.delete(nameKey(name));
+            for (const { refresh } of Object.values(inputs)) refresh();
+            refreshTransfers();
+          });
+          const label = node("label", "training-reserve-choice");
+          label.append(input, name, node("span", "extra-note", "控え"));
+          reserveList.append(label);
+        }
+      }
       const inputs = Object.fromEntries(Object.entries(groups).map(([key, [label, limit]]) => {
         const input = node("textarea", "training-input");
         input.rows = 9;
@@ -217,13 +274,16 @@
         wrapper.insertBefore(count, input);
         fields.append(wrapper);
         const refresh = () => {
-          const size = skillLines(input.value).length;
-          count.textContent = `${size} / ${limit}`;
+          const skills = skillLines(input.value);
+          const reserveCount = skills.filter(name => reservedNames?.has(nameKey(name))).length;
+          const size = skills.length - reserveCount;
+          count.textContent = reserveCount ? `使用中 ${size} / ${limit}・控え ${reserveCount}` : `${size} / ${limit}`;
           input.setCustomValidity(size > limit ? `${label}は${limit}個まで設定できます。` : "");
         };
         input.addEventListener("input", () => {
           refresh();
           refreshTransfers();
+          refreshReserves();
         });
         return [key, { input, refresh }];
       }));
@@ -245,6 +305,7 @@
           refresh();
         }
         refreshTransfers(true);
+        refreshReserves();
         status.textContent = "";
         transferStatus.textContent = "変更しました。「保存」で反映します。";
       });
@@ -267,7 +328,8 @@
           const current = skillLines(inputs[key].input.value);
           next[key] = reassignSkill(current, leaving, incoming);
           const [group, limit] = groups[key];
-          if (next[key].length > limit && next[key].length > current.length) {
+          const used = skills => skills.filter(name => !reservedNames?.has(nameKey(name))).length;
+          if (used(next[key]) > limit && used(next[key]) > used(current)) {
             return { label, message: `${group}は${limit}枠までです。入れ替える${group}も選んでください。` };
           }
         }
@@ -308,11 +370,13 @@
         }
       });
       controls.append(save, remove);
-      form.append(transfers, fields, controls, status);
+      form.append(transfers, fields, reserveFields, controls, status);
 
       let currentId;
       function setRoute(route) {
         currentId = route?.id;
+        reservedNames = Array.isArray(route?.reserved) ? new Set(route.reserved.map(nameKey))
+          : route?.id || route?.reserved === null ? undefined : new Set();
         picker.replaceChildren(new Option("新規ルート", ""), ...routeOptions(load().routes));
         picker.value = currentId ?? "";
         name.value = route?.name ?? "";
@@ -325,6 +389,7 @@
         remove.hidden = !currentId;
         transfers.hidden = !currentId;
         refreshTransfers(true);
+        refreshReserves();
       }
 
       picker.addEventListener("change", () => setRoute(load().routes.find(route => route.id === picker.value)));
@@ -332,6 +397,7 @@
         event.preventDefault();
         const draft = { id: currentId, name: name.value, group: group.value };
         for (const [key, { input }] of Object.entries(inputs)) draft[key] = skillLines(input.value);
+        if (reservedNames) draft.reserved = [...draft.ordinary, ...draft.permanent].filter(name => reservedNames.has(nameKey(name)));
         const route = saveRoute(draft, status);
         if (route) {
           setRoute(route);
@@ -365,7 +431,8 @@
       const entries = [...member.active, ...member.passive];
       open({ name: slot == null ? member.name : `${party} ${slot}枠目 ${member.name}`.slice(0, 120),
         ordinary: entries.filter(skill => !skill.permanent && nameKey(skill.name) !== unique).map(skill => skill.name),
-        permanent: entries.filter(skill => skill.permanent).map(skill => skill.name) });
+        permanent: entries.filter(skill => skill.permanent).map(skill => skill.name),
+        reserved: member.skillStates || entries.some(skill => skill.reserved) ? entries.filter(skill => skill.reserved).map(skill => skill.name) : null });
     }
 
     function assign(target) {
@@ -391,6 +458,7 @@
       controls.append(save);
       if (current) controls.append(button("設定を解除", () => commit("")));
       form.append(field("保存済みのルート", picker), controls, status);
+      form.append(node("p", "extra-note", "控えを保存したルートは、個体のスキルタブを開くと使用中・控えも反映します。"));
       form.addEventListener("submit", event => { event.preventDefault(); commit(picker.value); });
       show(root, form);
 
@@ -401,7 +469,7 @@
           return;
         }
         data.bindings = data.bindings.filter(binding => binding.monsterId !== target.id);
-        if (routeId) data.bindings.push({ monsterId: target.id, routeId });
+        if (routeId) data.bindings.push(routeBinding(target.id, data.routes.find(route => route.id === routeId)));
         if (persist(data, status)) root.close();
       }
     }
@@ -536,6 +604,17 @@
             if (route) open(route);
           });
           edit.dataset.ha4 = "training-edit-target";
+          const applyStates = button("使用中・控えを反映", () => {
+            const current = readTarget(anchor);
+            const data = load();
+            const binding = data.bindings.find(item => item.monsterId === current?.id);
+            const route = data.routes.find(item => item.id === binding?.routeId);
+            if (!Array.isArray(route?.reserved)) return;
+            Object.assign(binding, routeBinding(current.id, route));
+            persist(data);
+          });
+          applyStates.dataset.ha4 = "training-apply-skill-states";
+          applyStates.title = "スキルタブを開くと、覚えているスキルの使用中・控えを育成ルートに合わせます。";
           const mother = button("世代上げ母体に指定", () => {
             const current = readTarget(anchor);
             if (!current?.id || !enabled()) return;
@@ -544,13 +623,14 @@
             persist(data);
           });
           mother.dataset.ha4 = "training-mother";
-          panel.append(loadButton, edit, mother, node("span", "training-detail-route"));
+          panel.append(loadButton, edit, applyStates, mother, node("span", "training-detail-route"));
           anchor.append(panel);
         }
         const binding = bindings.find(item => item.monsterId === target.id);
         const route = binding && routes.find(item => item.id === binding.routeId);
         const edit = panel.querySelector('[data-ha4="training-edit-target"]');
         edit.hidden = !route;
+        panel.querySelector('[data-ha4="training-apply-skill-states"]').hidden = !Array.isArray(route?.reserved);
         const mother = panel.querySelector('[data-ha4="training-mother"]');
         const designated = mothers.includes(target.id);
         const motherText = designated ? "世代上げ母体の指定を解除" : "世代上げ母体に指定";

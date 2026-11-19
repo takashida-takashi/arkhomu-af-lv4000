@@ -159,8 +159,10 @@
       refresh();
     }
 
-    function skills(route) {
-      return [...new Set([...route.ordinary, ...route.permanent].map(name =>
+    function skills(route, includeReserved = false) {
+      const reserved = new Set((route.reserved ?? []).map(name => name.normalize("NFKC").trim().replace(/\s+/g, " ")));
+      return [...new Set([...route.ordinary, ...route.permanent].filter(name =>
+        includeReserved || !reserved.has(name.normalize("NFKC").trim().replace(/\s+/g, " "))).map(name =>
         route.previewSkillIds?.[name] ?? resolveSkill(name)).filter(Boolean))];
     }
 
@@ -218,7 +220,9 @@
       const draft = getDraft();
       const chosenSkills = skills(draft);
       if (draft.rank6Passive?.enabled) chosenSkills.push("p." + draft.rank6Passive.id);
-      const nextLevels = JSON.stringify(draft.rank6Passive?.enabled === false ? [...chosenSkills, "p." + draft.rank6Passive.id] : chosenSkills);
+      const allSkills = skills(draft, true);
+      if (draft.rank6Passive) allSkills.push("p." + draft.rank6Passive.id);
+      const nextLevels = JSON.stringify(allSkills);
       if (nextLevels !== levelSignature) {
         levelSignature = nextLevels;
         document.dispatchEvent(new CustomEvent("hako-af:read-planner-levels", { detail: nextLevels }));

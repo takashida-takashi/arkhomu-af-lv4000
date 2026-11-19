@@ -25,7 +25,8 @@
     }
     const skills = entries => {
       if (!Array.isArray(entries) || entries.length > 160) throw new Error("Invalid skills");
-      return entries.map(entry => ({ name: text(entry?.name, 140), permanent: entry.permanent === true }));
+      return entries.map(entry => ({ name: text(entry?.name, 140), permanent: entry.permanent === true,
+        ...(entry.reserved === true ? { reserved: true } : {}) }));
     };
     const individual = data.individual === true && data.slots.filter(Boolean).length === 1;
     return {
@@ -39,6 +40,7 @@
         const bonus = member.bonus && typeof member.bonus === "object" && !Array.isArray(member.bonus)
           ? Object.fromEntries(statLabels.flatMap(([key]) => Number.isSafeInteger(member.bonus[key]) ? [[key, member.bonus[key]]] : []))
           : undefined;
+        const active = skills(member.active), passive = skills(member.passive);
         return {
           name: text(member?.name, 120),
           level: Number.isSafeInteger(member.level) && member.level > 0 ? member.level : 0,
@@ -47,8 +49,9 @@
           portrait: /^[\w-]+$/.test(portrait) ? portrait : "",
           rank6Unique: text(member.rank6Unique ?? "", 140) || undefined,
           attack: text(member.attack ?? "", 140),
-          active: skills(member.active),
-          passive: skills(member.passive)
+          ...(member.skillStates === true || [...active, ...passive].some(skill => skill.reserved) ? { skillStates: true } : {}),
+          active,
+          passive
         };
       })
     };
@@ -59,10 +62,11 @@
   }
 
   function compactParty(data) {
-    const skills = entries => entries.map(({ name, permanent }) => permanent ? [name] : name);
+    const skills = entries => entries.map(({ name, permanent, reserved }) =>
+      reserved ? [name, permanent ? 1 : 0, 1] : permanent ? [name] : name);
     const slots = data.slots.map(member => member && [member.name, member.level, member.generation ?? null,
       member.bonus ? statLabels.map(([key]) => member.bonus[key] ?? null) : null, member.portrait, member.attack,
-      skills(member.active), skills(member.passive)]);
+      skills(member.active), skills(member.passive), ...(member.skillStates ? [1] : [])]);
     const uniques = data.slots.map(member => member?.rank6Unique ?? null);
     return uniques.some(Boolean) ? [2, data.name, data.individual === true, slots, uniques] : [2, data.name, data.individual === true, slots];
   }
@@ -74,15 +78,24 @@
     if (uniques !== undefined && (!Array.isArray(uniques) || uniques.length !== slots.length)) throw new Error("Invalid unique skills");
     const skills = entries => {
       if (!Array.isArray(entries) || entries.length > 160) throw new Error("Invalid compact skills");
-      return entries.map(entry => Array.isArray(entry) && entry.length === 1
-        ? { name: entry[0], permanent: true } : { name: entry, permanent: false });
+      return entries.map(entry => {
+        if (!Array.isArray(entry)) return { name: entry, permanent: false };
+        if (entry.length === 1) return { name: entry[0], permanent: true };
+        if (entry.length === 3 && [0, 1].includes(entry[1]) && entry[2] === 1) {
+          return { name: entry[0], permanent: entry[1] === 1, reserved: true };
+        }
+        throw new Error("Invalid compact skill");
+      });
     };
     return { version: 1, name, individual, slots: slots.map((member, index) => {
       if (member === null) return null;
-      if (!Array.isArray(member) || member.length !== 8) throw new Error("Invalid compact member");
+      if (!Array.isArray(member) || ![8, 9].includes(member.length) || member.length === 9 && member[8] !== 1) {
+        throw new Error("Invalid compact member");
+      }
       const [name, level, generation, values, portrait, attack, active, passive] = member;
       const bonus = Array.isArray(values) ? Object.fromEntries(statLabels.map(([key], i) => [key, values[i]])) : undefined;
-      return { name, level, generation, bonus, portrait, attack, active: skills(active), passive: skills(passive), rank6Unique: uniques?.[index] };
+      return { name, level, generation, bonus, portrait, attack, active: skills(active), passive: skills(passive),
+        skillStates: member[8] === 1, rank6Unique: uniques?.[index] };
     }) };
   }
 
@@ -150,7 +163,11 @@
 
   const rows = data => data.individual ? [["", data.slots.filter(Boolean)]] :
     [["前衛", data.slots.slice(0, 3)], ["後衛", data.slots.slice(3, 6)]];
-  const skillGroups = member => [["アクティブ", member.active], ["パッシブ", member.passive]];
+  const skillGroups = member => [
+    ["アクティブ", member.active.filter(skill => !skill.reserved)],
+    ["パッシブ", member.passive.filter(skill => !skill.reserved)],
+    ["控え", [...member.active, ...member.passive].filter(skill => skill.reserved)]
+  ];
 
   function imageText(ctx, width) {
     const lines = [];

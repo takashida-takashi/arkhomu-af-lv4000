@@ -16,6 +16,8 @@
   const bulkKey = "ha4-training-mating-bulk";
   const grantBindings = new WeakMap();
   const progressBindings = new WeakMap();
+  const skillStateAttempts = new WeakMap();
+  let skillStateControls = [];
   let routes = new Map();
   let targets = new Map();
   let savedSkills = new Set();
@@ -58,6 +60,7 @@
       const nextRoutes = new Map(data.routes.map(route => [route.id, {
         name: route.name, group: typeof route.group === "string" ? route.group : "",
         ordinaryNames: route.ordinary, permanentNames: route.permanent, rank6Passive: route.rank6Passive,
+        reserved: Array.isArray(route.reserved) ? new Set(route.reserved.map(nameKey)) : null,
         skills: new Set([...route.ordinary, ...route.permanent].map(nameKey)),
         permanent: new Set(route.permanent.map(nameKey))
       }]));
@@ -74,6 +77,68 @@
     const properties = document.getElementById("__nuxt")?.__vue_app__?.config?.globalProperties;
     const rows = properties?.$pinia?._s?.get("userMonsters")?.monsters;
     return { rows: Array.isArray(rows) ? rows : [], translate: properties?.$t };
+  }
+
+  function readSkillState(name, monster, props, root) {
+    if (!enabled || !root?.getClientRects().length) return;
+    const id = String(monsterId(monster) ?? "");
+    const binding = targets.get(id);
+    const route = binding && routes.get(binding.routeId);
+    if (!route?.reserved || !Array.isArray(binding.pendingSkillStates) || !binding.pendingSkillStates.length) return;
+    const pending = new Set(binding.pendingSkillStates.map(nameKey));
+    const add = (control, label, reserved) => {
+      const key = nameKey(label);
+      if (!control || control.disabled || !control.getClientRects().length || !pending.has(key)) return;
+      skillStateControls.push({ control, key, reserved, desired: route.reserved.has(key), id, routeId: binding.routeId });
+    };
+    if (name === "SkillReserveToggle" && !root.closest(".fx-skedit")) {
+      add(root, props.name, props.reserved === true);
+    } else if (name === "FlexMonsterSkillEditor" && props.reserveEnabled && !props.pending) {
+      for (const group of props.groups ?? []) {
+        for (const [items, reserved] of [[group.inUse, false], [group.reserved, true]]) {
+          for (const item of items ?? []) {
+            const row = root.querySelector(`[data-fx-drag-id="${CSS.escape(group.type + ":" + item.id)}"]`);
+            add(row?.querySelector(".skill-reserve-toggle"), props.api?.name(group.type, item), reserved);
+          }
+        }
+      }
+    }
+  }
+
+  function applySkillStates() {
+    const controls = skillStateControls;
+    skillStateControls = [];
+    const completed = new Map();
+    const changes = [];
+    for (const item of controls) {
+      const { control, key, reserved, desired, id, routeId } = item;
+      if (reserved === desired) {
+        if (!completed.has(id)) completed.set(id, { monsterId: id, routeId, names: [] });
+        completed.get(id).names.push(key);
+      } else if (!control.disabled && control.getAttribute("aria-disabled") !== "true") {
+        changes.push(item);
+      }
+    }
+    for (const result of completed.values()) document.dispatchEvent(new CustomEvent("hako-af:training-skill-states-applied", {
+      detail: JSON.stringify(result)
+    }));
+    // Move skills to reserve first so the game's normal slot validation can accept the skills in use.
+    changes.sort((a, b) => Number(b.desired) - Number(a.desired));
+    const signatureOf = ({ id, routeId, desired }) => JSON.stringify([
+      id, routeId, desired, targets.get(id)?.pendingSkillStates, targets.get(id)?.skillStateRevision
+    ]);
+    const next = changes.find(({ control, desired, id, routeId }) =>
+      skillStateAttempts.get(control) !== signatureOf({ id, routeId, desired }));
+    if (!next) return;
+    const { control, desired, id, routeId } = next;
+    const signature = signatureOf(next);
+    skillStateAttempts.set(control, signature);
+    queueMicrotask(() => {
+      if (!enabled || !control.isConnected || control.disabled || !control.getClientRects().length ||
+          signatureOf(next) !== signature || routes.get(routeId)?.reserved?.has(next.key) !== desired) return;
+      control.click();
+      document.dispatchEvent(new Event("hako-af:grid-rendered"));
+    });
   }
 
   function rememberOwned() {
@@ -690,6 +755,7 @@
   }
 
   globalThis.hakoAfTrainingRoutesMain = { read, readMonster, legacyMating, rememberOwned,
+    readSkillState, applySkillStates,
     rememberLegacyAuto: (element, key) => legacyAutoKeys.set(element, key),
     accepts: name => matingComponents.has(name) || grantComponents.has(name) || name === "FlexMatingCandidates" };
 })();

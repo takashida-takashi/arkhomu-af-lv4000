@@ -9,6 +9,37 @@
   });
   const priceText = price => `${format.format(price)} G`;
 
+  function findLauncherPosition(market) {
+    const page = market.querySelector("main") ?? market;
+    const visible = element => element?.getClientRects().length;
+    const heading = [...page.querySelectorAll("h2")].find(element =>
+      visible(element) && [...element.childNodes].some(child =>
+        child.nodeType === Node.TEXT_NODE && child.textContent.trim() === "アイテム検索"));
+    if (heading) return { anchor: heading, inline: true };
+
+    const flexSearch = page.querySelector(".fx-market-finder__search");
+    if (visible(flexSearch)) return { anchor: flexSearch };
+
+    const searchToggle = [...page.querySelectorAll("section button[aria-expanded]")].find(button =>
+      visible(button) && button.querySelector("span.truncate")?.textContent === "検索・絞り込み");
+    if (searchToggle) return { anchor: searchToggle.parentElement };
+
+    const search = page.querySelector('input[enterkeyhint="search"][placeholder^="アイテム"]');
+    if (visible(search)) return { anchor: search.parentElement };
+
+    const modes = page.querySelector(".fx-market__modes");
+    if (visible(modes)) return { anchor: modes.parentElement };
+
+    const marketTab = [...page.querySelectorAll("button")].find(button =>
+      visible(button) && button.textContent.trim() === "フリマ" &&
+      [...button.parentElement.children].some(tab => tab.matches("button") && tab.textContent.trim() === "スキル"));
+    if (marketTab) return { anchor: marketTab.parentElement.parentElement };
+
+    const title = [...page.querySelectorAll("h1, h2")].find(element =>
+      visible(element) && ["フリーマーケット", "フリマ"].includes(element.textContent.trim()));
+    if (title) return { anchor: title };
+  }
+
   function start(node, enabled, requestScan) {
     const targets = new Map();
     const active = new Set();
@@ -185,19 +216,34 @@
       refreshButtons();
     });
 
+    function placeLauncher() {
+      const position = findLauncherPosition(market);
+      if (!position) {
+        launcher?.remove();
+        return;
+      }
+      if (!launcher) {
+        launcher = node("button", "market-watch-button", "最安値の推移");
+        launcher.type = "button";
+        launcher.addEventListener("click", () => open());
+      }
+      const { anchor, inline } = position;
+      const placement = inline ? "heading" : "below";
+      if (launcher.dataset.ha4MarketLauncher !== placement) launcher.dataset.ha4MarketLauncher = placement;
+      if (inline) {
+        if (launcher.parentElement !== anchor) anchor.append(launcher);
+      } else if (anchor.nextElementSibling !== launcher) {
+        anchor.after(launcher);
+      }
+    }
+
     document.addEventListener("hako-af:market-watch-prices", event => {
       if (!enabled("marketWatch") || !(event.target instanceof Element)) return;
       let samples;
       try { samples = JSON.parse(event.detail); } catch { return; }
       if (!Array.isArray(samples)) return;
       market = event.target;
-      if (launcher?.parentElement !== market) {
-        launcher?.remove();
-        launcher = node("button", "market-watch-button", "最安値の推移");
-        launcher.type = "button";
-        launcher.addEventListener("click", () => open());
-        market.prepend(launcher);
-      }
+      placeLauncher();
       prices.clear();
       let changed = false;
       for (const [key, point] of samples) {

@@ -369,7 +369,7 @@
       let rendered = 0;
       let tooltipAnchor, tooltipTimer;
       let pinned = false;
-      let monster, baseMonsterId, currentId, rank6Passive = null;
+      let monster, baseMonsterId, currentId, rank6Passive = null, reservedNames;
       let draftScreen, cleanDraft;
       let innateExpanded = true;
       const preview = createPreview?.({ node, button,
@@ -387,6 +387,8 @@
           if (skill.id) draft.previewSkillIds[skill.name] = skill.id;
         }
         for (const group of groupKeys) draft[group] = picked[group].map(skill => skill.name);
+        if (reservedNames) draft.reserved = [...new Set([...draft.ordinary, ...draft.permanent])]
+          .filter(name => reservedNames.has(skillKey(name)));
         return draft;
       }
 
@@ -425,6 +427,7 @@
         }
         if (hasUnsavedChanges() && !window.confirm("保存していない変更を破棄しますか？")) return;
         currentId = saved?.id;
+        reservedNames = Array.isArray(saved?.reserved) ? new Set(saved.reserved.map(skillKey)) : saved ? undefined : new Set();
         baseMonsterId = typeof saved?.baseMonsterId === "string" ? saved.baseMonsterId : "";
         monster = catalog?.monsters.find(item => item.id === baseMonsterId);
         const savedRank6 = saved?.rank6Passive;
@@ -496,7 +499,9 @@
 
       function canAdd(group, skill) {
         const allowed = !skill.unique || group === "ordinary" && !isRank6Passive(skill) && isInnate(skill);
-        return allowed && !duplicate(group, skill) && picked[group].length < groups[group][1];
+        const used = picked[group].filter(item => !reservedNames?.has(skillKey(item.name))).length;
+        return allowed && !duplicate(group, skill) &&
+          (reservedNames?.has(skillKey(skill.name)) || used < groups[group][1]);
       }
 
       function add(group, skill) {
@@ -758,7 +763,10 @@
           const other = group === "ordinary" ? "permanent" : "ordinary";
           const [name, limit] = groups[group];
           const section = node("section", "planner-group");
-          section.append(node("h4", "planner-section-title", `${name} ${picked[group].length} / ${limit}`));
+          const reserveCount = picked[group].filter(skill => reservedNames?.has(skillKey(skill.name))).length;
+          const count = reserveCount ? `使用中 ${picked[group].length - reserveCount} / ${limit}・控え ${reserveCount}`
+            : `${picked[group].length} / ${limit}`;
+          section.append(node("h4", "planner-section-title", `${name} ${count}`));
           if (!picked[group].length) section.append(node("p", "planner-hint", "一覧からスキルを追加できます。"));
           else {
             const rows = node("ul", "planner-chosen-list");
@@ -767,6 +775,20 @@
               row.append(nameButton(skill));
               if (skill.unique) row.append(specialMark(skill));
               if (skill.id && preview) row.append(preview.skillLevelField(skill));
+              const reserve = node("input", "training-reserve");
+              reserve.type = "checkbox";
+              reserve.checked = reservedNames?.has(skillKey(skill.name)) === true;
+              reserve.setAttribute("aria-label", `${skill.name}を控えにする`);
+              reserve.addEventListener("change", () => {
+                reservedNames ??= new Set();
+                if (reserve.checked) reservedNames.add(skillKey(skill.name));
+                else reservedNames.delete(skillKey(skill.name));
+                resetStatus();
+                render();
+              });
+              const reserveLabel = node("label", "training-reserve-choice");
+              reserveLabel.append(reserve, "控え");
+              row.append(reserveLabel);
               if (!skill.unique || other === "ordinary") {
                 const move = button(`${groups[other][0]}へ`, () => {
                   if (!canAdd(other, skill)) return;

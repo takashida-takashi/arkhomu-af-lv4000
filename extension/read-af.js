@@ -664,7 +664,7 @@
           partyShare?.bindHall(props, el);
         }
         if (watchMarket) {
-          if (name === "market") {
+          if (name === "market" || name === "FlexMarketPage") {
             marketWatchRoot = el;
             if (!el.hasAttribute("data-ha4-market-watch-root")) el.setAttribute("data-ha4-market-watch-root", "");
           }
@@ -680,6 +680,9 @@
         if (warehouse && (name === "VirtualItemGrid" || name === "FlexVirtualList")) extras?.openWatchedItem(warehouse, instance, props, el);
         if (name === "FlexMonsterSkillEditor" && monster) extras?.readSkillEditor(monster, props, el);
         if (name === "SkillReserveToggle" && monster && !el.closest(".fx-skedit")) extras?.readSkillToggle(monster, props, el);
+        if (monster && (name === "FlexMonsterSkillEditor" || name === "SkillReserveToggle")) {
+          trainingRoutes?.readSkillState(name, monster, props, el);
+        }
         if (name === "ItemDetailPanel" || name === "FlexItemDetail") extras?.readInventoryItem(name, props?.item, el);
         if (gacha && name === "RevealCard") {
           extras.readGachaCard(gacha, vnode, props, el, snapshot, cachedPower, configFromCache);
@@ -827,6 +830,7 @@
       configFromCache();
       for (const anchor of estimateAnchors) extras.readEnhanceEstimate(anchor, enhanceDetail, gameConfig, stores?.get("userProfile"));
     }
+    trainingRoutes?.applySkillStates();
     if (marketWatchRoot) {
       // The bulk snapshot is authoritative when the same item also has a cached detail price.
       extras.readMarketItemPrices(watchPrices);

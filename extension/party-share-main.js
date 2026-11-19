@@ -202,13 +202,16 @@
     if (id && Object.hasOwn(settings?.disabledPassives ?? {}, id)) overrides.disabled_passives = [...settings.getDisabledPassives(id)];
     if (id && Object.hasOwn(settings?.skillOrders ?? {}, id)) overrides.skill_order = settings.getSkillOrder(id);
     const member = { ...monster, ...overrides, ...(monster.t_user_monsters ? { t_user_monsters: { ...native, ...overrides } } : {}) };
+    const reserved = skills.getSkillReserveState?.(member)?.reservedKeys ??
+      new Set(member.t_user_monsters?.reserved_skills ?? member.reserved_skills ?? []);
     const savedPermanent = native.permanent_skills ?? monster.permanent_skills;
     const permanent = Array.isArray(savedPermanent) ? savedPermanent : [];
     const label = (key, fallback) => typeof key === "string" && key ? translate(key) || fallback : fallback;
     const describe = (list, type, getMaster) => list.map(entry => ({
       name: label(entry.name_key ?? getMaster(entry.id)?.name_key, entry.id),
       permanent: permanent.some(skill => typeof skill === "string" ? skill === entry.id :
-        skill?.id === entry.id && (skill.effect === "passive" ? "passive" : "skill") === type)
+        skill?.id === entry.id && (skill.effect === "passive" ? "passive" : "skill") === type),
+      ...(reserved.has(`${type === "passive" ? "p" : "s"}:${entry.id}`) ? { reserved: true } : {})
     }));
     const attack = native.attack_skill ?? master?.attack_skill;
     const art = master?.image_file_name ?? monster.image_file_name;
@@ -216,12 +219,13 @@
     const generation = rawGeneration == null ? undefined : Number(rawGeneration);
     const disabled = new Set(id && Object.hasOwn(settings?.disabledSkills ?? {}, id)
       ? settings.getDisabledSkills(id) : native.disabled_skills ?? []);
-    const active = skills.getActiveSkills(member).filter(entry => {
+    const active = skills.getActiveSkills(member, { includeReserved: true }).filter(entry => {
       const stored = native.skill_priorities?.[entry.id] ?? 1;
       const priority = id ? settings?.getPriority?.(id, entry.id, stored) ?? stored : stored;
-      return !disabled.has(entry.id) && priority !== 0;
+      return reserved.has("s:" + entry.id) || !disabled.has(entry.id) && priority !== 0;
     });
-    const passive = skills.getPassiveSkills(member);
+    const passive = skills.getPassiveSkills(member, { includeReserved: true, includeDisabled: true })
+      .filter(entry => reserved.has("p:" + entry.id) || !entry._userDisabled && !entry._disabledBy);
     const effectiveRank = Math.max(1, Math.floor(Number(master?.rank ?? native.rank) || 1)) +
       Math.max(0, Math.floor(Number(native.rank_up ?? monster.rank_up) || 0));
     const uniqueId = [native.meta?.rank6_unique_skill, native.rank6_unique_skill_granted, monster.rank6_unique_skill_granted,
@@ -235,6 +239,7 @@
       generation: Number.isFinite(generation) && generation >= 0 ? generation : undefined,
       bonus: bonusParameters(monster, native),
       portrait: typeof art === "string" ? art : "",
+      skillStates: true,
       rank6Unique: uniqueEntry ? label(uniqueEntry.name_key ?? uniqueMaster?.name_key, uniqueId) : undefined,
       attack: typeof attack === "string" ? label(masters.getActiveSkill(attack)?.name_key, attack) : "",
       active: describe(active, "skill", masters.getActiveSkill),
