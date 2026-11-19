@@ -647,6 +647,19 @@
       const { routes } = load();
       open(routes.find(route => route.id === id) ?? routes[0]);
     }, openMember, update, scan, saveRoute, groups, groupInput,
+      forMonster: monsterId => {
+        const { routes, bindings } = load();
+        const binding = bindings.find(item => item.monsterId === String(monsterId));
+        const route = routes.find(item => item.id === binding?.routeId);
+        return route ? { route, binding } : null;
+      },
+      disablePreset: (monsterId, routeId) => {
+        const data = load();
+        const binding = data.bindings.find(item => item.monsterId === String(monsterId) && item.routeId === routeId);
+        if (!binding || binding.skillPresetHidden) return;
+        binding.skillPresetHidden = true;
+        persist(data);
+      },
       groupedRoutes: () => routeGroups(load().routes) };
   }
 

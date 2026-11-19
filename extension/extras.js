@@ -117,7 +117,8 @@
   const settingsControl = ".fx-topbar__settings,[data-ha4-settings-anchor]";
   const menuControl = 'button[title="メニュー"]';
 
-  function start({ node, requestScan, viewRule, toMetrics, listOptions, effectOption, makePanel, appendExploreReset, openPartyFile, openTrainingRoutes }) {
+  function start({ node, requestScan, viewRule, toMetrics, listOptions, effectOption, makePanel, appendExploreReset,
+    openPartyFile, openTrainingRoutes, getTrainingRoute, disableTrainingPreset }) {
     const enabled = key => settings.features[key] !== false;
     const refreshSlotHome = slotHome?.start(() => enabled("slotHome"));
     const desktop = globalThis.hakoAfDesktopUpdates;
@@ -143,6 +144,7 @@
     let inventoryItem, itemWatch;
     const skillRoots = new Map();
     const skillRows = new Map();
+    const routeSkillPresets = new Map();
     const skillPanels = new Map();
     const selectedSkillPresets = new Map();
     let skillMarks = new Map();
@@ -269,17 +271,50 @@
       itemWatch = { element, signature };
     }
 
+    function syncRoutePreset(key, monsterId, rows) {
+      let presets = get(key) ?? [];
+      const assigned = getTrainingRoute?.(monsterId);
+      const previous = routeSkillPresets.get(key);
+      if (!Array.isArray(assigned?.route.reserved) || assigned.binding.skillPresetHidden) {
+        if (previous?.label === selectedSkillPresets.get(key)) selectedSkillPresets.delete(key);
+        routeSkillPresets.delete(key);
+        return presets;
+      }
+      const { route, binding } = assigned;
+      const normalize = name => name.normalize("NFKC").trim().replace(/\s+/g, " ");
+      const names = new Set([...route.ordinary, ...route.permanent].map(normalize));
+      const reserved = new Set(route.reserved.map(normalize));
+      const current = presets.find(item => item.trainingRouteId === route.id);
+      const entries = new Map((current?.entries ?? []).filter(item => names.has(normalize(item.name)))
+        .map(item => [item.id, item]));
+      for (const { id, name } of rows) {
+        if (names.has(normalize(name))) entries.set(id, { id, name, reserved: reserved.has(normalize(name)) });
+      }
+      const base = `${[route.group, route.name].filter(Boolean).join(" ／ ")}（育成ルート）`;
+      let label = base, suffix = 2;
+      while (presets.some(item => item !== current && item.label === label)) label = `${base} ${suffix++}`;
+      const preset = { label, entries: [...entries.values()], trainingRouteId: route.id };
+      if (JSON.stringify(current) !== JSON.stringify(preset)) {
+        presets = current ? presets.map(item => item === current ? preset : item) : [...presets, preset];
+        save(key, presets);
+      }
+      const signature = JSON.stringify([route.id, binding.skillStateRevision, route.ordinary, route.permanent, route.reserved]);
+      if (previous?.signature !== signature || previous.label !== label) selectedSkillPresets.set(key, label);
+      routeSkillPresets.set(key, { signature, label });
+      return presets;
+    }
+
     function updateSkillPresets() {
       for (const [root, panel] of skillPanels) {
-        if (skillRoots.get(root) === panel.key && root.isConnected) continue;
+        if (skillRoots.get(root)?.key === panel.key && root.isConnected) continue;
         panel.bar.remove();
         skillPanels.delete(root);
       }
       const nextMarks = new Map();
-      for (const [root, key] of skillRoots) {
+      for (const [root, { key, monsterId }] of skillRoots) {
         const rows = [...(skillRows.get(key)?.values() ?? [])];
         if (!rows.length) continue;
-        const presets = get(key) ?? [];
+        const presets = syncRoutePreset(key, monsterId, rows);
         let panel = skillPanels.get(root);
         if (!panel) {
           const bar = node("div", "skill-presets");
@@ -308,6 +343,11 @@
               return;
             }
             const current = get(key) ?? [];
+            const generated = current.find(item => item.label === label)?.trainingRouteId;
+            if (generated) {
+              routeSkillPresets.delete(key);
+              disableTrainingPreset?.(monsterId, generated);
+            }
             const entries = [...(skillRows.get(key)?.values() ?? [])].map(({ id, name, reserved }) => ({ id, name, reserved }));
             save(key, [...current.filter(item => item.label !== label), { label, entries }]);
             selectedSkillPresets.set(key, label);
@@ -316,7 +356,13 @@
           });
           remove.addEventListener("click", () => {
             if (!picker.value) return;
-            save(key, (get(key) ?? []).filter(item => item.label !== picker.value));
+            const current = get(key) ?? [];
+            const generated = current.find(item => item.label === picker.value)?.trainingRouteId;
+            if (generated) {
+              routeSkillPresets.delete(key);
+              disableTrainingPreset?.(monsterId, generated);
+            }
+            save(key, current.filter(item => item.label !== picker.value));
             selectedSkillPresets.delete(key);
             requestScan();
           });
@@ -1015,7 +1061,7 @@
     }));
     const skillKey = identity => "hakoAf4000:skill-presets:" + JSON.stringify(identity);
     document.addEventListener("hako-af:skill-preset-editor", event => receive(event, identity => {
-      if (event.target instanceof Element) skillRoots.set(event.target, skillKey(identity));
+      if (event.target instanceof Element) skillRoots.set(event.target, { key: skillKey(identity), monsterId: identity[1] });
     }));
     document.addEventListener("hako-af:skill-preset-entry", event => receive(event, entry => {
       if (!(event.target instanceof Element)) return;

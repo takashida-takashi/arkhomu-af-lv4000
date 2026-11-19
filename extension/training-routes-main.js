@@ -340,7 +340,8 @@
     const route = routes.get(selected);
     const skills = selected === bothParentRoutes
       ? new Set(parentRoutes.flatMap(id => [...routes.get(id).skills])) : route?.skills ?? savedSkills;
-    const scope = { skills, specific: !!route, bulk: parentRoutes.includes(selected), parentSignature, selected };
+    const scope = { skills, reserved: route?.reserved, specific: !!route,
+      bulk: parentRoutes.includes(selected), parentSignature, selected };
     const signature = JSON.stringify([parentSignature, selected, combined, [...routes].map(([id, item]) => [id, item.name, item.group])]);
     if (control?.dataset.routeSignature === signature) return scope;
     control?.remove();
@@ -390,12 +391,15 @@
     const desired = visible && scope?.skills.has(nameKey(label));
     // A single selected route is the only basis for suggesting removals.
     const outside = visible && scope?.specific && !desired;
-    const caption = desired ? (state.auto ? (state.forgot ? "覚えるに戻す" : "残す")
+    const reserve = desired && scope?.reserved?.has(nameKey(label));
+    let caption = desired ? (state.auto ? (state.forgot ? "覚えるに戻す" : "残す")
       : state.selected ? "選択済み" : state.blocked ? "選ぶ候補・枠を確認" : "選ぶ") :
       outside ? (state.auto ? (state.forgettable && !state.forgot ? "覚えない候補" : "")
         : state.selected ? "選択を外す候補" : "") : "";
+    if (reserve) caption += "・控えで保持";
     row.toggleAttribute("data-ha4-training-needed", !!desired);
     row.toggleAttribute("data-ha4-training-inherit", !!desired);
+    row.toggleAttribute("data-ha4-training-reserve", !!reserve);
     row.toggleAttribute("data-ha4-training-remove", !!caption && outside);
     let badge = row.querySelector('[data-ha4="training-guidance"]');
     if (!caption) {

@@ -974,6 +974,8 @@ textarea[data-ha4="training-input"] { width: 100%; resize: vertical; }
   white-space: nowrap;
 }
 [data-ha4-training-remove] [data-ha4="training-guidance"] { background: #593515; color: #ffe4bd; }
+[data-ha4-training-reserve] { outline: 2px solid #ffd27a !important; outline-offset: -2px; }
+[data-ha4-training-reserve] [data-ha4="training-guidance"] { background: #593f16; color: #ffe4ae; }
 @media (max-width: 480px) {
   [data-ha4="training-skill-fields"] { grid-template-columns: minmax(0, 1fr); }
 }
@@ -1342,7 +1344,7 @@ html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
 }
 [data-ha4="watch-goal"] { display: inline-flex; align-items: center; gap: 5px; }
 [data-ha4="watch-goal"] > input { width: 12ch; box-sizing: border-box; }
-[data-ha4="skill-presets"] { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-block: 4px 8px; }
+[data-ha4="skill-presets"] { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-block: 4px 8px; color-scheme: dark; }
 [data-ha4="skill-presets"] input { min-width: 0; width: 14ch; }
 [data-ha4="skill-presets"] :is(select, input) { max-width: 100%; }
 [data-ha4="skill-preset-status"] { flex-basis: 100%; color: #dbcae9; font-size: .8rem; }

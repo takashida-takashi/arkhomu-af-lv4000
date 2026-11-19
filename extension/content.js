@@ -1358,6 +1358,8 @@
     appendExploreReset: exploreAnalysis?.appendSettingsReset,
     openPartyFile: partyShare?.openFile,
     openTrainingRoutes: trainingRoutes?.open,
+    getTrainingRoute: id => extras?.enabled("trainingRoutes") ? trainingRoutes?.forMonster(id) : null,
+    disableTrainingPreset: trainingRoutes?.disablePreset,
     listOptions: (items, state) => listOptions(items, null, conditionRows(state.root), "explore", null, state.sortKey) });
   finishEstimateScan = globalThis.hakoAfEnhanceEstimate?.start(node, id => extras?.enabled(id), requestScan);
   marketWatch = globalThis.hakoAfMarketWatch?.start(node, id => extras?.enabled(id), requestScan);

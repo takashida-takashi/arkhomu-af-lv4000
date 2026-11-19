@@ -457,7 +457,7 @@
   function skillIdentity(monster, layout) {
     const profile = appProperties()?.$pinia?._s?.get("userProfile");
     const owner = profile?.isLoaded ? profile.profile?.id : null;
-    const id = monster.user_monster_id ?? monster.t_user_monsters?.id;
+    const id = monster.user_monster_id ?? monster.t_user_monsters?.user_monster_id ?? monster.t_user_monsters?.id;
     if (owner && id) return [String(owner), String(id), layout];
   }
 
