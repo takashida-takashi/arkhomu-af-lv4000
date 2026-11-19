@@ -70,6 +70,9 @@
   const sortedContainers = new Set();
   const rememberedOrder = new WeakMap();
   const nativeChoices = new Map();
+  const savedNativeChoices = new Map();
+  const restoredNativeSorts = new WeakMap();
+  const nativePreferencesPrefix = "hakoAf4000:artifact-sort:";
   const keepControls = new WeakMap();
   const sectionMarkers = new WeakMap();
   const gachaInputControls = new WeakMap();
@@ -743,6 +746,11 @@
       const saved = extrasApi?.get("hakoAf4000:explore-filter");
       if (Array.isArray(saved?.root?.children)) Object.assign(state, saved);
     }
+    if (SCOPES.has(type) && !modes.has(type)) {
+      const saved = extrasApi?.get(nativePreferencesPrefix + type);
+      if (typeof saved?.forecast === "boolean") state.nativeForecast = saved.forecast;
+      if (typeof saved?.key === "string" && saved.key.length <= 200) savedNativeChoices.set(type, saved.key);
+    }
     if (type === "decompose") state.kept ??= new Set();
     modes.set(type, state);
     const onChange = () => {
@@ -753,7 +761,7 @@
       if (type === "gacha") setGridPlan(type, listPlan(type, state));
       requestScan();
     };
-    return { ...globalThis.hakoAfFilterPopup(state, onChange, globalThis.hakoAfPresetStorage, type === "inventory"), state };
+    return { ...globalThis.hakoAfFilterPopup(state, onChange, globalThis.hakoAfPresetStorage, type === "inventory"), state, type };
   }
 
   function nativeMetric(key) {
@@ -763,6 +771,15 @@
     }
     if (/^(stat_|trait:)/.test(key)) return { key, direction: "desc" };
     return null;
+  }
+
+  function saveNativePreferences(type, state) {
+    if (!SCOPES.has(type) || !state) return;
+    const key = nativeChoices.get(type)?.key;
+    if (typeof key === "string") savedNativeChoices.set(type, key);
+    extrasApi?.save(nativePreferencesPrefix + type, {
+      ...(typeof key === "string" ? { key } : {}), forecast: state.nativeForecast === true
+    });
   }
 
   function configureNativeSort(select, type, state) {
@@ -778,6 +795,23 @@
       select.prepend(sumOption);
       select.selectedIndex = selected?.index ?? -1;
     }
+    if (SCOPES.has(type) && restoredNativeSorts.get(select) !== type) {
+      const previousScope = restoredNativeSorts.get(select);
+      restoredNativeSorts.set(select, type);
+      const expected = nativeChoices.get(type)?.key ?? savedNativeChoices.get(type) ??
+        (previousScope && select.value === NATIVE_SUM ? nativeChoices.get(previousScope)?.previous : undefined);
+      if (typeof expected === "string" && [...select.options].some(option => option.value === expected)) {
+        const previous = select.value;
+        nativeChoices.set(type, { key: expected, metric: nativeMetric(expected),
+          ...(expected === NATIVE_SUM ? { previous: nativeChoices.get(type)?.previous ?? previous } : {}) });
+        if (previous !== expected) {
+          select.value = expected;
+          // Let the game's own select update its reactive state for standard options.
+          // Extension-only options are kept locally and never sent to the native handler.
+          if (expected !== NATIVE_SUM) select.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      }
+    }
     const native = nativeChoices.get(type);
     if (native?.key === NATIVE_SUM) select.value = NATIVE_SUM;
     else if (select.value !== NATIVE_SUM) {
@@ -786,6 +820,9 @@
     }
     const parent = select.closest("label")?.parentElement;
     if (!parent) return;
+    for (const label of parent.querySelectorAll(':scope > [data-ha4="native-forecast"]')) {
+      if (label.dataset.scope !== type) label.remove();
+    }
     let label = parent.querySelector(`[data-ha4="native-forecast"][data-scope="${type}"]`);
     if (!label) {
       label = node("label", "native-forecast");
@@ -794,6 +831,7 @@
       input.type = "checkbox";
       input.addEventListener("change", () => {
         state.nativeForecast = input.checked;
+        saveNativePreferences(type, state);
         requestScan();
       });
       label.append(input, "予測値順");
@@ -990,6 +1028,10 @@
 
   function filterGroup(type, anchor, position, items, virtual, holder = anchor, nativeSort, grid) {
     let panel = panels.get(anchor);
+    if (panel && panel.type !== type) {
+      panel.remove();
+      panel = null;
+    }
     if (!panel) {
       panel = makePanel(type);
       panels.set(anchor, panel);
@@ -1153,6 +1195,7 @@
       select.closest("label")?.parentElement?.querySelector(`[data-ha4="native-forecast"][data-scope="${scope}"]`)?.remove();
       delete select.dataset.ha4NativeSort;
       nativeChoices.delete(scope);
+      restoredNativeSorts.delete(select);
     }
     extras?.refresh();
     for (const el of oldMarks) if (!decorated.has(el)) el.remove();
@@ -1279,6 +1322,7 @@
       nativeChoices.set(type, { key: select.value, metric: nativeMetric(select.value), previous });
       const state = modes.get(type);
       if (state) state.sortKey = "";
+      saveNativePreferences(type, state);
       requestScan();
     }
   }
