@@ -42,7 +42,7 @@
   const extrasApi = globalThis.hakoAfExtras;
   const GACHA_CARD = ".rv-card";
   const monsterRoots = '.fx-mlist,.fx-mfilter,[data-ha4-monster-list],input[placeholder="例: 火炎斬り"]';
-  const guildDungeonRoots = '.fx-dungeon__list,[aria-label="ギルドダンジョンの一覧"]';
+  const guildDungeonRoots = '.fx-dungeon__list,.fx-dungeon-stage__thumbs,.fx-dungeon,[data-base-modal-root],[aria-label="ギルドダンジョンの一覧"]';
   const extrasRoots = '[data-chat-message-id],.fx-summary-page,.fx-summary,.fx-result,.fx-settings,.fx-topbar,#fx-todo,[aria-label="国のお知らせ"],[data-ha4-settings-anchor],[data-ha4-home-root],[data-ha4-market-watch-root],[data-home-tutorial-root],[data-ha4-shop-notification],.fx-home,.fx-shop-buy,.shop-cell-nolp,.fx-shop-marks,.fx-race-exchange,.fx-ark-product,.fx-wbase-home__outpost,.fx-skedit,.skill-reserve-toggle,.fx-aenh__panel,.fx-bento,.fx-expd,.expedition-modal-body,[data-bento-pointer-slot],#__nuxt header,' + GACHA_CARD + ',' + monsterRoots + ',' + guildDungeonRoots;
   const normalRoute = () => location.pathname.replace(/^\/f\//, "/");
   const isOwnProfile = () => /^\/profile\/?$/.test(normalRoute());
@@ -52,6 +52,8 @@
   let trainingRoutes;
   let trainingPlanner;
   let guildDungeonFilter;
+  let dungeonRewards;
+  document.addEventListener("hako-af:dungeon-rewards-changed", () => requestScan());
   const partyRoots = '.fx-party__panel,.fx-hall-detail,aside[aria-label="投稿の詳細"],[aria-labelledby="hall-classic-comments-title"],[data-party-pointer-slot],.fx-mdetail__hero,.fx-mdetail__head,.detail-pc-fonts,[data-ha4-share-member],[data-ha4-public-training-detail]';
   const trainingRoots = ".fx-mating,.fx-mati,.fx-tgrant,.fx-tgflow,[data-ha4-training-scope],[data-inherit-row]";
   let marketWatch;
@@ -1112,6 +1114,7 @@
     }
     partyShare?.scan();
     guildDungeonFilter?.scan();
+    dungeonRewards?.scan();
     renderSkinSort();
     trainingRoutes?.scan(trainingData);
     trainingPlanner?.scan();
@@ -1364,5 +1367,6 @@
   finishEstimateScan = globalThis.hakoAfEnhanceEstimate?.start(node, id => extras?.enabled(id), requestScan);
   marketWatch = globalThis.hakoAfMarketWatch?.start(node, id => extras?.enabled(id), requestScan);
   guildDungeonFilter = globalThis.hakoAfGuildDungeonFilter?.start(() => !extras || extras.enabled("guildDungeonFilter"));
+  dungeonRewards = globalThis.hakoAfDungeonRewards?.start(node, () => !extras || extras.enabled("dungeonRewards"));
   requestScan();
 })();

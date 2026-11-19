@@ -19,6 +19,7 @@
     marketWatch: "拡張価格追跡",
     hiddenTitles: "拡張称号",
     monsterBoxes: "拡張ボックス",
+    dungeonRewards: "拡張初回報酬",
     skillPresets: "拡張スキルプリセット",
     partyShare: "拡張編成共有",
     trainingRoutes: "拡張育成ルート",

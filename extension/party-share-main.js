@@ -13,6 +13,7 @@
   const baseBonusKeys = ["hp", "atk", "mtk", "def", "mdf", "spd"];
   const bonusKeys = new Set([...baseBonusKeys, "lck", "cri", "cdmg"]);
   let readers;
+  let effectReaders;
 
   function nativeUrl(file, base = location.origin) {
     const url = new URL(file, base);
@@ -64,6 +65,34 @@
 
   function getReaders() {
     return readers ??= loadReaders().catch(error => { readers = null; throw error; });
+  }
+
+  async function loadEffectReaders() {
+    const script = [...document.querySelectorAll('script[type="module"][src]')]
+      .find(node => /^\/_nuxt\/[\w-]+\.js$/.test(new URL(node.src).pathname));
+    const entry = nativeUrl(script?.src);
+    const routes = await nativeSource(entry);
+    const route = /name:\s*["']skill-level-notice["'][^{}]{0,240}?\bimport\(\s*["']([^"']+)["']/.exec(routes);
+    const page = nativeUrl(route?.[1], entry);
+    const component = await nativeSource(page);
+    // The classic page wraps the same view as mobile. Follow its named imports only.
+    const children = [...component.matchAll(/\bimport\s*\{[^}]+\}\s*from\s*["']([^"']+)["']/g)]
+      .map(match => nativeUrl(match[1], page)).filter(url => url !== entry);
+    const candidates = [{ url: page, source: component }, ...[...new Set(children)].reverse().slice(0, 6).map(url => ({ url }))];
+    for (const candidate of candidates) {
+      const source = candidate.source ?? await nativeSource(candidate.url);
+      let local;
+      try { local = destructuredFrom(source, "formatPassiveSkillEffects"); } catch { continue; }
+      const binding = importedBinding(source, local, candidate.url);
+      const module = await import(binding.url);
+      const factory = module[binding.exported];
+      if (typeof factory === "function") return factory;
+    }
+    throw new Error("Native skill effect formatter unavailable");
+  }
+
+  function getEffectReaders() {
+    return effectReaders ??= loadEffectReaders().catch(error => { effectReaders = null; throw error; });
   }
 
   function bind(name, props, el) {
@@ -310,5 +339,5 @@
       reply("error", "この画面から編成情報を読み取れませんでした。編成画面を再読み込みしてからお試しください。");
     }
   });
-  globalThis.hakoAfPartyShareMain = { bind, bindMember, bindHall, getReaders };
+  globalThis.hakoAfPartyShareMain = { bind, bindMember, bindHall, getReaders, getEffectReaders };
 })();

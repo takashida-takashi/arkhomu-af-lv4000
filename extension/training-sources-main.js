@@ -3,7 +3,7 @@
 
   if (globalThis.hakoAfFrameContext?.active === false) return;
 
-  const kinds = ["skills", "passives", "monsters", "items", "monster-categories", "races", "game-config"];
+  const kinds = ["skills", "passives", "monsters", "items", "monster-categories", "races", "game-config", "skill-categories", "skill-tags"];
   const versionOrder = new Intl.Collator("en", { numeric: true });
   let pending;
   let cached;
@@ -36,7 +36,7 @@
             if (!key) return;
             const get = store.get(key);
             get.onsuccess = () => {
-              if (Array.isArray(get.result) || kind === "races" && get.result?.labels ||
+              if (Array.isArray(get.result) || ["races", "skill-categories", "skill-tags"].includes(kind) && get.result?.labels ||
                   kind === "game-config" && get.result?.stats) result[kind] = get.result;
             };
           };
@@ -95,12 +95,12 @@
     }
     const wanted = new Set([...matches.values()].flat());
     const sources = new Map();
-    const add = (kind, id, text, path) => {
+    const add = (kind, id, text, path, details = {}) => {
       const key = `${kind}:${id}`;
       if (!wanted.has(key)) return;
       if (!sources.has(key)) sources.set(key, []);
       const entries = sources.get(key);
-      if (!entries.some(entry => entry.text === text)) entries.push({ text, ...(path ? { path } : {}) });
+      if (!entries.some(entry => entry.text === text)) entries.push({ text, ...(path ? { path } : {}), ...details });
     };
     for (const monster of data.monsters ?? []) {
       if (!isPublic(monster) || monster.summon_only) continue;
@@ -108,19 +108,22 @@
       const known = profile?.encyclopediaUnlocked === true || ["owned", "encountered"].includes(discovery);
       const name = known ? label(monster, translate) : "図鑑で未発見のホムンクルス";
       const path = known ? `/encyclopedia?monster=${encodeURIComponent(monster.id)}` : "";
+      const rank = known && Number.isInteger(Number(monster.rank)) && Number(monster.rank) > 0 ? Number(monster.rank) : null;
+      const rankLabel = rank == null ? "元ランク未確認" : `元ランク${rank}`;
       for (const [kind, entries] of [["skill", monster.skills], ["passive", monster.passives]]) {
         for (const entry of Array.isArray(entries) ? entries : []) {
           const id = typeof entry === "string" ? entry : entry?.[`${kind}_id`] ?? entry?.id;
-          add(kind, id, `${name} Lv${Math.max(1, Math.floor(Number(entry?.level_unlocked) || 1))}`, path);
+          const level = Math.max(1, Math.floor(Number(entry?.level_unlocked) || 1));
+          add(kind, id, `${name} Lv${level}（${rankLabel}）`, path, { kind: "monster", level, rank });
         }
       }
       if (monster.attack_skill) {
-        add("skill", monster.attack_skill, `${name} Lv1（通常攻撃）`, path);
+        add("skill", monster.attack_skill, `${name} Lv1（通常攻撃・${rankLabel}）`, path, { kind: "monster", level: 1, rank });
       }
       if (typeof monster.rank6_unique_skill === "string") {
         const id = monster.rank6_unique_skill.trim();
         const kind = byId.has(`skill:${id}`) ? "skill" : byId.has(`passive:${id}`) ? "passive" : null;
-        if (kind) add(kind, id, `${name} Rank6`, path);
+        if (kind) add(kind, id, `${name} Rank6で習得（${rankLabel}）`, path, { kind: "monster", rank });
       }
     }
     for (const item of data.items ?? []) {
@@ -146,12 +149,20 @@
           }
         }
       }
-      return [name, [...new Map(entries.map(entry => [entry.text, entry])).values()]];
+      const ordered = [...new Map(entries.map(entry => [entry.text, entry])).values()];
+      ordered.sort((a, b) => {
+        const monsterA = a.kind === "monster", monsterB = b.kind === "monster";
+        if (monsterA !== monsterB) return monsterA ? -1 : 1;
+        if (!monsterA) return 0;
+        return (a.level ?? Infinity) - (b.level ?? Infinity) || (a.rank ?? Infinity) - (b.rank ?? Infinity) ||
+          a.text.localeCompare(b.text, "ja", { numeric: true });
+      });
+      return [name, ordered];
     }));
   }
 
   const plannerKinds = [["s", "skill", "skills"], ["p", "passive", "passives"]];
-  const getReaders = globalThis.hakoAfPartyShareMain?.getReaders;
+  const getEffectReaders = globalThis.hakoAfPartyShareMain?.getEffectReaders;
   const isPlannerPublic = master => isPublic(master) && typeof master.id === "string" && master.used !== false &&
     !(typeof master.open_at === "string" && Date.parse(master.open_at) > Date.now()) && master.enemy_only !== true;
   const encyclopediaHidden = master => ["none", "difficulty"].includes(master.display);
@@ -161,6 +172,44 @@
     angel: "天使", mythical: "幻獣", mysterious: "神秘", magical_beast: "魔獣", god: "神"
   };
   let plannerCatalog;
+  let plannerTaxonomy;
+  let pendingTaxonomy;
+
+  async function effectFormatter() {
+    const factory = await getEffectReaders?.();
+    const app = document.getElementById("__nuxt")?.__vue_app__;
+    const nuxt = app?.config?.globalProperties?.$nuxt;
+    const run = nuxt?.runWithContext?.bind(nuxt) ?? app?.runWithContext?.bind(app);
+    if (!factory || !run) throw new Error("Native skill effect context unavailable");
+    const tool = run(() => factory());
+    if (typeof tool?.formatActiveSkillEffects !== "function" || typeof tool?.formatPassiveSkillEffects !== "function") {
+      throw new Error("Native skill effect formatter unavailable");
+    }
+    return (skill, passive) => run(() => passive ? tool.formatPassiveSkillEffects(skill) : tool.formatActiveSkillEffects(skill));
+  }
+
+  async function readPlannerTaxonomy(data) {
+    if (plannerTaxonomy?.buildId === data.buildId) return plannerTaxonomy;
+    return pendingTaxonomy ??= Promise.all(["categories", "tags"].map(async kind => {
+      const cached = data[`skill-${kind}`];
+      if (cached?.labels) return cached;
+      // These small public dictionaries are needed even before visiting the encyclopedia.
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      try {
+        const response = await fetch(`/api/skills/${kind}`, {
+          cache: "force-cache", credentials: "omit", redirect: "error", signal: controller.signal
+        });
+        const value = response.ok ? await response.json() : null;
+        return value?.labels && !Array.isArray(value.labels) ? value : null;
+      } catch { return null; }
+      finally { clearTimeout(timer); }
+    })).then(([categories, tags]) => {
+      const result = { buildId: data.buildId, categories, tags };
+      if (categories && tags) plannerTaxonomy = result;
+      return result;
+    }).finally(() => { pendingTaxonomy = null; });
+  }
 
   function translated(translate, ...keys) {
     for (const key of new Set(keys.filter(Boolean))) {
@@ -183,7 +232,21 @@
       .filter(id => typeof id === "string" && id))];
   }
 
-  function plannerData(data, translate) {
+  function skillTags(skill, passive) {
+    const ids = tags(skill.tags);
+    const visit = value => {
+      if (Array.isArray(value)) { value.forEach(visit); return; }
+      if (!value || typeof value !== "object" || Number(value.value) < 0) return;
+      for (const [name, child] of Object.entries(value)) {
+        if (name === "tags" || name === "target_tags") ids.push(...tags(child));
+        else if (child && typeof child === "object") visit(child);
+      }
+    };
+    if (passive) visit(skill.effects);
+    return [...new Set(ids)];
+  }
+
+  function plannerData(data, translate, taxonomy, formatEffects) {
     const source = new Map();
     const playable = new Set();
     const summoned = new Set();
@@ -243,7 +306,13 @@
       const base = skill.id.toUpperCase();
       const description = translated(translate, skill.description_key,
         passive && `PASSIVE_${base}_DESCRIPTION`, `${base}_DESCRIPTION`) || skill.description?.trim?.() || "";
-      skills.set(id, { id, name, passive, unique, description, canDisable: passive && skill.drawback !== true });
+      let effects = [];
+      try { effects = formatEffects?.(skill, passive) ?? []; } catch { /* Keep name and translated description searchable. */ }
+      skills.set(id, { id, name, passive, unique, description, canDisable: passive && skill.drawback !== true,
+        categories: tags(skill.categories), tags: skillTags(skill, passive),
+        added: typeof skill.added_at === "string" ? skill.added_at.slice(0, 10) : "",
+        updated: typeof skill.update_at === "string" ? skill.update_at.slice(0, 10) : "",
+        searchEffects: Array.isArray(effects) ? effects.filter(line => typeof line === "string").join("\n") : "" });
     }
     for (const monster of monsters) {
       monster.innate = [...monster.innate].filter(([id]) => skills.has(id))
@@ -257,7 +326,9 @@
       const label = translated(translate, categoryKeys.get(id), `MONSTER_CATEGORY_NAME_${id}`) || id;
       return [id, label.endsWith("系") ? label : `${label}系`];
     }));
-    return { monsters, raceLabels, categoryLabels, source, skills };
+    return { monsters, raceLabels, categoryLabels, source, skills,
+      skillCategoryLabels: taxonomy.categories?.labels ?? {}, skillCategoryOrder: tags(taxonomy.categories?.major),
+      skillTagLabels: taxonomy.tags?.labels ?? {}, hasSkillTaxonomy: !!(taxonomy.categories && taxonomy.tags) };
   }
 
   document.addEventListener("hako-af:read-training-planner", async () => {
@@ -270,12 +341,16 @@
       reply("");
       return;
     }
-    if (plannerCatalog?.data !== data) {
-      plannerCatalog = { data, ...plannerData(data, key => properties.$t(key)) };
+    if (plannerCatalog?.data !== data || !plannerCatalog.hasSkillTaxonomy) {
+      const taxonomy = await readPlannerTaxonomy(data);
+      let formatEffects;
+      try { formatEffects = await effectFormatter(); } catch { /* Search still works with the translated descriptions. */ }
+      plannerCatalog = { data, ...plannerData(data, key => properties.$t(key), taxonomy, formatEffects) };
     }
-    const { monsters, raceLabels, categoryLabels, skills } = plannerCatalog;
+    const { monsters, raceLabels, categoryLabels, skills, skillCategoryLabels, skillCategoryOrder, skillTagLabels, hasSkillTaxonomy } = plannerCatalog;
     const discoveries = properties.$pinia?._s?.get("userProfile")?.monsterDiscoveries;
-    reply(JSON.stringify({ raceLabels, categoryLabels, skills: [...skills.values()],
+    reply(JSON.stringify({ raceLabels, categoryLabels, skillCategoryLabels, skillCategoryOrder, skillTagLabels, hasSkillTaxonomy,
+      skills: [...skills.values()],
       hasRegistration: !!discoveries, monsters: monsters.map(monster => {
         const discovery = discoveries?.[monster.id];
         return { ...monster, registration: discovery === "owned" || discovery === "encountered" ? discovery : "unknown" };
@@ -283,23 +358,37 @@
   });
 
   document.addEventListener("hako-af:read-training-description", async event => {
-    const id = event.detail;
+    let id = event.detail, level = 1;
+    if (typeof id !== "string") return;
+    if (id.startsWith("{")) {
+      try { ({ id, level = 1 } = JSON.parse(id)); } catch { return; }
+    }
+    if (typeof id !== "string" || !Number.isSafeInteger(level) || level < 1 || level > 50) return;
     const skill = plannerCatalog?.skills.get(id);
-    const master = plannerCatalog?.source.get(id);
+    let master = plannerCatalog?.source.get(id);
     if (!skill || !master) return;
     let effects = [];
+    let loaded = false;
+    let message = "効果の詳細を取得できませんでした。スキル名をもう一度選ぶと再取得します。";
     try {
-      const readers = await getReaders?.();
-      const app = document.getElementById("__nuxt")?.__vue_app__;
-      const nuxt = app?.config?.globalProperties?.$nuxt;
-      const run = nuxt?.runWithContext?.bind(nuxt) ?? app?.runWithContext?.bind(app);
-      if (readers && run) effects = run(() => {
-        const tool = readers.masters();
-        const formatted = skill.passive ? tool.formatPassiveSkillEffects?.(master) : tool.formatActiveSkillEffects?.(master);
-        return Array.isArray(formatted) ? formatted.filter(line => typeof line === "string") : [];
-      });
-    } catch { /* The translated description is already available to the planner. */ }
-    document.dispatchEvent(new CustomEvent("hako-af:training-description", { detail: JSON.stringify({ id, effects }) }));
+      if (level > 1) {
+        let definition;
+        try { definition = JSON.parse(localStorage.getItem(`hakoAf4000:planner-levels:${id}`))?.[level]; } catch { /* Keep the unknown level explicit. */ }
+        if (!definition) {
+          message = `Lv${level}の効果データは未取得です。本体のスキルLv詳細で確認してください。`;
+          throw new Error("Skill level definition unavailable");
+        }
+        master = { ...master, ...definition, id: master.id };
+      }
+      const format = await effectFormatter();
+      const formatted = format(master, skill.passive);
+      if (!Array.isArray(formatted)) throw new Error("Invalid native skill effects");
+      effects = formatted.filter(line => typeof line === "string" && line.trim());
+      loaded = true;
+    } catch { /* Show the available description and a retry message instead of inventing effects. */ }
+    document.dispatchEvent(new CustomEvent("hako-af:training-description", {
+      detail: JSON.stringify({ id, level, effects, loaded, message: loaded ? "" : message })
+    }));
   });
 
   globalThis.hakoAfTrainingSources = { readMasters, sourceIndex, rank6UniqueName };

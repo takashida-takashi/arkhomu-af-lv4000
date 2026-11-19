@@ -1,6 +1,16 @@
 "use strict";
 
 const screenshots = {
+  "planner-search": {
+    title: "タグやカテゴリでスキルを探す",
+    filename: "planner-search.jpg",
+    steps: [[19, 22, "名前・ID・効果を検索。タグ検索も組み合わせられる"], [38, 32, "「探索」などのカテゴリを選ぶ"], [9, 40, "必要に応じて「新規のみ」「スキルレベルあり」を指定"]]
+  },
+  "dungeon-rewards": {
+    title: "出撃先選択で初回報酬を確認する",
+    filename: "dungeon-rewards.jpg",
+    steps: [[41, 46, "地図下の「拡張初回報酬」で黒字のダンジョンに絞る"], [34, 51, "ダンジョン名の行を開く"], [51, 68, "フロア・難易度別のポーション個数と収支を確認"]]
+  },
   "planner-home": {
     title: "ホームの「その他」から開く",
     filename: "planner-home.jpg",

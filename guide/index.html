@@ -16,7 +16,7 @@
       <h1>はこホム拡張の使い方</h1>
       <p>やりたいことを選ぶと、ボタンの位置と操作の順番が分かります。ゲーム画面の画像は押すと拡大でき、原寸でも開けます。</p>
       <nav aria-label="目次">
-        <a class="featured-link" href="#planner">拡張育成プランナー</a><a href="#setup">導入・更新</a><a href="#settings">拡張設定</a><a href="#af">AF強化後予測値表示</a><a href="#explore">探索結果の見やすさ向上</a><a href="#expedition">拡張遠征</a><a href="#training">編成共有・育成ルート</a><a href="#mating">合成操作性向上</a><a href="#notices">通知項目追加</a><a href="#gacha">AFガチャ周辺の機能追加</a><a href="#guild-filter">ギルドダンジョン</a><a href="#monster-boxes">拡張ボックス</a><a href="#other">その他</a>
+        <a class="featured-link" href="#planner">拡張育成プランナー</a><a href="#setup">導入・更新</a><a href="#settings">拡張設定</a><a href="#af">AF強化後予測値表示</a><a href="#explore">探索結果の見やすさ向上</a><a href="#expedition">拡張遠征</a><a href="#training">編成共有・育成ルート</a><a href="#mating">合成操作性向上</a><a href="#notices">通知項目追加</a><a href="#gacha">AFガチャ周辺の機能追加</a><a href="#dungeon-rewards">初回報酬のポーション収支</a><a href="#guild-filter">ギルドダンジョン</a><a href="#monster-boxes">拡張ボックス</a><a href="#other">その他</a>
       </nav>
     </header>
 
@@ -32,6 +32,8 @@
 
       <h3>スキルとLvを決めて保存</h3>
       <figure data-shot="planner-skills"></figure>
+      <figure data-shot="planner-search"></figure>
+      <p>名前・ID・効果の検索とタグ検索を組み合わせられます。スペースで区切った複数の語はすべて一致する候補に絞ります。「探索」などのカテゴリ、固有スキル、新規のみ、スキルレベルありの条件も同時に使えます。スキル名を押すと説明と効果の詳細を確認できます。</p>
       <p class="hint">「スキルLvあり」は本体で読み込んだ対象一覧を使って表示します。表示用のデータがない場合は「本体のスキルLv対象一覧を開く」を押してから戻ります。Lvの詳細が未取得のスキルは「Lv効果を読む」から確認できます。</p>
       <figure class="planner-save" data-shot="planner-save"></figure>
       <p>あとから修正するときは最初の画面で「保存済みルートを編集」を選びます。育てる個体に割り当てる操作は、個体詳細の「拡張育成ルートを読み込む」から行います。<a href="#training">個体詳細での割り当て手順</a></p>
@@ -152,6 +154,14 @@
       <p class="hint">拡張ガチャ結果をオンにすると、AFガチャ・スーパーガチャで公開したAFのカードにPWとAF変換率＋ドロップ率合計が表示されます。</p>
     </section>
 
+    <section id="dungeon-rewards" aria-labelledby="dungeon-rewards-title">
+      <h2 id="dungeon-rewards-title">初回報酬のポーション収支を調べる</h2>
+      <p>ホームの「ダンジョン選択」→「メイン」を開きます。地図下のダンジョン一覧のすぐ上に「拡張初回報酬」が表示されます。</p>
+      <figure data-shot="dungeon-rewards"></figure>
+      <p>「初回未取得・スタミナ黒字のダンジョンだけ」をオンにすると、未取得の黒字報酬があるダンジョンだけに絞れます。「未解放のフロア・難易度も対象」は初期設定でオンです。ダンジョン名の行を開くと、黒字のある難易度と各フロアのポーション個数・差し引きストック・解放状況を確認できます。「全難易度・取得済みも表示」で全体を比較できます。</p>
+      <p class="hint">ポーション1個＝10ストック。収支は道中0勝から全勝・ボス一発クリアする場合の各フロア単体の目安です。自然回復、前提ダンジョンや前段階を解放するための消費は含みません。取得履歴を確認中の間は絞り込みを待ちます。機能のオン／オフは「拡張設定」で変更できます。</p>
+    </section>
+
     <section id="guild-filter" aria-labelledby="guild-filter-title">
       <h2 id="guild-filter-title">ギルドダンジョンの拡張フィルタ</h2>
       <p>ホームで「ダンジョン選択」を開き、「ギルド」タブの一覧にある「拡張フィルタ」を押します。</p>
@@ -179,6 +189,6 @@
     </section>
   </main>
   <footer class="shell"><a href="../">← はこホム拡張の配布ページ</a><span>画像はゲーム内を撮影し、操作箇所を切り出しています。一部の名前や残高を伏せています。</span></footer>
-  <script src="./shots.js?v=320" defer></script>
+  <script src="./shots.js?v=3210" defer></script>
 </body>
 </html>

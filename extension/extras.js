@@ -23,6 +23,7 @@
     skipGachaReveal: "AFガチャの演出を省略（結果をすぐ表示）",
     monsterBoxes: `${names.monsterBoxes}（個体の分類・元ランクの絞り込み）`,
     guildDungeonFilter: `${names.filter}（ギルドダンジョン）`,
+    dungeonRewards: `${names.dungeonRewards}（ダンジョンのポーション収支）`,
     skillPresets: `${names.skillPresets}（ホムンクルスの使用中・控え）`,
     partyShare: names.partyShare,
     trainingRoutes: `${names.trainingRoutes}（目印・優先表示・引き継ぎ）`,

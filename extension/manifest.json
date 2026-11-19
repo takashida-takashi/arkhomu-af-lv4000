@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "はこホム拡張",
-  "version": "3.2.4",
+  "version": "3.2.10",
   "description": "AFの予測・絞り込み、探索統計、通知、編成共有、ホムンクルスの育成を補助します。",
   "permissions": ["storage", "downloads"],
   "host_permissions": ["https://arkhomu.com/*"],
@@ -14,13 +14,13 @@
   }, {
     "matches": ["https://arkhomu.com/*"],
     "all_frames": true,
-    "js": ["frame-context.js", "feature-names.js", "market-snapshot.js", "forecast.js", "artifact-effects.js", "list-rules.js", "hidden-titles.js", "extras-main.js", "party-share-main.js", "training-sources-main.js", "training-preview-main.js", "training-routes-main.js", "gacha-sets.js", "expedition-main.js", "expedition-native.js", "monster-boxes.js", "guild-dungeon-main.js", "read-af.js"],
+    "js": ["frame-context.js", "feature-names.js", "market-snapshot.js", "forecast.js", "artifact-effects.js", "list-rules.js", "hidden-titles.js", "extras-main.js", "party-share-main.js", "training-sources-main.js", "training-preview-main.js", "training-routes-main.js", "gacha-sets.js", "expedition-main.js", "expedition-native.js", "monster-boxes.js", "guild-dungeon-main.js", "dungeon-rewards-main.js", "read-af.js"],
     "run_at": "document_start",
     "world": "MAIN"
   }, {
     "matches": ["https://arkhomu.com/*"],
     "all_frames": true,
-    "js": ["frame-context.js", "feature-names.js", "forecast.js", "artifact-effects.js", "list-rules.js", "filter-popup.js", "enhance-estimate.js", "explore-analysis.js", "expedition.js", "market-watch.js", "update-check.js", "desktop-update.js", "slot-home.js", "extras.js", "party-share.js", "training-routes.js", "training-artifacts.js", "training-preview.js", "training-planner.js", "guild-dungeon-filter.js", "content.js"],
+    "js": ["frame-context.js", "feature-names.js", "forecast.js", "artifact-effects.js", "list-rules.js", "filter-popup.js", "enhance-estimate.js", "explore-analysis.js", "expedition.js", "market-watch.js", "update-check.js", "desktop-update.js", "slot-home.js", "extras.js", "party-share.js", "training-routes.js", "training-artifacts.js", "training-preview.js", "training-planner.js", "guild-dungeon-filter.js", "dungeon-rewards.js", "content.js"],
     "css": ["style.css"],
     "run_at": "document_idle"
   }]

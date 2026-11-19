@@ -25,6 +25,8 @@
   const seasonKey = "hakoAf4000:official-season-end";
   const skillLevelsPrefix = "hakoAf4000:planner-levels:";
   let levelNotice;
+  let pendingLevelTargets;
+  let lastLevelTargetAttempt = 0;
   let guildBrowseSequence = 0;
   const earlyMatings = [];
   let watchMatings = false;
@@ -93,11 +95,21 @@
   function publishLevelTargets() {
     const notice = readLevelRecord("notice") ?? levelNotice;
     document.dispatchEvent(new CustomEvent("hako-af:planner-level-targets", { detail: JSON.stringify({
-      ids: Object.keys(notice?.targets ?? readLevelRecord("targets") ?? {}), loaded: !!notice?.targets
+      ids: Object.keys(notice?.targets ?? readLevelRecord("targets") ?? {}), added: notice?.added ?? {}, loaded: !!notice?.targets
     }) }));
   }
 
-  document.addEventListener("hako-af:read-planner-level-targets", publishLevelTargets);
+  document.addEventListener("hako-af:read-planner-level-targets", () => {
+    publishLevelTargets();
+    const notice = readLevelRecord("notice") ?? levelNotice;
+    const now = Date.now();
+    if (notice?.targets && notice.added && now - notice.at < 2 * 60 * 60 * 1000 || pendingLevelTargets ||
+        now - lastLevelTargetAttempt < 60_000 || typeof globalThis.$fetch !== "function") return;
+    lastLevelTargetAttempt = now;
+    // The same read-only catalogue as the game's skill encyclopedia; no level-up operation.
+    pendingLevelTargets = Promise.resolve().then(() => globalThis.$fetch("/api/skill-levels/notice", { retry: 0, timeout: 8000 }))
+      .catch(() => {}).finally(() => { pendingLevelTargets = null; });
+  });
 
   function observePlannerSkillLevels(url, query, response) {
     Promise.resolve(response).then(payload => {
@@ -118,7 +130,11 @@
           Object.keys(item).flatMap(key => /^lv\d+$/.test(key) && item[key] && item[key] !== "—" ? [Number(key.slice(2))] : [])
         ]));
         if (url === "/api/skill-levels/notice") {
-          levelNotice = { targets, at: Date.now() };
+          const added = Object.fromEntries(payload.targets.filter(item => typeof item?.skillId === "string" &&
+            ["skill", "passive"].includes(item.effect) && typeof item.addedAt === "string").map(item => [
+            (item.effect === "skill" ? "s." : "p.") + item.skillId, item.addedAt.slice(0, 10)
+          ]));
+          levelNotice = { targets, added, at: Date.now() };
           try { localStorage.setItem(skillLevelsPrefix + "notice", JSON.stringify(levelNotice)); }
           catch { /* The catalogue is still available in this tab. */ }
         } else {

@@ -605,6 +605,38 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
 .fx-dungeon__item > [data-ha4="guild-unknown"] { grid-column: 2 / -1; }
 [data-ha4="filter-popup"] .ha4-condition .ha4-condition-value { min-inline-size: min(10rem, 100%); }
 
+[data-ha4="dungeon-rewards"] { min-width: 0; margin-block: .4rem; padding: .45rem .6rem; border: 1px solid #6d5185; border-radius: .4rem; background: #221b2e; color: #f0e8f7; text-align: start; font: 400 .8rem/1.5 system-ui, sans-serif; }
+[data-ha4="dungeon-reward-controls"] { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .8rem; }
+[data-ha4="dungeon-reward-title"] { color: #ddc0fa; }
+[data-ha4="dungeon-reward-toggle"] { display: inline-flex; align-items: center; gap: .3rem; cursor: pointer; min-height: 1.8rem; }
+[data-ha4="dungeon-reward-toggle"] input { appearance: auto; accent-color: #b978f1; margin: 0; }
+[data-ha4="dungeon-reward-status"] { margin: .25rem 0; color: #c9b9d9; }
+[data-ha4="dungeon-reward-summary"] { cursor: pointer; color: #b7eaf1; overflow-wrap: anywhere; }
+[data-ha4="dungeon-reward-body"] { min-width: 0; padding-top: .35rem; max-height: min(38vh, 22rem); overflow: auto; overscroll-behavior: contain; }
+[data-ha4="dungeon-reward-range"] { margin: .25rem 0; color: #a5f0c6; }
+[data-ha4="dungeon-reward-note"] { margin: .3rem 0; color: #cbbfd6; font-size: .74rem; }
+[data-ha4="dungeon-reward-table-scroll"] { max-height: min(43vh, 23rem); overflow: auto; overscroll-behavior: contain; border: 1px solid #4b3c60; }
+[data-ha4="dungeon-reward-table"] { width: 100%; border-collapse: separate; border-spacing: 0; text-align: start; }
+[data-ha4="dungeon-reward-caption"] { text-align: start; padding: .25rem .4rem; color: #d6c7e6; }
+[data-ha4="dungeon-reward-table"] :is(th,td) { padding: .35rem .45rem; border-inline-end: 1px solid #4b3c60; border-block-end: 1px solid #4b3c60; }
+[data-ha4="dungeon-reward-heading"] { min-width: 4.5rem; background: #30243e; white-space: nowrap; }
+[data-ha4="dungeon-reward-table"] thead { position: sticky; top: 0; z-index: 1; }
+[data-ha4="dungeon-reward-cell"] { min-width: 9.8rem; background: #201929; }
+[data-ha4="dungeon-reward-cell"] > * { display: block; }
+[data-ha4="dungeon-reward-cell"][data-positive="true"] { background: #18342d; }
+[data-ha4="dungeon-reward-net"] { color: #efe7f5; font-variant-numeric: tabular-nums; }
+[data-ha4="dungeon-reward-cell"][data-positive="true"] [data-ha4="dungeon-reward-net"] { color: #9df3c8; }
+[data-ha4="dungeon-reward-cell"][data-claimed="true"] { color: #a99bb8; }
+[data-ha4="dungeon-reward-cell"][data-claimed="true"] [data-ha4="dungeon-reward-net"] { color: #b8a8c8; }
+[data-ha4="dungeon-reward-wins"], [data-ha4="dungeon-reward-claim"] { font-size: .7rem; }
+[data-ha4-dungeon-reward-hidden] { display: none !important; }
+[data-ha4-dungeon-reward-layout="classic"][data-ha4-dungeon-reward-filtered] { display: grid !important; grid-template-columns: repeat(8, minmax(0, 1fr)) !important; grid-auto-rows: auto !important; width: min(100%, 40rem) !important; }
+[data-ha4-dungeon-reward-layout="classic"][data-ha4-dungeon-reward-filtered] > [data-ha4-dungeon-reward-id] { grid-column: auto !important; grid-row: auto !important; }
+@media (max-width: 700px) {
+  [data-ha4-dungeon-reward-layout="classic"][data-ha4-dungeon-reward-filtered] { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; }
+  [data-ha4="dungeon-reward-toggle"] { min-height: 2.1rem; }
+}
+
 [data-ha4="monster-box-toolbar"] {
   display: flex;
   flex: 0 0 auto;
@@ -639,8 +671,10 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
 [data-ha4-monster-list] li.fx-mlist__item { position: relative; }
 [data-ha4="monster-box-mark"] {
   position: absolute;
-  inset-block-start: 2px;
-  inset-inline-end: 2px;
+  inset-block-start: auto;
+  inset-block-end: 1.8rem;
+  inset-inline-start: 2px;
+  inset-inline-end: auto;
   z-index: 11;
   display: grid;
   place-items: center;
@@ -653,7 +687,6 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
   cursor: pointer;
   font: 700 13px/1 system-ui, sans-serif;
 }
-.fx-mlist__item:has(.fx-mlist__check) > [data-ha4="monster-box-mark"] { inset-inline-end: 1.5rem; }
 [data-ha4="monster-box-mark"][data-marked] { background: #603484; }
 [data-ha4="monster-rank-field"], [data-ha4="monster-box-choice"] {
   display: flex;
@@ -1806,7 +1839,12 @@ html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
   font-size: .88rem;
 }
 [data-ha4="planner-field"]::placeholder { color: #b3a9c0; }
-[data-ha4="planner-filters"] { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .45rem; }
+[data-ha4="planner-filters"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem; }
+[data-ha4="planner-search-label"] { display: grid; gap: .25rem; min-width: 0; color: #cab9dd; font-size: .78rem; }
+[data-ha4="planner-skill-options"] { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; }
+[data-ha4="planner-skill-options"] > select { width: auto; max-width: 100%; height: auto; min-height: 2.3rem; line-height: 1.4; }
+[data-ha4="planner-search-toggle"] { display: inline-flex; align-items: center; gap: .25rem; min-height: 2rem; font-size: .82rem; cursor: pointer; }
+[data-ha4="planner-skill-checkbox"] { appearance: auto; margin: 0; accent-color: #b978f1; }
 [data-ha4="planner-toolbar"] { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; font-size: .82rem; }
 [data-ha4="planner-button"], [data-ha4="planner-primary"] {
   color: #f0e8fa;
@@ -1918,6 +1956,7 @@ html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
   box-shadow: 0 6px 28px #07050caa;
 }
 [data-ha4="planner-tooltip-name"] { color: #edcfff; font-size: .89rem; }
+[data-ha4="planner-tooltip-effects-title"] { display: block; margin-top: .6rem; color: #f1cd78; font-size: .8rem; }
 [data-ha4="planner-tooltip-description"] {
   margin: .35rem 0 0;
   font-size: .8rem;
@@ -2066,6 +2105,7 @@ html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
   [data-ha4="planner-header"], [data-ha4="planner-footer"] { padding: .55rem; }
   [data-ha4="planner-layout"] { grid-template-columns: 1fr; grid-auto-rows: max-content; padding: .5rem; gap: .5rem; }
   [data-ha4="planner-field"] { font-size: 16px; }
+  [data-ha4="planner-filters"] { grid-template-columns: 1fr; }
   [data-ha4="planner-skill-level-select"] { font-size: 16px; }
   [data-ha4="planner-skill-list"] { max-height: 14rem; }
   [data-ha4="planner-monster-picker"] { padding: .55rem; }

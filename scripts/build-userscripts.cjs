@@ -82,8 +82,8 @@ function copyPreviousDownloads(site) {
 
 const files = ["feature-names.js", "forecast.js", "artifact-effects.js", "list-rules.js", "filter-popup.js", "hidden-titles.js", "extras.js", "extras-main.js",
   "enhance-estimate.js", "explore-analysis.js", "market-watch.js", "party-share-main.js", "training-sources-main.js", "training-preview-main.js", "training-routes-main.js",
-  "party-share.js", "training-routes.js", "training-artifacts.js", "training-preview.js", "training-planner.js", "expedition.js", "guild-dungeon-filter.js", "content.js", "gacha-sets.js",
-  "expedition-main.js", "expedition-native.js", "monster-boxes.js", "guild-dungeon-main.js", "read-af.js"];
+  "party-share.js", "training-routes.js", "training-artifacts.js", "training-preview.js", "training-planner.js", "expedition.js", "guild-dungeon-filter.js", "dungeon-rewards.js", "content.js", "gacha-sets.js",
+  "expedition-main.js", "expedition-native.js", "monster-boxes.js", "guild-dungeon-main.js", "dungeon-rewards-main.js", "read-af.js"];
 const desktopOnly = new Set(["frame-context.js", "local-reload.js", "desktop-update.js", "slot-home.js"]);
 const bundled = new Set([...files, "market-snapshot.js", "update-check.js"]);
 const desktopModules = new Set(mobileManifest.content_scripts.flatMap(entry => entry.js));

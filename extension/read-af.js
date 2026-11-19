@@ -298,6 +298,8 @@
   delete globalThis.hakoAfMonsterBoxes;
   const guildDungeon = globalThis.hakoAfGuildDungeonMain;
   delete globalThis.hakoAfGuildDungeonMain;
+  const dungeonRewards = globalThis.hakoAfDungeonRewardsMain;
+  delete globalThis.hakoAfDungeonRewardsMain;
 
   function readThrough(ref, project) {
     const native = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(ref), "value");
@@ -536,6 +538,7 @@
     let legacyMatingParents;
     const translate = key => app?.config?.globalProperties?.$t?.(key) ?? key;
     const readGuildDungeon = guildDungeon?.startScan(dependencies, translate);
+    const readDungeonRewards = dungeonRewards?.startScan(stores, translate);
     let chatReplies;
     const getChatReplies = () => chatReplies ??= extras.indexChatReplies(stores?.get("chat"));
     const tradeCategory = stores?.get("userItems")?.currentCategoryKey === "artifact";
@@ -593,6 +596,7 @@
       const el = vnode.el ?? instance?.subTree?.el;
       monsterBoxes?.read(name, instance, vnode, el, stores);
       readGuildDungeon?.(name, instance, vnode, el);
+      readDungeonRewards?.(name, instance, vnode, el);
       const expeditionView = name === "ExpeditionModal" || name === "FlexExpeditionPage" ? instance : parentExpedition;
       if (expeditionView) {
         expeditionOwners.add(expeditionView);

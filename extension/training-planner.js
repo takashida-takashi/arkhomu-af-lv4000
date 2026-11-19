@@ -14,6 +14,8 @@
   const batchSize = 60;
   const requests = new Set();
   const explanations = new Map();
+  const explanationErrors = new Map();
+  const explanationKey = (id, level = 1) => `${id}@${level}`;
 
   function monsterPicker({ node, button, field, choose, leave, retry }) {
     const root = node("section", "planner-monster-picker");
@@ -195,6 +197,12 @@
         if (!Array.isArray(data?.skills) || !Array.isArray(data.monsters)) return;
         const byName = (a, b) => collator.compare(a.name, b.name);
         catalog = { ...data, monsters: data.monsters.sort(byName), skills: data.skills.sort(byName) };
+        for (const skill of catalog.skills) {
+          skill.searchText = key([skill.name, skill.id, skill.description, skill.searchEffects].filter(Boolean).join("\n"));
+          skill.tagSearchText = key((skill.tags ?? []).flatMap(id => [id, data.skillTagLabels?.[id]]).filter(Boolean).join("\n"));
+          skill.recentDate = skill.updated > skill.added ? skill.updated : skill.added;
+          if (skill.searchEffects) explanations.set(explanationKey(skill.id), skill.searchEffects.split("\n"));
+        }
         catalog.byId = new Map(catalog.skills.map(skill => [skill.id, skill]));
         catalog.byName = new Map();
         for (const skill of catalog.skills) {
@@ -208,9 +216,14 @@
     document.addEventListener("hako-af:training-description", event => {
       if (typeof event.detail !== "string") return;
       try {
-        const { id, effects } = JSON.parse(event.detail);
-        if (!requests.has(id) || !Array.isArray(effects)) return;
-        explanations.set(id, effects);
+        const { id, level = 1, effects, loaded, message } = JSON.parse(event.detail);
+        const ref = explanationKey(id, level);
+        if (!requests.has(ref) || !Array.isArray(effects)) return;
+        requests.delete(ref);
+        if (loaded !== false) {
+          explanations.set(ref, effects);
+          explanationErrors.delete(ref);
+        } else explanationErrors.set(ref, message);
         if (dialog?.open) dialog.dispatchEvent(new Event("ha4-refresh-description"));
       } catch { /* Ignore invalid descriptions. */ }
     });
@@ -281,12 +294,42 @@
       baseHead.append(node("h3", "planner-section-title", "育成するホムンクルス"), changeMonster);
       base.append(baseHead, baseStatus, innateList);
       const library = node("section", "planner-card");
-      const skillQuery = field("input", "スキル名で検索");
+      const skillQuery = field("input", "名前・ID・効果で検索");
       skillQuery.type = "search";
+      const tagQuery = field("input", "タグで検索（例：炎 魔法）");
+      tagQuery.type = "search";
+      const tagSuggestions = node("datalist", "planner-tag-suggestions");
+      tagSuggestions.id = "ha4-planner-skill-tags";
+      tagQuery.setAttribute("list", tagSuggestions.id);
       const skillType = field("select", "スキルの種類");
       skillType.append(new Option("すべて", ""), new Option("アクティブ", "s"), new Option("パッシブ", "p"));
+      const skillCategory = field("select", "スキルのカテゴリ");
+      const skillUnique = field("select", "固有スキルの絞り込み");
+      skillUnique.append(new Option("固有：すべて", ""), new Option("固有のみ", "unique"), new Option("継承可能のみ", "inheritable"));
       const skillFilters = node("div", "planner-filters");
-      skillFilters.append(skillQuery, skillType);
+      const searchLabel = (text, input) => {
+        const label = node("label", "planner-search-label");
+        label.append(text, input);
+        return label;
+      };
+      skillFilters.append(searchLabel("スキル検索", skillQuery), searchLabel("タグ検索", tagQuery));
+      const skillOptions = node("div", "planner-skill-options");
+      const recent = node("input", "planner-skill-checkbox");
+      recent.type = "checkbox";
+      const recentLabel = node("label", "planner-search-toggle");
+      recentLabel.title = "図鑑と同じ、追加・更新から7日以内のスキル";
+      recentLabel.append(recent, "新規のみ");
+      const leveled = node("input", "planner-skill-checkbox");
+      leveled.type = "checkbox";
+      const leveledLabel = node("label", "planner-search-toggle");
+      leveledLabel.append(leveled, "スキルレベルあり");
+      const resetSkillFilters = button("条件をリセット", () => {
+        skillQuery.value = tagQuery.value = skillType.value = skillCategory.value = skillUnique.value = "";
+        recent.checked = leveled.checked = false;
+        filterSkills();
+      });
+      skillOptions.append(skillType, skillCategory, skillUnique, recentLabel, leveledLabel, resetSkillFilters);
+      const searchHint = node("p", "planner-hint", "複数の語はスペースで区切ると、すべてを含むスキルに絞り込みます。カテゴリなどの条件も同時に使えます。");
       const list = node("ul", "planner-skill-list");
       list.tabIndex = 0;
       list.setAttribute("aria-label", "追加候補のスキル");
@@ -313,6 +356,7 @@
       levelStatus.append(levelGuide);
       levelStatus.hidden = true;
       let levelTargets = new Set();
+      let levelAdded = {};
       document.addEventListener("hako-af:planner-level-targets", event => {
         if (!dialog.open || typeof event.detail !== "string") return;
         let data;
@@ -320,12 +364,17 @@
         if (!Array.isArray(data?.ids)) return;
         const { ids, loaded } = data;
         levelTargets = new Set(ids);
+        levelAdded = data.added ?? {};
         levelStatus.hidden = loaded === true;
         for (const mark of dialog.querySelectorAll('[data-ha4="planner-level-mark"]')) {
           mark.hidden = !levelTargets.has(mark.dataset.skillRef);
         }
+        if (leveled.checked || recent.checked) filterSkills();
       });
-      library.append(node("h3", "planner-section-title", "スキルを選ぶ"), target, skillFilters, loadStatus, levelStatus, retry, list);
+      const taxonomyStatus = node("p", "planner-hint", "タグ・カテゴリ名を取得できませんでした。「再読み込み」で再取得できます。");
+      taxonomyStatus.hidden = true;
+      library.append(node("h3", "planner-section-title", "スキルを選ぶ"), target, skillFilters, skillOptions, searchHint,
+        loadStatus, taxonomyStatus, levelStatus, retry, tagSuggestions, list);
       const routeName = field("input", "ルート名");
       routeName.maxLength = 120;
       const routeGroup = field("input", "グループ名（任意）");
@@ -367,7 +416,7 @@
       let destination = "ordinary";
       let matches = [];
       let rendered = 0;
-      let tooltipAnchor, tooltipTimer;
+      let tooltipAnchor, tooltipTimer, tooltipLevel = 1;
       let pinned = false;
       let monster, baseMonsterId, currentId, rank6Passive = null, reservedNames;
       let draftScreen, cleanDraft;
@@ -545,12 +594,14 @@
         if (!tooltipAnchor?.isConnected) return hideTooltip();
         const id = tooltipAnchor.dataset.skillId;
         const skill = catalog.byId.get(id);
-        const effects = explanations.get(id);
-        tooltip.replaceChildren(node("strong", "planner-tooltip-name", skill.name));
-        if (skill.description) tooltip.append(node("p", "planner-tooltip-description", skill.description));
-        if (effects?.length) tooltip.append(node("div", "planner-tooltip-description", effects.join("\n")));
-        if (!skill.description && !effects?.length) tooltip.append(node("p", "planner-tooltip-description",
-          effects ? "図鑑に説明文がありません。" : "図鑑の説明を読み込み中…"));
+        const ref = explanationKey(id, tooltipLevel);
+        const effects = explanations.get(ref);
+        const heading = `${skill.name}${levelTargets.has(id) || tooltipLevel > 1 ? ` Lv${tooltipLevel}` : ""}`;
+        tooltip.replaceChildren(node("strong", "planner-tooltip-name", heading));
+        if (skill.description && tooltipLevel === 1) tooltip.append(node("p", "planner-tooltip-description", skill.description));
+        tooltip.append(node("strong", "planner-tooltip-effects-title", "効果"));
+        tooltip.append(node("div", "planner-tooltip-description", effects?.length ? effects.join("\n") :
+          effects ? "図鑑に追加の効果表記はありません。" : explanationErrors.get(ref) || "効果の詳細を読み込み中…"));
         tooltip.hidden = false;
         positionTooltip();
       }
@@ -560,13 +611,16 @@
         if (pin && pinned && anchor === tooltipAnchor) return hideTooltip();
         hideTooltip();
         tooltipAnchor = anchor;
+        const id = anchor.dataset.skillId;
+        tooltipLevel = anchor.closest('[data-ha4="planner-route"]') ? Number(preview?.getValues()?.skillLevels?.[id]) || 1 : 1;
         pinned = pin;
         anchor.setAttribute("aria-describedby", tooltip.id);
         renderTooltip();
-        const id = anchor.dataset.skillId;
-        if (!requests.has(id)) tooltipTimer = setTimeout(() => {
-          requests.add(id);
-          document.dispatchEvent(new CustomEvent("hako-af:read-training-description", { detail: id }));
+        const level = tooltipLevel;
+        const ref = explanationKey(id, level);
+        if (!requests.has(ref) && !explanations.has(ref)) tooltipTimer = setTimeout(() => {
+          requests.add(ref);
+          document.dispatchEvent(new CustomEvent("hako-af:read-training-description", { detail: JSON.stringify({ id, level }) }));
         }, pin ? 0 : 180);
       }
 
@@ -596,6 +650,9 @@
         else if (!tooltip.contains(event.target)) hideTooltip();
       });
       dialog.addEventListener("scroll", event => { if (!tooltip.contains(event.target)) hideTooltip(); }, true);
+      dialog.addEventListener("change", event => {
+        if (event.target.matches('[data-ha4="planner-skill-level-select"]')) hideTooltip();
+      });
       dialog.addEventListener("keydown", event => {
         if (event.key === "Escape" && !tooltip.hidden) {
           event.preventDefault();
@@ -695,14 +752,36 @@
       function filterSkills() {
         hideTooltip();
         const terms = key(skillQuery.value).split(/\s+/).filter(Boolean);
+        const tagTerms = key(tagQuery.value).split(/\s+/).filter(Boolean);
+        const date = new Date();
+        date.setDate(date.getDate() - 6);
+        const cutoff = [date.getFullYear(), date.getMonth() + 1, date.getDate()].map(n => String(n).padStart(2, "0")).join("-");
         matches = catalog?.skills.filter(skill => (!skill.unique || destination === "ordinary" && isInnate(skill)) &&
           (!skillType.value || skill.id.startsWith(skillType.value + ".")) &&
-          terms.every(term => key(skill.name).includes(term))) ?? [];
+          (!skillCategory.value || skill.categories?.includes(skillCategory.value)) &&
+          (!skillUnique.value || (skillUnique.value === "unique") === !!skill.unique) &&
+          (!recent.checked || !!skill.recentDate && skill.recentDate >= cutoff || !!levelAdded[skill.id] && levelAdded[skill.id] >= cutoff) &&
+          (!leveled.checked || levelTargets.has(skill.id)) &&
+          terms.every(term => skill.searchText.includes(term)) &&
+          tagTerms.every(term => skill.tagSearchText.includes(term))) ?? [];
         rendered = 0;
         list.replaceChildren();
         list.scrollTop = 0;
         appendSkills();
         if (catalog) loadStatus.textContent = matches.length ? `${matches.length.toLocaleString("ja-JP")}件` : "一致するスキルがありません。";
+      }
+
+      function updateSkillFilters() {
+        const selected = skillCategory.value;
+        const used = new Set(catalog?.skills.flatMap(skill => skill.categories ?? []));
+        const order = new Map((catalog?.skillCategoryOrder ?? []).map((id, index) => [id, index]));
+        const label = id => catalog?.skillCategoryLabels?.[id] ?? id;
+        const ids = [...used].sort((a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity) || collator.compare(label(a), label(b)));
+        skillCategory.replaceChildren(new Option("全カテゴリ", ""), ...ids.map(id => new Option(label(id), id)));
+        if (used.has(selected)) skillCategory.value = selected;
+        const tagLabels = new Set(catalog?.skills.flatMap(skill => (skill.tags ?? []).map(id => catalog.skillTagLabels?.[id]).filter(Boolean)));
+        tagSuggestions.replaceChildren(...[...tagLabels].sort(collator.compare).map(label => new Option(label, label)));
+        taxonomyStatus.hidden = !catalog || catalog.hasSkillTaxonomy !== false;
       }
 
       function showScreen(screen, focus = true) {
@@ -817,7 +896,7 @@
       }
 
       renderCatalog = () => {
-        retry.hidden = !!catalog;
+        retry.hidden = !!catalog && catalog.hasSkillTaxonomy !== false;
         if (!catalog) loadStatus.textContent = "図鑑データを読み込めませんでした。図鑑のホムンクルス・スキルを開いてから再読み込みしてください。";
         if (catalog) {
           const wasClean = !hasUnsavedChanges();
@@ -829,11 +908,13 @@
         }
         picker.setCatalog(catalog);
         picker.setSelected(monster);
+        updateSkillFilters();
         filterSkills();
         render();
       };
       skillQuery.addEventListener("input", filterSkills);
-      skillType.addEventListener("change", filterSkills);
+      tagQuery.addEventListener("input", filterSkills);
+      for (const field of [skillType, skillCategory, skillUnique, recent, leveled]) field.addEventListener("change", filterSkills);
       for (const field of [routeName, routeGroup]) field.addEventListener("input", resetStatus);
       routeGroup.addEventListener("change", () => preview?.refresh());
       resetOnReopen = () => {
