@@ -5,6 +5,10 @@ function startArkHomuUpdates(distribution, bundledVersion, bundledCode) {
   const manager = typeof GM === "object" && GM;
   const releaseKey = "arkhomu-af-release";
   const maxScriptLength = 1_048_576;
+  const storage = {
+    getValue: (key, fallback) => waitForArkHomuUpdate(() => manager.getValue(key, fallback), 5_000),
+    setValue: (key, value) => waitForArkHomuUpdate(() => manager.setValue(key, value), 10_000)
+  };
   let activeVersion = bundledVersion;
   let readyVersion = null;
 
@@ -36,15 +40,17 @@ function startArkHomuUpdates(distribution, bundledVersion, bundledCode) {
     const { version, sha256 } = JSON.parse(decoder.decode(await fetchFile("runtime.json", 4096)));
     if (!validArkHomuReleaseVersion(version)) throw new Error("Invalid release version");
     if (!newerArkHomuRelease(version, activeVersion)) return null;
-    const cached = await manager.getValue(releaseKey, null);
+    const cached = await storage.getValue(releaseKey, null);
     if (usableArkHomuRuntime(cached, bundledVersion) && !newerArkHomuRelease(version, cached.version)) return cached.version;
     manual?.progress();
     const bytes = await fetchFile("runtime.js", maxScriptLength);
+    manual?.progress("verify");
     const code = decoder.decode(bytes);
     if (!usableArkHomuRuntime({ version, code }, bundledVersion) || !await matchesArkHomuReleaseHash(bytes, sha256))
       throw new Error("Invalid update script");
     if (!enabled()) return null;
-    await manager.setValue(releaseKey, { version, code });
+    manual?.progress("save");
+    await storage.setValue(releaseKey, { version, code });
     return version;
   }
 
@@ -52,13 +58,13 @@ function startArkHomuUpdates(distribution, bundledVersion, bundledCode) {
     let cached;
     const canUpdate = typeof manager?.getValue === "function" && typeof manager?.setValue === "function";
     if (canUpdate) {
-      try { cached = await manager.getValue(releaseKey, null); } catch { /* Use the bundled script. */ }
+      try { cached = await storage.getValue(releaseKey, null); } catch { /* Use the bundled script. */ }
     }
     const cachedRelease = usableArkHomuRuntime(cached, bundledVersion) ? cached : null;
     activeVersion = cachedRelease?.version ?? bundledVersion;
     if (canUpdate) {
       document.addEventListener("hako-af:read-userscript-update", reportReady);
-      const updates = startArkHomuReleaseCheck(distribution, manager, "arkhomu-af-next-check",
+      const updates = startArkHomuReleaseCheck(distribution, storage, "arkhomu-af-next-check",
         "arkhomu-af-auto-update", async (fetchFile, enabled, manual) => {
           const version = await receive(fetchFile, enabled, manual);
           if (version && !manual) {

@@ -13,7 +13,11 @@ function newerArkHomuRelease(candidate, current) {
 async function matchesArkHomuReleaseHash(bytes, expected) {
   if (typeof expected !== "string" || !/^[a-f0-9]{64}$/.test(expected)) return false;
   const digest = await crypto.subtle.digest("SHA-256", bytes);
-  const actual = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+  // Firefox userscript sandboxes may wrap TypedArrays and reject indexed iteration.
+  // Read the native ArrayBuffer through DataView methods, without crossing that wrapper.
+  const view = new DataView(digest);
+  let actual = "";
+  for (let index = 0; index < view.byteLength; index++) actual += view.getUint8(index).toString(16).padStart(2, "0");
   return actual === expected;
 }
 
@@ -26,6 +30,30 @@ function usableArkHomuRuntime(release, currentVersion) {
   return end > 0 && header.startsWith("// ==UserScript==\n") &&
     header.match(/^\/\/ @namespace\s+(\S+)$/m)?.[1] === "arkhomu-af-lv4000" &&
     header.match(/^\/\/ @version\s+(\S+)$/m)?.[1] === release.version;
+}
+
+function waitForArkHomuUpdate(task, milliseconds, cancel, signal) {
+  let timer;
+  let aborted;
+  if (signal?.aborted) return Promise.reject(new DOMException("Update cancelled", "AbortError"));
+  return Promise.race([
+    Promise.resolve().then(task),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error("Update operation timed out");
+        error.name = "TimeoutError";
+        reject(error);
+        cancel?.();
+      }, milliseconds);
+      if (signal) {
+        aborted = () => reject(new DOMException("Update cancelled", "AbortError"));
+        signal.addEventListener("abort", aborted, { once: true });
+      }
+    })
+  ]).finally(() => {
+    clearTimeout(timer);
+    if (aborted) signal.removeEventListener("abort", aborted);
+  });
 }
 
 function bindArkHomuUserscriptManualCheck(checkNow) {
@@ -41,12 +69,13 @@ function bindArkHomuUserscriptManualCheck(checkNow) {
     if (busy || !event.isTrusted ||
         !event.target?.closest?.('[data-ha4-version-check] > button[data-ha4="update-version-button"]')) return;
     const page = location.href;
-    let downloading = false;
+    let stage = "check";
+    const stages = { download: "更新を取得中…", verify: "更新データを検証中…", save: "更新を保存中…" };
     publish("更新を確認中…", true);
     try {
-      const version = await checkNow(() => {
-        downloading = true;
-        publish("更新を取得中…", true);
+      const version = await checkNow((next = "download") => {
+        stage = Object.hasOwn(stages, next) ? next : "download";
+        publish(stages[stage], true);
       });
       if (!version) return publish("最新です", false);
       if (page !== location.href) return publish(`v${version} を取得しました`, false);
@@ -55,8 +84,10 @@ function bindArkHomuUserscriptManualCheck(checkNow) {
         if (page === location.href) location.reload();
         else publish(`v${version} を取得しました`, false);
       }, 400);
-    } catch {
-      publish(downloading ? "更新を取得できませんでした" : "更新を確認できませんでした", false, true);
+    } catch (error) {
+      const label = { check: "確認", download: "取得", verify: "検証", save: "保存" }[stage];
+      const reason = error?.name === "TimeoutError" ? "がタイムアウトしました" : "ができませんでした";
+      publish(`更新の${label}${reason}。もう一度押してください`, false, true);
     }
   }, true);
 }
@@ -98,43 +129,50 @@ function startArkHomuReleaseCheck(distribution, storage, nextCheckKey, lockName,
     await publishHistory();
   }
 
-  async function performCheck(fetchRelease, isEnabled, manual) {
+  async function performCheck(fetchRelease, isEnabled, manual, controller) {
     const at = Date.now();
     let successful = false;
     try {
-      const result = await receive(fetchRelease, isEnabled, manual);
+      const result = await waitForArkHomuUpdate(() => receive(fetchRelease, isEnabled, manual),
+        manual ? 50_000 : 35_000, () => controller.abort(), controller.signal);
       successful = true;
       return result;
     } finally {
-      try { await storage.setValue(lastCheckKey, { at, successful }); } catch { /* Downloads can proceed. */ }
-      await publishHistory();
+      // A failed history write must not hold the update lock or prevent applying a verified update.
+      void waitForArkHomuUpdate(async () => {
+        try { await storage.setValue(lastCheckKey, { at, successful }); } catch { /* Downloads can proceed. */ }
+        await publishHistory();
+      }, 5_000).catch(() => {});
     }
   }
 
-  async function fetchFile(path, maxLength, manual = false) {
+  async function fetchFile(path, maxLength, manual = false, signal) {
     if (!manual && !enabled()) throw new Error("Automatic updates disabled");
     const controller = new AbortController();
+    const abort = () => controller.abort();
+    if (signal?.aborted) throw new DOMException("Update cancelled", "AbortError");
+    signal?.addEventListener("abort", abort, { once: true });
     if (!manual) pending = controller;
-    const timeout = setTimeout(() => controller.abort(), 10_000);
     try {
-      const response = await fetch(distribution + path, {
-        cache: "no-cache",
-        credentials: "omit",
-        referrerPolicy: "no-referrer",
-        redirect: "error",
-        signal: controller.signal
-      });
-      if (!response.ok || Number(response.headers.get("content-length")) > maxLength) throw new Error("Invalid update response");
-      const bytes = await response.arrayBuffer();
-      if (bytes.byteLength > maxLength) throw new Error("Update exceeds the size limit");
-      return bytes;
+      return await waitForArkHomuUpdate(async () => {
+        const response = await fetch(distribution + path, {
+          cache: "no-cache", credentials: "omit", referrerPolicy: "no-referrer", redirect: "error",
+          signal: controller.signal
+        });
+        if (!response.ok || Number(response.headers.get("content-length")) > maxLength) throw new Error("Invalid update response");
+        const bytes = await response.arrayBuffer();
+        if (bytes.byteLength > maxLength) throw new Error("Update exceeds the size limit");
+        return bytes;
+      }, manual ? 45_000 : 20_000, abort);
     } finally {
-      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+      controller.abort();
       if (pending === controller) pending = undefined;
     }
   }
 
-  async function downloadIfDue() {
+  async function downloadIfDue(controller) {
+    const { signal } = controller;
     if (document.hidden || !enabled()) return;
     const now = Date.now();
     let storedCheck = await storage.getValue(scheduleKey, 0);
@@ -150,7 +188,9 @@ function startArkHomuReleaseCheck(distribution, storage, nextCheckKey, lockName,
     }
     nextCheck = now + interval;
     await storage.setValue(scheduleKey, nextCheck);
-    await performCheck(fetchFile, enabled);
+    if (signal.aborted) return;
+    await performCheck((path, limit) => fetchFile(path, limit, false, signal),
+      () => !signal.aborted && enabled(), undefined, controller);
   }
 
   function refresh() {
@@ -165,15 +205,20 @@ function startArkHomuReleaseCheck(distribution, storage, nextCheckKey, lockName,
     else void check();
   }
 
-  function locked(task) {
+  function locked(task, signal) {
     // Serialize checks from simultaneously opened game tabs.
-    return navigator.locks ? navigator.locks.request(lockName, task) : task();
+    if (signal?.aborted) throw new DOMException("Update cancelled", "AbortError");
+    return navigator.locks ? signal ? navigator.locks.request(lockName, { signal }, task)
+      : navigator.locks.request(lockName, task) : task();
   }
 
   function check() {
-    checking = Promise.resolve().then(() => locked(downloadIfDue)).catch(() => {
+    const controller = new AbortController();
+    checking = waitForArkHomuUpdate(() => locked(() => downloadIfDue(controller), controller.signal),
+      45_000, () => controller.abort()).catch(() => {
       if (Date.now() >= nextCheck) nextCheck = Date.now() + interval;
     }).finally(() => {
+      controller.abort();
       checking = null;
       refresh();
     });
@@ -181,9 +226,15 @@ function startArkHomuReleaseCheck(distribution, storage, nextCheckKey, lockName,
 
   function checkNow(progress) {
     if (manualCheck) return manualCheck;
-    const fetchManually = (path, maxLength) => fetchFile(path, maxLength, true);
-    manualCheck = Promise.resolve(checking).then(() => locked(() =>
-      performCheck(fetchManually, () => true, { progress }))).finally(() => {
+    const controller = new AbortController();
+    const { signal } = controller;
+    const fetchManually = (path, maxLength) => fetchFile(path, maxLength, true, signal);
+    const guardedProgress = stage => { if (!signal.aborted) progress?.(stage); };
+    // Bound lock waits, verification, GM storage and history writes as well as the network.
+    manualCheck = waitForArkHomuUpdate(() => Promise.resolve(checking).then(() => locked(() =>
+      performCheck(fetchManually, () => !signal.aborted, { progress: guardedProgress }, controller), signal)),
+      60_000, () => controller.abort()).finally(() => {
+      controller.abort();
       manualCheck = null;
       refresh();
     });
@@ -191,7 +242,7 @@ function startArkHomuReleaseCheck(distribution, storage, nextCheckKey, lockName,
   }
 
   document.addEventListener("hako-af:read-update-history", publishHistory);
-  void Promise.resolve().then(() => locked(recordInstalled)).catch(() => {});
+  void Promise.resolve().then(() => locked(() => waitForArkHomuUpdate(recordInstalled, 10_000))).catch(() => {});
   document.addEventListener("visibilitychange", refresh);
   document.addEventListener("hako-af:auto-update-changed", refresh);
   window.addEventListener("pageshow", refresh);
