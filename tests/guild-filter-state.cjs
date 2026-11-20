@@ -19,15 +19,22 @@ function load() {
 const plain = value => JSON.parse(JSON.stringify(value));
 const current = load();
 assert.equal(current.state.root.children.length, 0);
+assert.equal(current.state.combineNations, false, "Nation grouping stays enabled by default");
+assert.equal(current.state.hideFinished, false, "Finished challenges stay visible by default");
 const root = { join: "or", children: [{ join: "and", children: [
   { key: "mobDifficulty", value: "13", comparison: "min" }, { key: "mobEnemies", value: "ファフニール" }
 ] }, { join: "count", minimum: 2, children: [
   { key: "entryFee", min: "", max: "1000000" }, { key: "bossEnemies", value: "ヴォイド", absent: true },
   { key: "todayClearRate", min: "80", max: "" }
 ] }] };
-Object.assign(current.state, { root, sortKey: "mobStars", sortDirection: "desc", showUnknown: true });
+Object.assign(current.state, { root, sortKey: "mobStars", sortDirection: "desc", showUnknown: true, combineNations: true, hideFinished: true });
 current.changed();
 assert.deepEqual(plain(load().state), plain(current.state), "Applied conditions survive a new runtime");
+const savedWithNations = values.get(key);
+const legacy = JSON.parse(savedWithNations);delete legacy.combineNations;delete legacy.hideFinished;values.set(key, JSON.stringify(legacy));
+assert.equal(load().state.combineNations, false, "Existing saved filters keep the new option off");
+assert.equal(load().state.hideFinished, false, "Existing saved filters keep finished challenges visible");
+values.set(key, savedWithNations);
 const original = values.get(key);
 values.set("guild-dungeon-filter-preset:手動プリセット", "keep");
 blockWrites = true;current.state.sortDirection = "asc";current.changed();

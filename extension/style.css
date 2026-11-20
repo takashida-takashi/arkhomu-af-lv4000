@@ -572,6 +572,20 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
   margin-block: .2rem .35rem;
 }
 [data-ha4="guild-filter-toolbar"] small { color: #d2bfdc; }
+[data-ha4="guild-combine-nations"] { display: inline-flex; align-items: center; gap: .3rem; color: #e7dbef; font-size: .8rem; cursor: pointer; }
+[data-ha4="guild-combine-nations"] input { accent-color: #bb8aeb; }
+[data-ha4-guild-ungrouped] [data-ha4-guild-flat-group],
+[data-ha4-guild-ungrouped] [data-ha4-guild-flat-grid] { display: contents !important; }
+[data-ha4-guild-ungrouped] [data-ha4-guild-flat-heading] { display: none !important; }
+[data-ha4-guild-ungrouped][data-ha4-guild-flat-flow],
+[data-ha4-guild-ungrouped] [data-ha4-guild-flat-flow] { display: flex !important; flex-direction: column; gap: .25rem; }
+[data-ha4-guild-flat-flow] > * { order: 1000000; }
+[data-ha4-guild-flat-flow] > .fx-dungeon__guild-bar,
+[data-ha4-guild-flat-flow] > [data-ha4="guild-filter-toolbar"] { order: -1; }
+[data-ha4-guild-ungrouped] [data-ha4-guild-filter-row] { order: var(--ha4-guild-order, 0); }
+[data-ha4="guild-finished-heading"] { order: var(--ha4-guild-order); margin-top: .65rem; padding: .35rem .3rem; border-top: 1px solid #655273; color: #d2bfdc; font-size: .85rem; font-weight: 600; }
+[data-ha4="guild-finished-toggle"] { padding: .2rem .45rem; border: 1px solid #765789; border-radius: .3rem; background: #30243f; color: #e7dbef; font-size: .8rem; cursor: pointer; }
+[data-ha4="guild-finished-toggle"][aria-pressed="true"] { background: #513762; }
 [data-ha4="guild-pending-toggle"] {
   padding: .2rem .45rem;
   border: 1px solid #77634d;

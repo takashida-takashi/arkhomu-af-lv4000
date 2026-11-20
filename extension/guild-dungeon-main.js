@@ -19,6 +19,30 @@
     return groups.flatMap(group => group.entries).filter(entry => entry?.is_guild && entry.id && entry.guildId);
   }
 
+  function nativeOrder(instance, groups, dependencies) {
+    const grouped = entries(groups);
+    const ids = new Set(grouped.map(row => row.id));
+    const pending = [];
+    for (let owner = instance, depth = 0; owner && depth < 4; owner = owner.parent, depth++) {
+      pending.push(...dependencies(owner.effect));
+    }
+    const seen = new Set();
+    while (pending.length && seen.size < 100) {
+      const ref = pending.shift();
+      if (seen.has(ref)) continue;
+      seen.add(ref);
+      const value = ref?._value;
+      if (Array.isArray(value)) {
+        const rows = value.filter(row => row?.is_guild && ids.has(row.id));
+        if (rows.length === ids.size && rows.length && new Set(rows.map(row => row.id)).size === ids.size) {
+          return new Map(rows.map((row, index) => [row.id, index]));
+        }
+      }
+      pending.push(...dependencies(ref));
+    }
+    return new Map(grouped.map((row, index) => [row.id, index]));
+  }
+
   function enemyNames(enemies, translate) {
     if (!Array.isArray(enemies)) return null;
     const names = new Set();
@@ -43,7 +67,7 @@
     return lineup?.[key] ?? fromList?.[key];
   }
 
-  function rowData(entry, translate) {
+  function rowData(entry, translate, order) {
     const summary = entry.summary ?? {};
     const id = String(entry.guildId);
     const fromList = summary.sessionId ? null : browseLayouts?.get(id);
@@ -54,7 +78,8 @@
     const definition = detail?.definition;
     const lineup = observedLineups?.get(id, revision);
     const cached = snapshots.get(entry);
-    if (cached && cached.fromList === fromList && cached.detail === detail && cached.lineup === lineup) return cached.value;
+    if (cached && cached.fromList === fromList && cached.detail === detail && cached.lineup === lineup &&
+      cached.order === order && cached.todayClosed === summary.todayClosed) return cached.value;
     const specialToday = detail?.business?.hasSpecialRewards ?? summary.specialToday;
     const normalFee = number(definition?.entryFee ?? fromList?.entryFee ?? summary.entryFee);
     const specialFee = number(definition?.specialEntryFee ?? fromList?.specialEntryFee ?? summary.specialEntryFee) ?? normalFee;
@@ -62,6 +87,7 @@
     const todayEntrants = number(summary.todayEntrants);
     const todayClearers = number(summary.todayClearers);
     const data = {
+      nativeOrder: order,
       name: entry.name ?? summary.name,
       guild: entry.guildName ?? summary.guildName,
       mobDifficulty: number(definition?.mobDifficulty ?? fromList?.mobDifficulty ?? summary.mobDifficulty),
@@ -78,7 +104,7 @@
     };
     const value = JSON.stringify(data);
     if (data.mobEnemies?.complete !== false && data.bossEnemies?.complete !== false) {
-      snapshots.set(entry, { fromList, detail, lineup, value });
+      snapshots.set(entry, { fromList, detail, lineup, order, todayClosed: summary.todayClosed, value });
     }
     return value;
   }
@@ -88,25 +114,27 @@
     const contexts = new WeakMap();
     return (name, instance, vnode, el) => {
       if (classicLists.has(name) && instance && el?.nodeType === 1) {
-        const rows = entries(instance.props?.groups ?? []);
-        contexts.set(instance, new Map(rows.map(row => [row.id, row])));
+        const groups = instance.props?.groups ?? [];
+        const rows = entries(groups);
+        contexts.set(instance, { rows: new Map(rows.map(row => [row.id, row])), order: nativeOrder(instance, groups, dependencies) });
         if (!el.hasAttribute(listAttribute)) el.setAttribute(listAttribute, "");
       } else if (name === "FlexDungeonSelectDialog" && instance) {
         // Its list renders grouped dungeon entries, including details fetched by the game's selector.
         const groups = dependencies(instance.effect).map(ref => ref._value).find(value =>
           Array.isArray(value) && value.some(group => Array.isArray(group?.entries) && group.entries.some(row => row?.is_guild)));
         const rows = groups ? entries(groups) : [];
-        contexts.set(instance, new Map(rows.map(row => [row.id, row])));
+        contexts.set(instance, { rows: new Map(rows.map(row => [row.id, row])), order: nativeOrder(instance, groups ?? [], dependencies) });
       }
       if (el?.nodeType !== 1 || !vnode.ctx) return;
-      const rows = contexts.get(vnode.ctx);
-      if (!rows) return;
+      const context = contexts.get(vnode.ctx);
+      if (!context) return;
+      const { rows, order } = context;
       if (el.matches(flexList)) {
         el.toggleAttribute(listAttribute, rows.size > 0 || !!el.querySelector(".fx-dungeon__guild-bar"));
       } else if (vnode.type === "li" && vnode.key != null) {
         const entry = rows.get(vnode.key);
         if (!entry) return;
-        const value = rowData(entry, translate);
+        const value = rowData(entry, translate, order.get(entry.id));
         if (el.getAttribute(rowAttribute) !== value) el.setAttribute(rowAttribute, value);
       }
     };

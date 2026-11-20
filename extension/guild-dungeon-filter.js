@@ -113,12 +113,40 @@
     if (note.textContent !== label) note.textContent = label;
   }
 
+  function nationLayout(list, panel, rows, combined) {
+    const next = new Map();
+    if (combined) for (const { el } of rows) {
+      const grid = el.parentElement, header = groupHeader(el);
+      if (!header) continue;
+      const flex = header === grid.previousElementSibling;
+      const flow = flex ? grid.parentElement : header.parentElement;
+      if (!flow || flow !== list && !list.contains(flow)) continue;
+      next.set(grid, "data-ha4-guild-flat-grid");
+      if (flex) {
+        next.set(header, "data-ha4-guild-flat-heading");
+        next.set(flow, "data-ha4-guild-flat-flow");
+      } else {
+        next.set(header, "data-ha4-guild-flat-group");
+        next.set(header.querySelector(":scope > h4"), "data-ha4-guild-flat-heading");
+        next.set(flow, "data-ha4-guild-flat-flow");
+      }
+    }
+    for (const [node, attribute] of panel.layout ?? []) if (next.get(node) !== attribute) node.removeAttribute(attribute);
+    for (const [node, attribute] of next) if (!node.hasAttribute(attribute)) node.setAttribute(attribute, "");
+    panel.layout = next;
+    panel.flow = [...next].find(([, attribute]) => attribute === "data-ha4-guild-flat-flow")?.[0];
+    list.toggleAttribute("data-ha4-guild-ungrouped", combined);
+  }
+
   function start(isEnabled) {
-    const state = { root: { join: "and", children: [] }, showUnknown: false, sortKey: "", sortDirection: "asc" };
+    const state = { root: { join: "and", children: [] }, showUnknown: false, sortKey: "", sortDirection: "asc", combineNations: false, hideFinished: false };
     try {
       const stored = localStorage.getItem(storageKey);
       if (stored) {
         const restored = createPopup.parseSharedPreset(stored, fields, options.shareFormat);
+        const display = JSON.parse(stored);
+        restored.combineNations = display.combineNations === true;
+        restored.hideFinished = display.hideFinished === true;
         for (const key of Object.keys(state)) state[key] = restored[key];
       }
     } catch { /* Keep filtering available when saved data or storage cannot be read. */ }
@@ -130,7 +158,8 @@
     function changed() {
       try {
         const value = JSON.stringify({ format: options.shareFormat, version: 2, root: state.root,
-          showUnknown: state.showUnknown, sortKey: state.sortKey, sortDirection: state.sortDirection });
+          showUnknown: state.showUnknown, sortKey: state.sortKey, sortDirection: state.sortDirection,
+          combineNations: state.combineNations, hideFinished: state.hideFinished });
         if (value !== lastSaved) localStorage.setItem(storageKey, value);
         lastSaved = value;
         saveFailed = false;
@@ -176,6 +205,8 @@
     function clear(list, panel) {
       panel.popup.remove();
       panel.toolbar.remove();
+      panel.finishedHeading?.remove();
+      nationLayout(list, panel, [], false);
       for (const row of list.querySelectorAll(rowSelector)) {
         row.removeAttribute("data-ha4-guild-hidden");
         row.style.removeProperty("--ha4-guild-order");
@@ -215,8 +246,27 @@
             state.showUnknown = !state.showUnknown;
             changed();
           });
-          toolbar.append(popup.element, pendingToggle, status);
-          panel = { popup, toolbar, status, pendingToggle };
+          const combine = document.createElement("input");
+          combine.type = "checkbox";
+          combine.setAttribute("aria-label", "国の区別なく並べる");
+          combine.addEventListener("change", () => {
+            state.combineNations = combine.checked;
+            changed();
+          });
+          const combineLabel = document.createElement("label");
+          combineLabel.dataset.ha4 = "guild-combine-nations";
+          combineLabel.title = "読み込み済みの全ギルドダンジョンを、本体または拡張ソートの順に並べます。";
+          combineLabel.append(combine, "国の区別なく並べる");
+          const finishedToggle = document.createElement("button");
+          finishedToggle.type = "button";
+          finishedToggle.dataset.ha4 = "guild-finished-toggle";
+          finishedToggle.title = "今日の挑戦が終わったダンジョンの表示を切り替えます。選択は保存されます。";
+          finishedToggle.addEventListener("click", () => {
+            state.hideFinished = !state.hideFinished;
+            changed();
+          });
+          toolbar.append(popup.element, combineLabel, finishedToggle, pendingToggle, status);
+          panel = { popup, toolbar, status, pendingToggle, combine, finishedToggle };
           panels.set(list, panel);
         }
         if (panel.toolbar.parentElement !== list) {
@@ -225,12 +275,17 @@
           else list.prepend(panel.toolbar);
         }
         const rows = [...list.querySelectorAll(rowSelector)].map(readRow);
+        panel.combine.checked = state.combineNations;
+        nationLayout(list, panel, rows, state.combineNations);
         const counts = new Map();
         const headers = new Map();
         let matched = 0;
         let pending = 0;
+        let finished = 0, visibleFinished = 0;
         for (const row of rows) {
           const { el, data } = row;
+          row.finished = data.todayClosed === "1";
+          if (row.finished) finished++;
           for (const [key, value] of Object.entries(data)) {
             if (value != null) counts.set(key, (counts.get(key) ?? 0) + 1);
           }
@@ -239,7 +294,8 @@
           if (result === true) matched++;
           if (result === null) pending++;
           const unknownShown = result === null && state.showUnknown;
-          const visible = result === true || unknownShown;
+          const visible = (result === true || unknownShown) && !(state.hideFinished && row.finished);
+          if (visible && row.finished) visibleFinished++;
           el.toggleAttribute("data-ha4-guild-hidden", !visible);
           const heading = groupHeader(el);
           if (heading) headers.set(heading, headers.get(heading) || visible);
@@ -261,10 +317,11 @@
         for (const [heading, visible] of headers) heading.toggleAttribute(emptyGroupAttribute, !visible);
         const order = state.sortKey && (state.sortDirection === "asc" ? 1 : -1);
         const prioritizeMatches = active && state.showUnknown && pending > 0;
-        if (order || prioritizeMatches) {
+        if (order || prioritizeMatches || state.combineNations) {
           rows.sort((a, b) => {
+            if (state.combineNations && a.finished !== b.finished) return a.finished ? 1 : -1;
             if (prioritizeMatches && (a.result === null) !== (b.result === null)) return a.result === null ? 1 : -1;
-            if (!order) return 0;
+            if (!order) return state.combineNations ? (a.data.nativeOrder ?? 0) - (b.data.nativeOrder ?? 0) : 0;
             const left = a.data[state.sortKey];
             const right = b.data[state.sortKey];
             if (left == null) return right == null ? 0 : 1;
@@ -273,11 +330,30 @@
           });
         }
         rows.forEach(({ el }, index) => {
-          const value = order || prioritizeMatches ? String(index) : "";
+          const value = order || prioritizeMatches || state.combineNations ? String(index * 2 + 1) : "";
           if (el.style.getPropertyValue("--ha4-guild-order") !== value) el.style.setProperty("--ha4-guild-order", value);
         });
+        if (state.combineNations && panel.flow && visibleFinished) {
+          if (!panel.finishedHeading) {
+            panel.finishedHeading = document.createElement("div");
+            panel.finishedHeading.dataset.ha4 = "guild-finished-heading";
+            panel.finishedHeading.setAttribute("role", "heading");
+            panel.finishedHeading.setAttribute("aria-level", "4");
+          }
+          const heading = panel.finishedHeading;
+          if (heading.parentElement !== panel.flow) panel.flow.append(heading);
+          const label = `今日の挑戦が終わったダンジョン ${visibleFinished}件`;
+          if (heading.textContent !== label) heading.textContent = label;
+          const value = String(rows.findIndex(row => row.finished) * 2);
+          if (heading.style.getPropertyValue("--ha4-guild-order") !== value) heading.style.setProperty("--ha4-guild-order", value);
+        } else panel.finishedHeading?.remove();
+        const finishedPressed = String(state.hideFinished);
+        if (panel.finishedToggle.getAttribute("aria-pressed") !== finishedPressed) panel.finishedToggle.setAttribute("aria-pressed", finishedPressed);
+        const finishedText = state.hideFinished ? `終了分を表示（${finished}件）` : `終了分を非表示（${finished}件）`;
+        if (panel.finishedToggle.textContent !== finishedText) panel.finishedToggle.textContent = finishedText;
         const summary = (error ?? (`一覧 ${rows.length}件` +
           (active ? `・判定済み ${rows.length - pending}件（一致 ${matched}件）・未確認 ${pending}件` : ""))) +
+          (state.hideFinished && finished ? `・終了 ${finished}件を非表示` : "") +
           (saveFailed ? "・条件を保存できませんでした" : "");
         if (panel.status.textContent !== summary) panel.status.textContent = summary;
         panel.pendingToggle.hidden = pending === 0;
