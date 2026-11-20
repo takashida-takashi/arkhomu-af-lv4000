@@ -1,3 +1,7 @@
+// Managers may expose a Promise constructor from the page to a privileged script.
+// Use the intrinsic constructor of our own async functions for all update jobs.
+const ArkHomuUpdatePromise = (async () => {})().constructor;
+
 function validArkHomuReleaseVersion(version) {
   return typeof version === "string" && /^\d{1,6}\.\d{1,6}\.\d{1,6}$/.test(version);
 }
@@ -35,10 +39,10 @@ function usableArkHomuRuntime(release, currentVersion) {
 function waitForArkHomuUpdate(task, milliseconds, cancel, signal) {
   let timer;
   let aborted;
-  if (signal?.aborted) return Promise.reject(new DOMException("Update cancelled", "AbortError"));
-  return Promise.race([
-    Promise.resolve().then(task),
-    new Promise((_, reject) => {
+  if (signal?.aborted) return ArkHomuUpdatePromise.reject(new DOMException("Update cancelled", "AbortError"));
+  return ArkHomuUpdatePromise.race([
+    ArkHomuUpdatePromise.resolve().then(task),
+    new ArkHomuUpdatePromise((_, reject) => {
       timer = setTimeout(() => {
         const error = new Error("Update operation timed out");
         error.name = "TimeoutError";
@@ -56,6 +60,27 @@ function waitForArkHomuUpdate(task, milliseconds, cancel, signal) {
   });
 }
 
+async function withArkHomuUpdateLock(name, task, signal) {
+  let entered = false;
+  function run() {
+    if (signal?.aborted) throw new DOMException("Update cancelled", "AbortError");
+    entered = true;
+    return task();
+  }
+  if (signal?.aborted) return run();
+  try {
+    const locks = navigator.locks;
+    if (typeof locks?.request !== "function") return run();
+    return await (signal ? locks.request(name, { signal }, run) : locks.request(name, run));
+  } catch (error) {
+    // Lock support can be exposed but unavailable to a userscript's browser context.
+    // This coordination is optional. Never retry an update task that already started,
+    // or a request that our own timeout/cancellation actually aborted.
+    if (entered || signal?.aborted) throw error;
+    return run();
+  }
+}
+
 function bindArkHomuUserscriptManualCheck(checkNow) {
   let busy = false;
   function publish(text, pending, error = false) {
@@ -65,9 +90,7 @@ function bindArkHomuUserscriptManualCheck(checkNow) {
     }));
   }
 
-  document.addEventListener("click", async event => {
-    if (busy || !event.isTrusted ||
-        !event.target?.closest?.('[data-ha4-version-check] > button[data-ha4="update-version-button"]')) return;
+  async function checkAndReport() {
     const page = location.href;
     let stage = "check";
     const stages = { download: "更新を取得中…", verify: "更新データを検証中…", save: "更新を保存中…" };
@@ -86,13 +109,22 @@ function bindArkHomuUserscriptManualCheck(checkNow) {
       }, 400);
     } catch (error) {
       const label = { check: "確認", download: "取得", verify: "検証", save: "保存" }[stage];
-      const reason = error?.name === "TimeoutError" ? "がタイムアウトしました" : "ができませんでした";
+      const reason = error?.name === "TimeoutError" ? "がタイムアウトしました" :
+        error?.name === "AbortError" ? "が中断されました" : "ができませんでした";
+      console.warn(`[はこホム拡張] 更新の${label}に失敗しました`, error);
       publish(`更新の${label}${reason}。もう一度押してください`, false, true);
     }
+  }
+
+  document.addEventListener("click", event => {
+    if (busy || !event.isTrusted ||
+        !event.target?.closest?.('[data-ha4-version-check] > button[data-ha4="update-version-button"]')) return;
+    // Browser callbacks must not receive a privileged userscript Promise.
+    void checkAndReport();
   }, true);
 }
 
-function startArkHomuReleaseCheck(distribution, storage, nextCheckKey, lockName, receive, version) {
+function startArkHomuReleaseCheck(distribution, storage, nextCheckKey, lockName, receive, version, options = {}) {
   const preferenceKey = "hakoAf4000:autoUpdate";
   const hour = 60 * 60 * 1000;
   const interval = 2 * hour;
@@ -111,7 +143,7 @@ function startArkHomuReleaseCheck(distribution, storage, nextCheckKey, lockName,
 
   async function publishHistory() {
     try {
-      const [installed, check] = await Promise.all([
+      const [installed, check] = await ArkHomuUpdatePromise.all([
         storage.getValue(installedKey, null), storage.getValue(lastCheckKey, null)
       ]);
       document.dispatchEvent(new CustomEvent("hako-af:update-history", {
@@ -206,10 +238,13 @@ function startArkHomuReleaseCheck(distribution, storage, nextCheckKey, lockName,
   }
 
   function locked(task, signal) {
-    // Serialize checks from simultaneously opened game tabs.
-    if (signal?.aborted) throw new DOMException("Update cancelled", "AbortError");
-    return navigator.locks ? signal ? navigator.locks.request(lockName, { signal }, task)
-      : navigator.locks.request(lockName, task) : task();
+    if (options.browserLocks === false) {
+      if (signal?.aborted) throw new DOMException("Update cancelled", "AbortError");
+      return task();
+    }
+    // Native extension contexts may serialize across tabs. Privileged userscripts
+    // opt out entirely: even window.Promise can be wrapped by their manager.
+    return withArkHomuUpdateLock(lockName, task, signal);
   }
 
   function check() {
@@ -231,7 +266,7 @@ function startArkHomuReleaseCheck(distribution, storage, nextCheckKey, lockName,
     const fetchManually = (path, maxLength) => fetchFile(path, maxLength, true, signal);
     const guardedProgress = stage => { if (!signal.aborted) progress?.(stage); };
     // Bound lock waits, verification, GM storage and history writes as well as the network.
-    manualCheck = waitForArkHomuUpdate(() => Promise.resolve(checking).then(() => locked(() =>
+    manualCheck = waitForArkHomuUpdate(() => ArkHomuUpdatePromise.resolve(checking).then(() => locked(() =>
       performCheck(fetchManually, () => !signal.aborted, { progress: guardedProgress }, controller), signal)),
       60_000, () => controller.abort()).finally(() => {
       controller.abort();
@@ -241,8 +276,8 @@ function startArkHomuReleaseCheck(distribution, storage, nextCheckKey, lockName,
     return manualCheck;
   }
 
-  document.addEventListener("hako-af:read-update-history", publishHistory);
-  void Promise.resolve().then(() => locked(() => waitForArkHomuUpdate(recordInstalled, 10_000))).catch(() => {});
+  document.addEventListener("hako-af:read-update-history", () => { void publishHistory(); });
+  void ArkHomuUpdatePromise.resolve().then(() => locked(() => waitForArkHomuUpdate(recordInstalled, 10_000))).catch(() => {});
   document.addEventListener("visibilitychange", refresh);
   document.addEventListener("hako-af:auto-update-changed", refresh);
   window.addEventListener("pageshow", refresh);

@@ -69,7 +69,7 @@ function startArkHomuLegacyUpdates(distribution, version, forwarded) {
           publish();
         }
         return release.version;
-      }, version);
+      }, version, { browserLocks: false });
     bindArkHomuUserscriptManualCheck(progress => updates.checkNow(progress));
   }
 

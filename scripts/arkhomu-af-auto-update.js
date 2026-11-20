@@ -72,7 +72,7 @@ function startArkHomuUpdates(distribution, bundledVersion, bundledCode) {
             reportReady();
           }
           return version;
-        }, activeVersion);
+        }, activeVersion, { browserLocks: false });
       bindArkHomuUserscriptManualCheck(progress => updates.checkNow(progress).catch(error => {
         if (readyVersion) return readyVersion;
         throw error;
