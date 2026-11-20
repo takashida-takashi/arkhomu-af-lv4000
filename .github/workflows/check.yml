@@ -27,6 +27,7 @@ jobs:
           done
           node tests/update-check.cjs
           node tests/training-sources.cjs
+          node tests/training-share.cjs
           node tests/monster-guards.cjs
           node scripts/build-userscripts.cjs --pages
           for script in dist/pages/*.js dist/pages/safari/*.js; do

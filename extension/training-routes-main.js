@@ -14,12 +14,13 @@
     ? identity.typed(name, identity.kind(route.previewSkillIds[name])) : nameKey(name);
   const getReaders = globalThis.hakoAfPartyShareMain?.getReaders;
   const trainingSources = globalThis.hakoAfTrainingSources;
-  const matingComponents = new Set(["FlexMatingInherit", "MatingNewUiPanel"]);
+  const matingComponents = new Set(["FlexMatingInherit", "FlexMatingConfirm", "MatingNewUiPanel"]);
   const grantComponents = new Set(["TrainingSkillGrantPanel", "FlexTrainingSkillGrant", "FlexTrainingSkillGrantFlow"]);
   const grantLists = new Set(["fx-tgrant__rows", "fx-tgflow__rows"]);
   const bothParentRoutes = "__parents__";
   const matingChoices = new WeakMap();
   const bulkChoices = new WeakMap();
+  const candidateButtons = new WeakMap();
   const legacyAutoKeys = new WeakMap();
   const bulkKey = "ha4-training-mating-bulk";
   const grantBindings = new WeakMap();
@@ -309,13 +310,30 @@
     clearInterval(attempt?.timer);
   }
 
+  function newUiButton(attempt) {
+    if (!attempt.root.isConnected || attempt.instance.isUnmounted) return;
+    for (const vnode of walk(attempt.instance.subTree, true)) {
+      const button = element(vnode);
+      if (button?.tagName === "BUTTON" && visibleButton(button) &&
+          ["確認へ →", "継承合成する"].includes(buttonText(button))) return button;
+    }
+  }
+
   function quickStep(attempt) {
     if (quickAttempt !== attempt) return;
-    const parents = attempt.flow ? attempt.ctx.matingSlots?.map(parentId) : legacyParents;
+    const structured = !!attempt.ctx;
+    const parents = structured ? attempt.ctx.matingSlots?.map(parentId) : legacyParents;
     if (!enabled || performance.now() >= attempt.deadline || location.pathname !== attempt.path ||
         JSON.stringify(parents?.map(String)) !== attempt.parents) {
       stopQuick();
       return;
+    }
+    if (attempt.candidateId) {
+      if (String(attempt.ctx.selectedCandidateId ?? "") !== attempt.candidateId || !attempt.ctx.isInheritanceMode) {
+        if (attempt.selectionReady) stopQuick();
+        return;
+      }
+      attempt.selectionReady = true;
     }
     const modal = topGameModal();
     if (modal !== attempt.modal) {
@@ -325,17 +343,17 @@
     if (modal && performance.now() - attempt.modalOpenedAt < modalReadyDelay) return;
     const trim = findDialogButton(modal, "次へ（継承選択）", /^永久化スキルを選別$/);
     const unused = findDialogButton(modal, "このまま進む", /^(継承枠が余っています|継承スキルが引き継がれません)$/);
-    const next = attempt.flow ? document.querySelector(".fx-matflow__next") :
+    const next = attempt.newUi ? newUiButton(attempt) : attempt.flow ? document.querySelector(".fx-matflow__next") :
       findDialogButton(modal, "内容を確認 →", /^継承するスキル \/ パッシブを選択$/);
-    const finish = attempt.flow ? buttonText(next) === "継承合成する" && next :
+    const finish = structured ? buttonText(next) === "継承合成する" && next :
       findDialogButton(modal, "この内容で合成する", /^合成内容の最終確認$/);
-    const advance = attempt.flow && buttonText(next) !== "確認へ →" ? null : next;
+    const advance = structured && buttonText(next) !== "確認へ →" ? null : next;
     const button = [trim, unused, finish, advance].find(item =>
       visibleButton(item) && (!modal || modal.contains(item)) && !attempt.steps.has(buttonText(item)));
     if (button) {
       attempt.steps.add(buttonText(button));
-      // The Flex flow can show its unused-slot dialog after the final click. Continue only that native dialog.
-      if (button === finish && !attempt.flow || button === unused && attempt.finalClicked) stopQuick();
+      // Both new layouts can show the unused-slot dialog after the final click.
+      if (button === finish && !structured || button === unused && attempt.finalClicked) stopQuick();
       if (button === finish) attempt.finalClicked = true;
       button.click();
     }
@@ -348,15 +366,18 @@
     const button = clickedButton(event);
     const classic = buttonText(button) === "このホムンクルスを継承生成する";
     const flex = button?.matches(".fx-matflow__pick") && flexCandidate?.flow.detailCandidate?.is_inheritance;
-    if (!(classic || flex) || !visibleButton(button)) return;
-    const parents = (flex ? flexCandidate.ctx.matingSlots?.map(parentId) : legacyParents)?.map(String);
+    const candidate = button && candidateButtons.get(button);
+    if (!(classic || flex || candidate) || !visibleButton(button)) return;
+    const context = candidate ?? (flex ? flexCandidate : null);
+    if (context?.ctx.isSynthesizing || context?.ctx.pendingMatingRequestId || context?.ctx.isSavingInheritanceLocks) return;
+    const parents = (context ? context.ctx.matingSlots?.map(parentId) : legacyParents)?.map(String);
     if (parents?.length !== 2 || parents.filter(id => mothers.has(id)).length !== 1) return;
     const { rows } = ownedRecords();
     const records = recordsFor(parents, rows);
     const material = parents.find(id => !mothers.has(id));
     const materialGeneration = generation(records.get(material));
     if (materialGeneration == null || materialGeneration >= 1000) return;
-    const attempt = { ...(flex ? flexCandidate : {}), path: location.pathname, parents: JSON.stringify(parents),
+    const attempt = { ...context, path: location.pathname, parents: JSON.stringify(parents),
       steps: new Set(), deadline: performance.now() + 10000 };
     attempt.timer = setInterval(() => quickStep(attempt), 60);
     quickAttempt = attempt;
@@ -530,6 +551,16 @@
 
   const visibleSkill = label => !!label && !/^[？?]/.test(label);
 
+  function readCandidateButtons(instance, props, root, newUi = false) {
+    for (const vnode of walk(instance.subTree)) {
+      if (typeof vnode.key !== "string" || !vnode.key.startsWith("inheritance:")) continue;
+      const row = element(vnode);
+      const button = row?.querySelector(":scope > button");
+      if (button) candidateButtons.set(button, { ...props, newUi, instance, root,
+        candidateId: vnode.key.slice("inheritance:".length) });
+    }
+  }
+
   function applyBulk(ctx, scope) {
     if (typeof ctx.toggleInheritKey !== "function" || typeof ctx.toggleForgetKey !== "function" ||
         typeof ctx.canSelectInheritItem !== "function") return;
@@ -553,7 +584,7 @@
   }
 
   function mating(instance, props, root) {
-    const rows = [...root.querySelectorAll(".fx-mati__row,[data-inherit-row]")].filter(row => row.getClientRects().length);
+    const rows = [...root.querySelectorAll(".fx-mati__row,.fx-matf__row,[data-inherit-row]")].filter(row => row.getClientRects().length);
     const { ctx } = props;
     const anchor = root.matches(".fx-mati") ? root : rows[0]?.parentElement;
     const parentIds = ctx?.matingSlots?.map(monster => monsterId(monster) ?? monster?.id);
@@ -564,8 +595,10 @@
       bulkChoices.delete(root);
       return;
     }
-    if (typeof ctx?.toggleInheritKey === "function" && !ctx.inheritanceLockSelectionChanged && !ctx.isSavingInheritanceLocks) {
-      runBulk(anchor, root, scope, ctx.selectedCandidateId ?? ctx.childMaster?.id, () => applyBulk(ctx, scope));
+    if (instance.type?.__name !== "FlexMatingConfirm" && typeof ctx?.toggleInheritKey === "function" &&
+        !ctx.inheritanceLockSelectionChanged && !ctx.isSavingInheritanceLocks && !ctx.newUiTrimPending) {
+      const candidate = [ctx.selectedCandidateId ?? ctx.childMaster?.id, ctx.isInheritanceMode === true];
+      runBulk(anchor, root, scope, candidate, () => applyBulk(ctx, scope));
     }
     const pool = new Map((ctx?.inheritSelectablePool ?? []).map(item => [item.key, item]));
     const automatic = new Map((ctx?.autoGrantedSkillPassive ?? []).map(item => [item.key, item]));
@@ -573,12 +606,13 @@
     for (const vnode of walk(instance.subTree)) {
       const row = element(vnode);
       if (!candidates.has(row)) continue;
-      const key = typeof vnode.key === "string" ? vnode.key.replace(/^auto-/, "") : vnode.key;
-      const auto = !!automatic.get(key) && (!pool.has(key) || key !== vnode.key);
+      const rawKey = typeof vnode.key === "string" ? vnode.key : "";
+      const key = rawKey.replace(/^(?:auto-|cf-|cff-|cfa-)/, "");
+      const auto = !!automatic.get(key) && (!pool.has(key) || /^(?:auto-|cff-|cfa-)/.test(rawKey));
       const entry = (auto ? automatic : pool).get(key);
       const checkbox = row.querySelector('[role="checkbox"]');
-      const name = row.querySelector(".fx-mati__name,span.font-bold.leading-tight");
-      const label = entry?.hidden ? "" : (entry && ctx.formatInheritEntryLabel?.(entry)) ||
+      const name = row.querySelector(".fx-mati__name,.fx-matf__name,span.font-bold.leading-tight");
+      const label = entry?.hidden ? "" : (entry && (auto ? ctx.formatAutoGrantLabel?.(entry) : ctx.formatInheritEntryLabel?.(entry))) ||
         checkbox?.getAttribute("aria-label") || name?.textContent || row.firstChild?.textContent;
       advise(row, name, label, scope, {
         kind: entry?.kind ?? identity.kind(key),
@@ -841,8 +875,10 @@
     if (props?.ctx?.matingSlots) rememberMatingRecords(props.ctx.matingSlots);
     if (name === "FlexMatingCandidates") {
       flexCandidate = props;
+      if (props?.ctx) readCandidateButtons(instance, props, root);
       return;
     }
+    if (name === "MatingNewUiPanel" && props?.ctx) readCandidateButtons(instance, props, root, true);
     if (!routes.size && !grantBindings.has(instance) && !root.querySelector('[data-ha4="training-active-route"]')) return;
     if (!root.hasAttribute("data-ha4-training-scope")) root.setAttribute("data-ha4-training-scope", "");
     if (matingComponents.has(name)) mating(instance, props, root);

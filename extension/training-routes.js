@@ -57,7 +57,7 @@
     });
   }
 
-  function start(node, enabled, requestScan) {
+  function start(node, enabled, requestScan, shareRoute) {
     let dialog, lastSent, watchingMatings;
     const progressData = new WeakMap();
     const button = (label, action) => {
@@ -66,6 +66,19 @@
       el.addEventListener("click", action);
       return el;
     };
+
+    async function share(draft, status, target) {
+      if (!enabled()) return;
+      try {
+        if (!shareRoute) throw new Error("共有機能を読み込めませんでした。ページを再読み込みしてください。");
+        await shareRoute(draft, target);
+      } catch (error) {
+        if (status) status.textContent = error.message === "Too many route skills"
+          ? "通常・永久それぞれの使用中スキルは37件まで共有できます。"
+          : /^(Invalid |Empty )/.test(error.message) ? "育成ルートの入力内容を確認してください。"
+          : error.message || "育成ルートを共有できませんでした。";
+      }
+    }
 
     function update(data) {
       if (!watchingMatings) {
@@ -386,12 +399,17 @@
           status.textContent = "育成ルートを削除しました。";
         }
       });
-      controls.append(save, remove);
+      const shareButton = button("育成ルートを共有", () => {
+        if (form.reportValidity()) void share(draft(), status);
+      });
+      controls.append(save, shareButton, remove);
       form.append(transfers, fields, reserveFields, controls, status);
 
-      let currentId;
+      let currentId, metadata;
       function setRoute(route) {
         currentId = route?.id;
+        metadata = Object.fromEntries(["baseMonsterId", "preview", "previewSkillIds", "rank6Passive"]
+          .filter(key => route?.[key] !== undefined).map(key => [key, route[key]]));
         reservedNames = Array.isArray(route?.reserved) ? new Set(route.reserved.map(nameKey))
           : route?.id || route?.reserved === null ? undefined : new Set();
         picker.replaceChildren(new Option("新規ルート", ""), ...routeOptions(load().routes));
@@ -410,12 +428,15 @@
       }
 
       picker.addEventListener("change", () => setRoute(load().routes.find(route => route.id === picker.value)));
+      function draft() {
+        const value = { ...metadata, id: currentId, name: name.value, group: group.value };
+        for (const [key, { input }] of Object.entries(inputs)) value[key] = skillLines(input.value);
+        if (reservedNames) value.reserved = [...value.ordinary, ...value.permanent].filter(name => reservedNames.has(nameKey(name)));
+        return value;
+      }
       form.addEventListener("submit", event => {
         event.preventDefault();
-        const draft = { id: currentId, name: name.value, group: group.value };
-        for (const [key, { input }] of Object.entries(inputs)) draft[key] = skillLines(input.value);
-        if (reservedNames) draft.reserved = [...draft.ordinary, ...draft.permanent].filter(name => reservedNames.has(nameKey(name)));
-        const route = saveRoute(draft, status);
+        const route = saveRoute(draft(), status);
         if (route) {
           setRoute(route);
           status.textContent = "育成ルートを保存しました。";
@@ -443,6 +464,11 @@
     }
 
     async function openMember(member, slot, party, source) {
+      if (member.trainingRoute) {
+        const { name, group, ordinary, permanent, reserved, baseMonsterId, preview, previewSkillIds, rank6Passive } = member.trainingRoute;
+        open({ name, group, ordinary, permanent, reserved: reserved ?? null, baseMonsterId, preview, previewSkillIds, rank6Passive });
+        return;
+      }
       const unique = nameKey(await readSharedUnique(member, source) ?? "");
       if (source && !source.getClientRects().length) return;
       const entries = [...member.active.map(skill => ({ ...skill, kind: "skill" })),
@@ -638,6 +664,18 @@
             if (route) open(route);
           });
           edit.dataset.ha4 = "training-edit-target";
+          const shareButton = button("育成ルートを共有", () => {
+            const current = readTarget(anchor);
+            const { routes, bindings } = load();
+            const binding = bindings.find(item => item.monsterId === current?.id);
+            const route = routes.find(item => item.id === binding?.routeId);
+            if (route) void share(route, panel.querySelector('[data-ha4="training-share-status"]'), current);
+          });
+          shareButton.dataset.ha4 = "training-share-target";
+          shareButton.title = "未習得の目標スキルも含め、通常・永久・控え・スキルLvを共有します。";
+          const shareStatus = node("span", "extra-note");
+          shareStatus.dataset.ha4 = "training-share-status";
+          shareStatus.setAttribute("role", "status");
           const applyStates = button("使用中・控えを反映", () => {
             const current = readTarget(anchor);
             const data = load();
@@ -657,13 +695,14 @@
             persist(data);
           });
           mother.dataset.ha4 = "training-mother";
-          panel.append(loadButton, edit, applyStates, mother, node("span", "training-detail-route"));
+          panel.append(loadButton, edit, shareButton, applyStates, mother, node("span", "training-detail-route"), shareStatus);
           anchor.append(panel);
         }
         const binding = bindings.find(item => item.monsterId === target.id);
         const route = binding && routes.find(item => item.id === binding.routeId);
         const edit = panel.querySelector('[data-ha4="training-edit-target"]');
         edit.hidden = !route;
+        panel.querySelector('[data-ha4="training-share-target"]').hidden = !route;
         panel.querySelector('[data-ha4="training-apply-skill-states"]').hidden = !Array.isArray(route?.reserved);
         const mother = panel.querySelector('[data-ha4="training-mother"]');
         const designated = mothers.includes(target.id);
@@ -680,7 +719,7 @@
     return { open: (id) => {
       const { routes } = load();
       open(routes.find(route => route.id === id) ?? routes[0]);
-    }, openMember, update, scan, saveRoute, groups, groupInput,
+    }, openMember, update, scan, saveRoute, groups, groupInput, share,
       forMonster: monsterId => {
         const { routes, bindings } = load();
         const binding = bindings.find(item => item.monsterId === String(monsterId));

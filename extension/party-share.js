@@ -19,6 +19,42 @@
     return value.trim();
   }
 
+  function validatedTrainingRoute(data) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("Invalid training route");
+    const key = value => value.normalize("NFKC").trim().replace(/\s+/g, " ");
+    const skills = values => {
+      if (!Array.isArray(values) || values.length > 160) throw new Error("Invalid route skills");
+      return [...new Map(values.map(value => {
+        const name = text(value, 140);
+        if (!name) throw new Error("Empty route skill");
+        return [key(name), name];
+      })).values()];
+    };
+    const route = { name: text(data.name ?? "", 120) || "共有された育成ルート",
+      group: text(data.group ?? "", 60), ordinary: skills(data.ordinary), permanent: skills(data.permanent) };
+    if (Array.isArray(data.reserved)) {
+      const reserved = new Set(skills(data.reserved).map(key));
+      route.reserved = [...route.ordinary, ...route.permanent].filter(name => reserved.has(key(name)));
+    }
+    const reserved = new Set((route.reserved ?? []).map(key));
+    if ([route.ordinary, route.permanent].some(values => values.filter(name => !reserved.has(key(name))).length > 37)) {
+      throw new Error("Too many route skills");
+    }
+    if (typeof data.baseMonsterId === "string" && /^[\w-]{1,120}$/.test(data.baseMonsterId)) route.baseMonsterId = data.baseMonsterId;
+    const skillId = value => typeof value === "string" && /^[sp]\.[\w-]{1,160}$/.test(value);
+    const rank6 = data.rank6Passive;
+    if (rank6 && typeof rank6.id === "string" && /^[\w-]{1,160}$/.test(rank6.id) && typeof rank6.enabled === "boolean") {
+      route.rank6Passive = { id: rank6.id, name: text(rank6.name, 140), enabled: rank6.enabled };
+    }
+    route.previewSkillIds = Object.fromEntries([...route.ordinary, ...route.permanent].flatMap(name =>
+      skillId(data.previewSkillIds?.[name]) ? [[name, data.previewSkillIds[name]]] : []));
+    const ids = new Set([...Object.values(route.previewSkillIds), route.rank6Passive ? `p.${route.rank6Passive.id}` : null]);
+    const levels = Object.entries(data.preview?.skillLevels ?? {}).filter(([id, level]) =>
+      ids.has(id) && Number.isSafeInteger(level) && level >= 1 && level <= 1000);
+    if (levels.length) route.preview = { skillLevels: Object.fromEntries(levels) };
+    return route;
+  }
+
   function validated(data) {
     if (data?.version !== 1 || !Array.isArray(data.slots) || data.slots.length !== 6 || !data.slots.some(Boolean)) {
       throw new Error("Invalid party");
@@ -49,6 +85,7 @@
           portrait: /^[\w-]+$/.test(portrait) ? portrait : "",
           rank6Unique: text(member.rank6Unique ?? "", 140) || undefined,
           attack: text(member.attack ?? "", 140),
+          ...(member.trainingRoute ? { trainingRoute: validatedTrainingRoute(member.trainingRoute) } : {}),
           ...(member.skillStates === true || [...active, ...passive].some(skill => skill.reserved) ? { skillStates: true } : {}),
           active,
           passive
@@ -68,14 +105,17 @@
       member.bonus ? statLabels.map(([key]) => member.bonus[key] ?? null) : null, member.portrait, member.attack,
       skills(member.active), skills(member.passive), ...(member.skillStates ? [1] : [])]);
     const uniques = data.slots.map(member => member?.rank6Unique ?? null);
+    const routes = data.slots.map(member => member?.trainingRoute ?? null);
+    if (routes.some(Boolean)) return [3, data.name, data.individual === true, slots, uniques, routes];
     return uniques.some(Boolean) ? [2, data.name, data.individual === true, slots, uniques] : [2, data.name, data.individual === true, slots];
   }
 
   function expandLink(data) {
     if (!Array.isArray(data)) return data;
-    const [version, name, individual, slots, uniques] = data;
-    if (version !== 2 || !Array.isArray(slots) || slots.length !== 6) throw new Error("Invalid compact party");
+    const [version, name, individual, slots, uniques, routes] = data;
+    if (![2, 3].includes(version) || !Array.isArray(slots) || slots.length !== 6) throw new Error("Invalid compact party");
     if (uniques !== undefined && (!Array.isArray(uniques) || uniques.length !== slots.length)) throw new Error("Invalid unique skills");
+    if (version === 3 && (!Array.isArray(routes) || routes.length !== slots.length)) throw new Error("Invalid training routes");
     const skills = entries => {
       if (!Array.isArray(entries) || entries.length > 160) throw new Error("Invalid compact skills");
       return entries.map(entry => {
@@ -95,7 +135,7 @@
       const [name, level, generation, values, portrait, attack, active, passive] = member;
       const bonus = Array.isArray(values) ? Object.fromEntries(statLabels.map(([key], i) => [key, values[i]])) : undefined;
       return { name, level, generation, bonus, portrait, attack, active: skills(active), passive: skills(passive),
-        skillStates: member[8] === 1, rank6Unique: uniques?.[index] };
+        skillStates: member[8] === 1, rank6Unique: uniques?.[index], trainingRoute: version === 3 ? routes[index] : undefined };
     }) };
   }
 
@@ -163,11 +203,28 @@
 
   const rows = data => data.individual ? [["", data.slots.filter(Boolean)]] :
     [["前衛", data.slots.slice(0, 3)], ["後衛", data.slots.slice(3, 6)]];
-  const skillGroups = member => [
-    ["アクティブ", member.active.filter(skill => !skill.reserved)],
-    ["パッシブ", member.passive.filter(skill => !skill.reserved)],
-    ["控え", [...member.active, ...member.passive].filter(skill => skill.reserved)]
-  ];
+  const skillLabel = (skill, member) => {
+    const route = member.trainingRoute;
+    const level = route?.preview?.skillLevels?.[route.previewSkillIds?.[skill.name]];
+    return skill.name + (level > 1 ? ` Lv${level}` : "");
+  };
+  const skillGroups = member => {
+    const route = member.trainingRoute;
+    if (route) {
+      const key = value => value.normalize("NFKC").trim().replace(/\s+/g, " ");
+      const reserved = new Set((route.reserved ?? []).map(key));
+      const entries = [...route.ordinary.map(name => ({ name, permanent: false })),
+        ...route.permanent.map(name => ({ name, permanent: true }))];
+      return [["通常スキル（完成目標）", entries.filter(skill => !skill.permanent && !reserved.has(key(skill.name)))],
+        ["永久スキル（完成目標）", entries.filter(skill => skill.permanent && !reserved.has(key(skill.name)))],
+        ["控え", entries.filter(skill => reserved.has(key(skill.name)))]];
+    }
+    return [
+      ["アクティブ", member.active.filter(skill => !skill.reserved)],
+      ["パッシブ", member.passive.filter(skill => !skill.reserved)],
+      ["控え", [...member.active, ...member.passive].filter(skill => skill.reserved)]
+    ];
+  };
 
   function imageText(ctx, width) {
     const lines = [];
@@ -219,11 +276,15 @@
       text.write(labels.length ? labels : "0");
     }
     if (member.attack) text.write("通常攻撃　" + member.attack, { size: 14, gap: 7 });
+    if (member.trainingRoute?.rank6Passive) {
+      const unique = member.trainingRoute.rank6Passive;
+      text.write(`R6固有　${unique.name}　${unique.enabled ? "ON" : "OFF"}`, { size: 14, gap: 7 });
+    }
     for (const [kind, skills] of skillGroups(member)) {
       if (!skills.length) continue;
       text.write(kind, { size: 14, bold: true, color: "#dab7f2", gap: 8 });
       for (const skill of skills) {
-        text.write(skill.name + (skill.permanent ? "　［永久］" : ""), { color: skill.permanent ? "#ffc8ec" : "#f0e9f5" });
+        text.write(skillLabel(skill, member) + (skill.permanent ? "　［永久］" : ""), { color: skill.permanent ? "#ffc8ec" : "#f0e9f5" });
       }
     }
     return { text, portrait };
@@ -337,6 +398,12 @@
           if (metadata) title.append(node("span", "party-level", metadata));
           identity.append(title);
           card.append(identity);
+          if (member.trainingRoute) {
+            card.append(node("p", "party-bonus", "育成ルートの完成目標です。未習得のスキルも含みます。"));
+            if (member.trainingRoute.group) card.append(node("p", "party-bonus", `グループ：${member.trainingRoute.group}`));
+            const unique = member.trainingRoute.rank6Passive;
+            if (unique) card.append(node("p", "party-bonus", `R6固有：${unique.name}　${unique.enabled ? "ON" : "OFF"}`));
+          }
           if (member.bonus != null) {
             const labels = bonusLabels(member.bonus);
             const bonus = node("p", "party-bonus");
@@ -349,7 +416,7 @@
             const list = node("ul", "party-skills");
             for (const skill of entries) {
               const item = node("li", "party-skill");
-              item.append(node("span", "party-skill-name", skill.name));
+              item.append(node("span", "party-skill-name", skillLabel(skill, member)));
               if (skill.permanent) item.append(node("span", "party-permanent", "永久"));
               list.append(item);
             }
@@ -600,7 +667,13 @@
       void readSharedLocation();
     }
 
-    return { scan, openFile };
+    return { scan, openFile, openRoute: (draft, target) => {
+      if (!enabled()) throw new Error("拡張設定で拡張編成共有をオンにしてください。");
+      const trainingRoute = validatedTrainingRoute(draft);
+      return showParty(openDialog(), { version: 1, individual: true, name: trainingRoute.name.slice(0, 100),
+        slots: [{ name: (target?.name ?? trainingRoute.name).slice(0, 120), active: [], passive: [], trainingRoute },
+          null, null, null, null, null] });
+    } };
   }
 
   globalThis.hakoAfPartyShare = { start };

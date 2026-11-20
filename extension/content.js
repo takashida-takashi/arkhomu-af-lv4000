@@ -1394,7 +1394,8 @@
   exploreAnalysis = globalThis.hakoAfExploreAnalysis?.start(node, id => extras?.enabled(id));
   globalThis.hakoAfExpedition?.start(node, () => extras?.enabled("expedition"));
   delete globalThis.hakoAfExpedition;
-  trainingRoutes = globalThis.hakoAfTrainingRoutes?.start(node, () => extras?.enabled("trainingRoutes"), requestScan);
+  trainingRoutes = globalThis.hakoAfTrainingRoutes?.start(node, () => extras?.enabled("trainingRoutes"), requestScan,
+    (route, target) => partyShare?.openRoute(route, target));
   trainingPlanner = globalThis.hakoAfTrainingPlanner?.start(node, () => extras?.enabled("trainingRoutes"), trainingRoutes);
   partyShare = globalThis.hakoAfPartyShare?.start(node, () => extras?.enabled("partyShare"), trainingRoutes?.openMember,
     () => extras?.enabled("trainingRoutes"));

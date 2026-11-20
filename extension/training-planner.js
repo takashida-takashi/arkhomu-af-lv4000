@@ -404,7 +404,12 @@
         status.textContent = `「${result.name}」を保存しました。`;
         savedRoute.hidden = false;
       }, "planner-primary");
-      footer.append(status, savedRoute, save);
+      const share = button("育成ルートを共有", () => {
+        const draft = routeDraft();
+        draft.name ||= monster?.name ?? "";
+        void routes.share(draft, status);
+      });
+      footer.append(status, savedRoute, share, save);
       left.append(base, library);
       right.append(node("h3", "planner-section-title", "育成ルート"), routeName, routeGroup, groupList, rank6Panel, plan);
       right.dataset.ha4 = "planner-route";
