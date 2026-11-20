@@ -16,7 +16,7 @@
   const createArtifacts = globalThis.hakoAfTrainingArtifacts;
   const optional = input => input.value === "" || !Number.isFinite(input.valueAsNumber) ? null : input.valueAsNumber;
 
-  function create({ node, button, getDraft, getRoutes, onPreviewChange, resolveSkill, resolveAptitude }) {
+  function create({ node, button, getDraft, getRoutes, onPreviewChange, onRankChange, resolveSkill, resolveAptitude }) {
     const root = node("details", "planner-preview");
     const enabled = node("summary", "planner-action", "完成形プレビュー");
     const body = node("div", "planner-preview-body");
@@ -83,6 +83,7 @@
       ...Object.values(manualStats), ...Object.values(manualApt)]) {
       control.addEventListener(control.tagName === "SELECT" ? "change" : "input", () => refresh());
     }
+    rank.addEventListener("change", () => onRankChange?.());
     root.addEventListener("toggle", () => {
       if (root.open) refresh(true);
     });

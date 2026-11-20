@@ -842,5 +842,6 @@
   }
 
   globalThis.hakoAfFilterPopup = createPopup;
+  createPopup.parseSharedPreset = parseSharedPreset;
   globalThis.hakoAfConditionRows = conditionRows;
 })();

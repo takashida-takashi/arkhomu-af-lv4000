@@ -11,6 +11,7 @@
   const rowSelector = "[data-ha4-guild-filter-row]";
   const pendingBadgeSelector = '[data-ha4="guild-unknown"]';
   const emptyGroupAttribute = "data-ha4-guild-empty";
+  const storageKey = "hakoAf4000:guild-dungeon-filter-state";
   const difficulty = ["通常", "過酷", "凶悪", "災厄", "修羅", "修羅Ⅱ", "修羅Ⅲ", "神域", "黙示録",
     "裏Ⅰ", "裏Ⅱ", "裏Ⅲ", "裏Ⅳ", "裏Ⅴ"].map((label, index) => [String(index + 1), label]);
   const text = (label, group) => ({ label, group, kind: "text", sortable: false });
@@ -114,9 +115,28 @@
 
   function start(isEnabled) {
     const state = { root: { join: "and", children: [] }, showUnknown: false, sortKey: "", sortDirection: "asc" };
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        const restored = createPopup.parseSharedPreset(stored, fields, options.shareFormat);
+        for (const key of Object.keys(state)) state[key] = restored[key];
+      }
+    } catch { /* Keep filtering available when saved data or storage cannot be read. */ }
     const panels = new Map();
     const snapshots = new WeakMap();
     let badgeId = 0;
+    let lastSaved, saveFailed = false;
+
+    function changed() {
+      try {
+        const value = JSON.stringify({ format: options.shareFormat, version: 2, root: state.root,
+          showUnknown: state.showUnknown, sortKey: state.sortKey, sortDirection: state.sortDirection });
+        if (value !== lastSaved) localStorage.setItem(storageKey, value);
+        lastSaved = value;
+        saveFailed = false;
+      } catch { saveFailed = true; }
+      scan();
+    }
 
     function updatePendingBadge(row, label) {
       const button = row.querySelector(":scope > button");
@@ -183,7 +203,7 @@
       for (const list of document.querySelectorAll(listSelector)) {
         let panel = panels.get(list);
         if (!panel) {
-          const popup = createPopup(state, scan, globalThis.hakoAfPresetStorage, false, options);
+          const popup = createPopup(state, changed, globalThis.hakoAfPresetStorage, false, options);
           const toolbar = document.createElement("div");
           toolbar.dataset.ha4 = "guild-filter-toolbar";
           const status = document.createElement("small");
@@ -193,7 +213,7 @@
           pendingToggle.dataset.ha4 = "guild-pending-toggle";
           pendingToggle.addEventListener("click", () => {
             state.showUnknown = !state.showUnknown;
-            scan();
+            changed();
           });
           toolbar.append(popup.element, pendingToggle, status);
           panel = { popup, toolbar, status, pendingToggle };
@@ -256,8 +276,9 @@
           const value = order || prioritizeMatches ? String(index) : "";
           if (el.style.getPropertyValue("--ha4-guild-order") !== value) el.style.setProperty("--ha4-guild-order", value);
         });
-        const summary = error ?? (`一覧 ${rows.length}件` +
-          (active ? `・判定済み ${rows.length - pending}件（一致 ${matched}件）・未確認 ${pending}件` : ""));
+        const summary = (error ?? (`一覧 ${rows.length}件` +
+          (active ? `・判定済み ${rows.length - pending}件（一致 ${matched}件）・未確認 ${pending}件` : ""))) +
+          (saveFailed ? "・条件を保存できませんでした" : "");
         if (panel.status.textContent !== summary) panel.status.textContent = summary;
         panel.pendingToggle.hidden = pending === 0;
         const pressed = String(state.showUnknown);

@@ -1897,6 +1897,10 @@ html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
   border-radius: .35rem;
 }
 [data-ha4="planner-skill"]:has(> [data-ha4="planner-skill-level"]:not([hidden])) { flex-wrap: wrap; }
+[data-ha4="planner-skill"][data-ha4-planner-over-limit] { border-color: #e76a7e; background: #391d2b; }
+[data-ha4="planner-skill"][data-ha4-planner-over-limit] :is([data-ha4="planner-skill-name"], [data-ha4="planner-saved-skill-name"]),
+[data-ha4="planner-section-title"][data-ha4-planner-over-limit] { color: #ffb4bf; }
+[data-ha4="planner-over-limit"] { color: #ffc0ca; font-size: .75rem; font-weight: 700; white-space: nowrap; }
 [data-ha4="planner-skill"]:has(> [data-ha4="planner-skill-level"]:not([hidden])) [data-ha4="planner-skill-name"] { min-inline-size: 6rem; }
 [data-ha4="planner-skill-level"] { display: inline-flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; gap: .22rem .35rem; }
 [data-ha4="planner-skill-level"] a { font-size: .75rem; white-space: nowrap; text-decoration: underline; text-underline-offset: .15em; }

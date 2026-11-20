@@ -12,6 +12,11 @@
   const key = text => text.normalize("NFKC").trim().toLowerCase();
   const skillKey = name => key(name).replace(/\s+/g, " ");
   const isRank6Passive = skill => skill?.unique === "rank6" && skill.passive;
+  function skillUsage(skills, limit, reserved) {
+    let used = 0;
+    const overflow = skills.map(skill => reserved(skill) || isRank6Passive(skill) ? false : ++used > limit);
+    return { used, overflow, extra: Math.max(0, used - limit) };
+  }
   const batchSize = 60;
   const requests = new Set();
   const explanations = new Map();
@@ -432,6 +437,7 @@
         getDraft: () => ({ ...routeDraft(), species: baseMonsterId, monster }),
         getRoutes: () => routes.groupedRoutes().flatMap(([, entries]) => entries),
         onPreviewChange: resetStatus,
+        onRankChange: () => { resetStatus(); render(); },
         resolveSkill: (value, label) => label ? catalog?.byId.get(value)?.name : catalog?.byName.get(skillKey(value))?.id,
         resolveAptitude: key => catalog?.aptitudeLabels?.[key] });
       if (preview) right.insertBefore(preview.root, plan);
@@ -848,20 +854,28 @@
           updateAddButton(button, catalog.byId.get(button.dataset.plannerAdd));
         }
         renderRank6Passive();
+        const completionRank = Number(preview?.getValues().rank) || Math.max(6, Number(monster?.rank) || 6);
         plan.replaceChildren(...groupKeys.map(group => {
           const other = group === "ordinary" ? "permanent" : "ordinary";
-          const [name, limit] = groups[group];
+          const [name, editLimit] = groups[group];
+          const limit = group === "permanent" ? 10 : 20 + completionRank;
+          const usage = skillUsage(picked[group], limit, isReserved);
           const section = node("section", "planner-group");
           const reserveCount = picked[group].filter(isReserved).length;
-          const count = reserveCount ? `使用中 ${picked[group].length - reserveCount} / ${limit}・控え ${reserveCount}`
-            : `${picked[group].length} / ${limit}`;
-          section.append(node("h4", "planner-section-title", `${name} ${count}`));
+          const count = `使用中 ${usage.used} / ${limit}` + (reserveCount ? `・控え ${reserveCount}` : "");
+          const heading = node("h4", "planner-section-title", `${name} ${count}`);
+          heading.toggleAttribute("data-ha4-planner-over-limit", usage.extra > 0);
+          section.append(heading, node("p", "planner-hint", usage.extra
+            ? `${usage.extra}件が使用枠の上限を超えています。控えにするか、通常・永久の割り当てを調整してください。`
+            : `編集用に使用中を${editLimit}件まで登録できます。使用枠の上限を超えた行は赤く表示します。`));
           if (!picked[group].length) section.append(node("p", "planner-hint", "一覧からスキルを追加できます。"));
           else {
             const rows = node("ul", "planner-chosen-list");
             rows.append(...picked[group].map((skill, index) => {
               const row = node("li", "planner-skill");
+              row.toggleAttribute("data-ha4-planner-over-limit", usage.overflow[index]);
               row.append(nameButton(skill));
+              if (usage.overflow[index]) row.append(node("small", "planner-over-limit", "上限超過"));
               row.append(node("small", "planner-type", skill.id ? skill.passive ? "パッシブ" : "アクティブ" : "種別未指定"));
               if (skill.unique) row.append(specialMark(skill));
               if (skill.id && preview) row.append(preview.skillLevelField(skill));
