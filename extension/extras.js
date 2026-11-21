@@ -505,6 +505,39 @@
           dialog.addEventListener("close", () => document.removeEventListener("hako-af:desktop-update-archive", showArchive), { once: true });
         }
       }
+      if (globalThis.hakoAfUserscriptVersion) {
+        const persistence = globalThis.hakoAfSettingsStorage;
+        const section = subsection(dialog, "設定の保存先");
+        const control = document.createElement("input");
+        control.type = "checkbox";
+        labeled(section, "管理アドオン側に保存（Firefox系向け）", control);
+        const status = node("p", "extra-note");
+        status.setAttribute("role", "status");
+        let pendingEnabled = null;
+        function showStorageState(value = persistence?.state()) {
+          control.checked = pendingEnabled ?? value?.enabled === true;
+          control.disabled = !value?.available || value.busy;
+          status.textContent = value?.error || (!value?.available
+            ? "この機能を使うには、管理アドオンのスクリプト本体を一度上書き更新してください。"
+            : value.busy ? "管理アドオンに保存中…"
+            : value.enabled ? `管理アドオンに保存済み（${value.count}件）。次回起動時に復元します。` : "オフ（通常のサイト側保存）");
+        }
+        control.addEventListener("change", () => {
+          const enabled = control.checked;
+          pendingEnabled = enabled;
+          control.disabled = true;
+          void persistence.setEnabled(enabled).catch(() => {}).finally(() => {
+            pendingEnabled = null;
+            showStorageState();
+          });
+        });
+        const unsubscribe = persistence?.subscribe(showStorageState);
+        if (!unsubscribe) showStorageState();
+        dialog.addEventListener("close", () => unsubscribe?.(), { once: true });
+        section.append(status,
+          node("p", "extra-note", "Tampermonkey／Userscripts内に、フィルタ条件・プリセット・拡張設定・育成ルート・拡張ボックスなどを保存します。初期設定はオフです。別のPCやiPhoneには自動同期しません。"),
+          node("p", "extra-note", "探索統計・ゲームのログイン情報は対象外です。オフにすると管理アドオン側の保存分を削除しますが、現在のサイト側の設定は残ります。"));
+      }
       const functions = subsection(dialog, "機能のオン／オフ");
       for (const [id, name] of Object.entries(features)) {
         field(functions, name, "checkbox", settings.features[id], value => { settings.features[id] = value; });

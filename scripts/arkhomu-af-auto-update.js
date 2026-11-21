@@ -7,10 +7,13 @@ function startArkHomuUpdates(distribution, bundledVersion, bundledCode) {
   const maxScriptLength = 1_048_576;
   const storage = {
     getValue: (key, fallback) => waitForArkHomuUpdate(() => manager.getValue(key, fallback), 5_000),
-    setValue: (key, value) => waitForArkHomuUpdate(() => manager.setValue(key, value), 10_000)
+    setValue: (key, value) => waitForArkHomuUpdate(() => manager.setValue(key, value), 10_000),
+    listValues: () => waitForArkHomuUpdate(() => manager.listValues(), 5_000),
+    deleteValue: key => waitForArkHomuUpdate(() => manager.deleteValue(key), 10_000)
   };
   let activeVersion = bundledVersion;
   let readyVersion = null;
+  let settingsStorage;
 
   function reportReady() {
     document.dispatchEvent(new CustomEvent("hako-af:userscript-update-ready", { detail: readyVersion }));
@@ -30,6 +33,7 @@ function startArkHomuUpdates(distribution, bundledVersion, bundledCode) {
     const script = document.createElement("script");
     script.dataset.hakoAfUpdateManaged = String(canUpdate);
     script.dataset.hakoAfUserscriptManualUpdate = String(canUpdate);
+    if (settingsStorage) script.dataset.hakoAfSettingsStorage = JSON.stringify(settingsStorage.state());
     script.textContent = code;
     root.append(script);
     script.remove();
@@ -58,7 +62,12 @@ function startArkHomuUpdates(distribution, bundledVersion, bundledCode) {
     let cached;
     const canUpdate = typeof manager?.getValue === "function" && typeof manager?.setValue === "function";
     if (canUpdate) {
-      try { cached = await storage.getValue(releaseKey, null); } catch { /* Use the bundled script. */ }
+      const restore = typeof manager.listValues === "function" && typeof manager.deleteValue === "function";
+      if (restore) settingsStorage = createArkHomuSettingsStorage("manager", storage);
+      await ArkHomuUpdatePromise.all([
+        storage.getValue(releaseKey, null).then(value => { cached = value; }).catch(() => {}),
+        settingsStorage?.initialize()
+      ]);
     }
     const cachedRelease = usableArkHomuRuntime(cached, bundledVersion) ? cached : null;
     activeVersion = cachedRelease?.version ?? bundledVersion;

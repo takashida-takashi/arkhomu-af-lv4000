@@ -10,7 +10,7 @@ const readSource = file => fs.readFileSync(path.join(project, file), "utf8").rep
 const manifest = JSON.parse(readSource("extension/manifest.json"));
 const buildPages = process.argv.includes("--pages");
 const git = (...args) => execFileSync("git", args, { cwd: project, encoding: "utf8" }).trim();
-const releaseSources = ["extension", "scripts/arkhomu-af-auto-update.js", "scripts/arkhomu-af-legacy-update.js"];
+const releaseSources = ["extension", "scripts/arkhomu-af-auto-update.js", "scripts/arkhomu-af-legacy-update.js", "scripts/arkhomu-af-settings-storage.js"];
 const mobileRef = buildPages ? previousMobileRelease() : null;
 const readMobileSource = file => mobileRef ? git("show", `${mobileRef}:${file}`) : readSource(file);
 const read = file => readMobileSource(`extension/${file}`);
@@ -129,6 +129,7 @@ const header = `// ==UserScript==
 const distribution = "https://takashida-takashi.github.io/arkhomu-af-lv4000/";
 const checks = read("update-check.js");
 const legacyUpdates = readMobileSource("scripts/arkhomu-af-legacy-update.js");
+const settingsStorageSource = readMobileSource("scripts/arkhomu-af-settings-storage.js");
 const start = `(() => {
   "use strict";
   if (location.origin !== "https://arkhomu.com" || window.top !== window.self) return;
@@ -137,6 +138,8 @@ const start = `(() => {
   const manual = loader?.hakoAfUserscriptManualUpdate === "true";
   const legacy = managed && !manual;
   ${checks}
+  const settingsStorage = (${settingsStorageSource})("page", null, loader?.hakoAfSettingsStorage);
+  const localStorage = settingsStorage.storage;
   const promote = legacy && (${legacyUpdates})(${JSON.stringify(distribution)}, ${JSON.stringify(version)},
     loader?.hakoAfLegacyForwarded === "true");
   // Each preset has a separate key, so saving from one tab cannot replace other names.
@@ -145,9 +148,10 @@ const start = `(() => {
     hakoAfUserscriptVersion: ${JSON.stringify(version)},
     hakoAfUpdateManaged: managed,
     hakoAfUserscriptManualUpdate: manual || legacy,
+    hakoAfSettingsStorage: settingsStorage,
     hakoAfPresetStorage: {
       get() {
-        const storage = window.localStorage;
+        const storage = localStorage;
         const values = Object.create(null);
         for (let index = 0; index < storage.length; index++) {
           const key = storage.key(index);
@@ -162,7 +166,7 @@ const start = `(() => {
       },
       set(values) {
         for (const [key, value] of Object.entries(values)) {
-          window.localStorage.setItem(presetPrefix + key, JSON.stringify(value));
+          localStorage.setItem(presetPrefix + key, JSON.stringify(value));
         }
       }
     }
@@ -189,11 +193,13 @@ const scriptName = "arkhomu-af-lv4000.user.js";
 const installerGrants = [
   "// @grant        GM.getValue",
   "// @grant        GM.setValue",
+  "// @grant        GM.listValues",
+  "// @grant        GM.deleteValue",
   "// @inject-into  content"
 ];
 const grantsMarker = "// @grant        none\n// @sandbox      raw\n// @inject-into  page";
 const loader = readMobileSource("scripts/arkhomu-af-auto-update.js");
-const installerBody = `\n\n(() => {\n${checks}\n\n(${loader})(${JSON.stringify(distribution)}, ${JSON.stringify(version)}, ${JSON.stringify(runtime)});\n})();\n`;
+const installerBody = `\n\n(() => {\n${checks}\n\n${settingsStorageSource}\n\n(${loader})(${JSON.stringify(distribution)}, ${JSON.stringify(version)}, ${JSON.stringify(runtime)});\n})();\n`;
 const installer = header.replace(grantsMarker, [
   ...installerGrants, "// @sandbox      DOM", "// @downloadURL  none"
 ].join("\n")) + installerBody;

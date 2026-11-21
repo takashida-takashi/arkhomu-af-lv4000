@@ -61,13 +61,17 @@
         <article><h3>iPhone・iPad</h3><ol class="steps"><li>Userscriptsを入れ、Safariの機能拡張で有効にする</li><li>Safariで配布ページの「Userscripts用を開く」を押す</li><li>ページメニューからUserscriptsを開き、インストール</li></ol></article>
       </div>
       <p class="hint">画面下の「拡張 v…」を押すと更新を確認します。PCでZIPの適用が必要な場合は、既存フォルダーに上書きして拡張を再読み込みします。Android・iPhone・iPadでは、取得済みの更新が次回のページ読み込みで有効になります。</p>
-      <p>旧版のFirefox・TorのTampermonkeyで「更新を取得中…」から進まない、または更新確認がすぐ失敗する場合は、配布ページの「Tampermonkey用を開く」から既存スクリプトを一度だけ上書き更新します。確認画面の更新を完了し、ゲームページを再読み込みしてください。既存スクリプトを削除する必要はありません。拡張設定や保存済み育成ルートは引き継がれます。</p>
+      <p>旧版のFirefox系ブラウザのTampermonkeyで「更新を取得中…」から進まない、または更新確認がすぐ失敗する場合は、配布ページの「Tampermonkey用を開く」から既存スクリプトを一度だけ上書き更新します。確認画面の更新を完了し、ゲームページを再読み込みしてください。既存スクリプトを削除する必要はありません。拡張設定や保存済み育成ルートは引き継がれます。</p>
     </section>
 
     <section id="settings" aria-labelledby="settings-title">
       <h2 id="settings-title">拡張設定</h2>
       <p>ホームの上部メニューから「拡張設定」を開きます。機能ごとのオン／オフ、ホームに表示する通知項目、探索結果の表示順などを変更できます。</p>
       <figure data-shot="settings"></figure>
+      <h3>Firefox系ブラウザなどで拡張データを残す</h3>
+      <p>Tampermonkey／Userscripts版では、「設定の保存先」→「管理アドオン側に保存（Firefox系向け）」をオンにすると、普段サイト側に保存しているフィルタ条件・プリセット・拡張設定・育成ルート・拡張ボックスなどを管理アドオン内にも保存します。初期設定はオフです。AFの条件はプリセットとして保存したものが対象です。</p>
+      <p>サイトデータが消えた次回起動時に、なくなった設定だけを復元します。探索統計とゲームのログイン情報は対象外で、別のPCやiPhoneには自動同期しません。オフにすると管理アドオン側の保存分を削除し、現在のサイト側の設定は残します。</p>
+      <p class="hint">この機能の初回利用には、Tampermonkey／Userscripts内のスクリプト本体を一度上書き更新してください。通常のPC用Chrome／Edge拡張には、この設定は表示されません。</p>
     </section>
 
     <section id="af" aria-labelledby="af-title">

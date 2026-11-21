@@ -26,6 +26,7 @@ jobs:
             node --check "$script"
           done
           node tests/update-check.cjs
+          node tests/settings-storage.cjs
           node tests/training-sources.cjs
           node tests/training-share.cjs
           node tests/planner-limits.cjs
