@@ -3,7 +3,7 @@
 
   const { activeGroup, sumRates } = globalThis.hakoAfListRules;
   const { readEffects } = globalThis.hakoAfEffects;
-  const { text: formatMetric } = globalThis.hakoAf4000;
+  const { getTarget, setTarget, normalizeTarget, DEFAULT_TARGET, MAX_TARGET, MAX_ESTIMATE_TARGET, text: formatMetric } = globalThis.hakoAf4000;
   const names = globalThis.hakoAfFeatureNames;
   const slotHome = globalThis.hakoAfSlotHome;
   const filterAndSort = `${names.filter}・${names.sort}`;
@@ -11,7 +11,7 @@
   const features = {
     detail: `${names.forecast}（AF詳細・コピー）`,
     inventory: `${filterAndSort}（装備・強化・分解・AFガチャ）`,
-    enhanceEstimate: `${names.enhanceEstimate}（Lv4000までの費用）`,
+    enhanceEstimate: `${names.enhanceEstimate}（目標レベルまでの費用）`,
     market: `${filterAndSort}（フリマ・オークション・個人間取引）`,
     marketWatch: `${names.marketWatch}（フリマ最安値）`,
     explore: `${names.explore}（${filterAndSort}・ページ表示）`,
@@ -90,6 +90,7 @@
     const stored = get(configKey) ?? {};
     const featurePreferences = { skipExploreLogs: stored.skipExploreLogs, ...stored.features };
     return {
+      forecastTarget: normalizeTarget(stored.forecastTarget),
       features: Object.fromEntries(Object.keys(features).map(id => [id, featurePreferences[id] !== false])),
       paging: ["standard", "all", "priority"].includes(stored.paging) ? stored.paging : "priority",
       candidates: ["mark", "first", "only"].includes(stored.candidates) ? stored.candidates : "first",
@@ -180,6 +181,7 @@
     }
     function changeSettings() {
       save(configKey, settings);
+      setTarget(settings.forecastTarget);
       tellMain();
       requestScan();
     }
@@ -465,6 +467,28 @@
       const header = node("header", "extra-header");
       header.append(title, close);
       dialog.append(header);
+      const forecastSection = subsection(dialog, "AFの予測");
+      const targetInput = document.createElement("input");
+      targetInput.type = "number";
+      targetInput.inputMode = "numeric";
+      targetInput.min = 1;
+      targetInput.max = MAX_TARGET;
+      targetInput.step = 1;
+      targetInput.value = settings.forecastTarget;
+      labeled(forecastSection, "目標レベル", targetInput);
+      forecastSection.append(node("p", "extra-note", `初期値は${DEFAULT_TARGET}です。1〜${MAX_TARGET}の整数を指定すると、予測表示・コピー・ソート・フィルタ・強化見積もり・プランナーのAF比較に反映します。目標以上のAFは現在値で比較します。`));
+      forecastSection.append(node("p", "extra-note", `Lv4500を超える部分は経験式の外挿です。強化費用の見積もりは計算負荷を抑えるためLv${MAX_ESTIMATE_TARGET}まで対応します。追加ヒット数はレベルによって増やしません。`));
+      targetInput.addEventListener("input", () => targetInput.setCustomValidity(""));
+      targetInput.addEventListener("change", () => {
+        const value = Number(targetInput.value);
+        if (!targetInput.value || !targetInput.checkValidity() || !Number.isSafeInteger(value)) {
+          targetInput.setCustomValidity(`1〜${MAX_TARGET}の整数を入力してください。`);
+          targetInput.reportValidity();
+          return;
+        }
+        settings.forecastTarget = normalizeTarget(value);
+        changeSettings();
+      });
 
       if (version) {
         const updates = subsection(dialog, names.updates);
@@ -697,10 +721,10 @@
       ui.data = data;
       const view = viewRule(state);
       const legendText = plan.sort ? names.sort + " " + effectOption(plan.sort.key).label +
-        (!view.active && plan.sort.forecast ? "（→ Lv4000予測）" : "") : "";
+        (!view.active && plan.sort.forecast ? `（→ Lv${getTarget()}予測）` : "") : "";
       if (ui.legend.textContent !== legendText) ui.legend.textContent = legendText;
       ui.legend.hidden = !legendText;
-      const matchText = "✓ 一致した条件" + (state.useForecast ? "　→ Lv4000予測" : "");
+      const matchText = "✓ 一致した条件" + (state.useForecast ? `　→ Lv${getTarget()}予測` : "");
       if (ui.matchLegend.textContent !== matchText) ui.matchLegend.textContent = matchText;
       ui.matchLegend.hidden = !view.active;
       ui.matchLegend.dataset.color = settings.matchColor;
@@ -723,7 +747,7 @@
         message = "「" + short + "」の条件を満たしたAFが" + numbers.format(matches) + "個ドロップしました。" + unverified;
       }
       const countLabel = view.error ? "条件を確認" : matches > 0 ? "一致あり " + numbers.format(matches) + "個" : "一致なし 0個";
-      const basisLabel = view.error ? "" : state.useForecast ? "Lv4000予測" : "現在値";
+      const basisLabel = view.error ? "" : state.useForecast ? `Lv${getTarget()}予測` : "現在値";
       const detailLabel = view.error || (condition ? "「" + condition + "」" + unverified : "");
       ui.status.dataset.result = view.error ? "error" : matches > 0 ? "hit" : "miss";
       if (ui.statusCount.textContent !== countLabel) ui.statusCount.textContent = countLabel;
@@ -1188,8 +1212,14 @@
     window.addEventListener("storage", event => {
       if (event.key !== configKey && event.key !== null) return;
       if (!globalThis.hakoAfFrameContext?.embedded &&
-          !document.documentElement.hasAttribute("data-ha4-slot-home-active")) return;
+          !document.documentElement.hasAttribute("data-ha4-slot-home-active")) {
+        settings.forecastTarget = loadSettings().forecastTarget;
+        setTarget(settings.forecastTarget);
+        requestScan();
+        return;
+      }
       Object.assign(settings, loadSettings());
+      setTarget(settings.forecastTarget);
       tellMain();
       requestScan();
     });

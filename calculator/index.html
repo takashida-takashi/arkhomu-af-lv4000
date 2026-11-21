@@ -1,0 +1,1578 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>アーティファクト成長確認ツール</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --panel-border: #334155;
+            --accent-color: #38bdf8;
+            --accent-hover: #0284c7;
+            --text-main: #f8fafc;
+            --text-sub: #94a3b8;
+            --star-color: #f59e0b;
+            --card-bg: #0f172a;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            padding: 12px 18px;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1320px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 14px;
+        }
+
+        header h1 {
+            font-size: 1.55rem;
+            color: var(--accent-color);
+            margin-bottom: 2px;
+        }
+
+        header p {
+            color: var(--text-sub);
+            font-size: 0.84rem;
+        }
+
+        .grid-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+            gap: 14px;
+            align-items: start;
+        }
+
+        @media (max-width: 900px) {
+            .grid-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            min-width: 0;
+            background-color: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 10px;
+            padding: 16px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.22);
+        }
+
+        .panel h2 {
+            font-size: 1.1rem;
+            color: var(--accent-color);
+            margin-bottom: 12px;
+            border-bottom: 1px solid var(--panel-border);
+            padding-bottom: 7px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--text-sub);
+            margin-bottom: 6px;
+            font-weight: bold;
+        }
+
+        textarea, input, select {
+            width: 100%;
+            min-width: 0;
+            background-color: #0f172a;
+            border: 1px solid var(--panel-border);
+            color: var(--text-main);
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 0.92rem;
+            margin-bottom: 10px;
+            transition: border-color 0.2s;
+        }
+
+        textarea:focus, input:focus, select:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        textarea {
+            height: 112px;
+            resize: vertical;
+            font-family: monospace;
+        }
+
+        .label-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+            min-width: 0;
+        }
+
+        .label-row label {
+            margin-bottom: 0;
+            white-space: nowrap;
+        }
+
+        .btn-reset {
+            flex: 0 0 auto;
+            background: #475569;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 5px 10px;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+
+        .btn-reset:hover {
+            background: #64748b;
+        }
+
+        .star-count-badge {
+            display: inline-block;
+            flex: 0 0 auto;
+            padding: 2px 8px;
+            border-radius: 5px;
+            background: rgba(245, 158, 11, 0.15);
+            color: #fbbf24;
+            font-size: 0.78rem;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+
+        .readonly-info {
+            color: var(--accent-color);
+            font-weight: bold;
+        }
+
+        .material-estimator {
+            border-top: 1px solid var(--panel-border);
+            margin-top: 3px;
+            padding-top: 11px;
+        }
+
+        .material-estimator h3 {
+            color: var(--accent-color);
+            font-size: 0.96rem;
+            margin-bottom: 8px;
+        }
+
+        .material-estimate-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .material-estimate-card {
+            min-width: 0;
+            background: var(--card-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 7px;
+            padding: 10px;
+        }
+
+        .material-estimate-label {
+            color: var(--text-sub);
+            font-size: 0.82rem;
+            font-weight: bold;
+            margin-bottom: 6px;
+        }
+
+        .material-estimate-number {
+            color: var(--accent-color);
+            font-size: 1.12rem;
+            font-weight: bold;
+            overflow-wrap: anywhere;
+            margin-bottom: 4px;
+        }
+
+        .material-estimate-detail {
+            color: var(--text-sub);
+            font-size: 0.78rem;
+            line-height: 1.5;
+            overflow-wrap: anywhere;
+        }
+
+        .material-estimate-cost {
+            color: #86efac;
+            font-weight: bold;
+            font-size: 0.88rem;
+            margin-top: 8px;
+            overflow-wrap: anywhere;
+        }
+
+        .material-estimator-details {
+            color: var(--text-sub);
+            font-size: 0.76rem;
+            margin: 0 0 2px;
+        }
+
+        .material-estimator-details summary {
+            display: inline-block;
+            cursor: pointer;
+            color: var(--text-sub);
+            text-decoration: underline dotted;
+            text-underline-offset: 2px;
+        }
+
+        .material-estimator-details p {
+            margin-top: 6px;
+            line-height: 1.45;
+        }
+
+        @media (max-width: 520px) {
+            .inline-group {
+                grid-template-columns: 1fr;
+                gap: 2px;
+            }
+        }
+
+        @media (max-width: 430px) {
+            body {
+                padding: 10px;
+            }
+
+            .panel {
+                padding: 12px;
+            }
+
+            .material-estimate-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .btn-primary {
+            width: 100%;
+            background-color: var(--accent-color);
+            color: #0f172a;
+            border: none;
+            padding: 10px;
+            border-radius: 7px;
+            font-size: 0.94rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--accent-hover);
+        }
+
+        .btn-copy {
+            background-color: #10b981;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-copy:hover {
+            background-color: #059669;
+        }
+
+        .inline-group {
+            display: grid;
+            grid-template-columns: minmax(105px, 0.62fr) minmax(0, 1.38fr);
+            gap: 12px;
+            align-items: start;
+        }
+
+        .rarity-field {
+            min-width: 0;
+        }
+
+        .rarity-field .label-row {
+            flex-wrap: nowrap;
+        }
+
+        .rarity-field .label-row label {
+            flex: 0 1 auto;
+            font-size: 0.82rem;
+        }
+
+        .rarity-field .star-count-badge {
+            margin-left: auto;
+        }
+
+        .rarity-field .readonly-info {
+            display: block;
+        }
+
+        .searchable-select {
+            position: relative;
+            margin-bottom: 15px;
+        }
+
+        .searchable-select input {
+            margin-bottom: 0;
+        }
+
+        .select-options {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            max-height: 220px;
+            overflow-y: auto;
+            background-color: #0f172a;
+            border: 1px solid var(--accent-color);
+            border-radius: 6px;
+            z-index: 100;
+            display: none;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+        }
+
+        .select-option-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            border-bottom: 1px solid var(--panel-border);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .select-option-item:hover {
+            background-color: var(--panel-border);
+            color: var(--accent-color);
+        }
+
+        .select-option-item .sub-text {
+            color: var(--text-sub);
+            font-size: 0.8rem;
+        }
+
+        .result-header {
+            background-color: #0f172a;
+            padding: 12px 13px;
+            border-radius: 7px;
+            border-left: 4px solid var(--accent-color);
+            margin-bottom: 12px;
+        }
+
+        .result-title {
+            font-weight: bold;
+            font-size: 1.05rem;
+            margin-bottom: 6px;
+            color: #fff;
+            overflow-wrap: anywhere;
+        }
+
+        .result-meta {
+            font-size: 0.82rem;
+            color: var(--text-sub);
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 5px 8px;
+        }
+
+        .result-meta span {
+            white-space: nowrap;
+            background: rgba(148, 163, 184, 0.08);
+            border-radius: 4px;
+            padding: 2px 6px;
+        }
+
+        .stat-group {
+            margin-bottom: 12px;
+        }
+
+        .stat-group h3 {
+            font-size: 0.92rem;
+            color: var(--accent-color);
+            margin-bottom: 6px;
+        }
+
+        .stat-card {
+            min-width: 0;
+            background-color: var(--card-bg);
+            border: 1px solid var(--panel-border);
+            padding: 8px 10px;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .stat-name {
+            font-size: 0.9rem;
+        }
+
+        .stat-stars {
+            color: var(--star-color);
+            margin-left: 6px;
+            font-size: 0.85rem;
+        }
+
+        .stat-val-change {
+            text-align: right;
+        }
+
+        .val-current {
+            font-size: 0.85rem;
+            color: var(--text-sub);
+            text-decoration: line-through;
+            margin-right: 6px;
+        }
+
+        .val-target {
+            font-size: 1rem;
+            font-weight: bold;
+            color: #38bdf8;
+        }
+
+        .rate-badge {
+            display: inline-block;
+            background-color: #0284c7;
+            color: #fff;
+            font-size: 0.75rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 6px;
+        }
+
+        .copy-output-box {
+            background-color: #0f172a;
+            border: 1px solid var(--panel-border);
+            border-radius: 7px;
+            padding: 10px;
+            margin-top: 12px;
+        }
+
+        .copy-output-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .copy-output-header span {
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: var(--accent-color);
+        }
+
+        .copy-textarea {
+            width: 100%;
+            height: 86px;
+            background-color: #1e293b;
+            border: 1px solid var(--panel-border);
+            color: #38bdf8;
+            font-size: 0.85rem;
+            border-radius: 6px;
+            padding: 8px;
+            margin-bottom: 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        #expectedSynthesisCost, #p90SynthesisCost, #expectedTotalCost, #p90TotalCost { font-size: 1.12rem; overflow-wrap: anywhere; }
+        #synthesisStatus { margin: 10px 0; overflow-wrap: anywhere; }
+
+        .input-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px; margin-bottom: 12px; }
+        .panel .input-heading h2 { margin: 0; padding: 0; border: 0; white-space: nowrap; flex: 0 0 auto; }
+        .input-top-controls { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-left: auto; min-width: 0; }
+        .level-control { display: flex; align-items: center; gap: 5px; }
+        .level-control label { margin: 0; font-size: .75rem; white-space: nowrap; }
+        .input-top-controls input, .input-top-controls select { margin: 0; padding: 6px 7px; font-size: .82rem; height: 32px; }
+        #targetLv { width: 76px; }
+        #rarityDisplay { width: 160px; color: var(--accent-color); font-weight: bold; }
+        .input-top-controls .star-count-badge { padding: 4px 6px; font-size: .75rem; }
+        .inline-setting { display: flex; align-items: center; justify-content: flex-start; gap: 10px; margin-bottom: 10px; }
+        .inline-setting label { margin: 0; min-width: 0; }
+        .inline-setting input, .inline-setting select { flex: 0 0 140px; width: 140px; margin: 0; }
+        .stat-group.compact-rows { margin-bottom: 10px; }
+        .compact-rows .stat-card { background: transparent; border: 0; border-bottom: 1px solid var(--panel-border); border-radius: 0; margin: 0; padding: 5px 0; gap: 8px; }
+        .compact-rows .stat-card:last-child { border-bottom: 0; }
+        .compact-rows .stat-card > div:first-child { min-width: 0; }
+        .compact-rows .stat-val-change { display: flex; justify-content: flex-end; align-items: baseline; flex-wrap: wrap; gap: 0 5px; }
+        .compact-rows .val-current { margin: 0; white-space: nowrap; }
+        .compact-rows .val-target { white-space: nowrap; }
+        .passive-card { display: block; }
+        .passive-description { margin-top: 6px; color: var(--text-sub); font-size: .82rem; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-line; }
+        @media (max-width: 600px) {
+            .input-top-controls { width: 100%; gap: 6px; justify-content: flex-start; flex-wrap: wrap; }
+            #targetLv { width: 68px; }
+            #rarityDisplay { width: 128px; }
+            .input-top-controls input, .input-top-controls select { font-size: .76rem; padding: 5px; }
+            .level-control label { font-size: .7rem; }
+            .input-top-controls .star-count-badge { font-size: .7rem; padding: 4px; }
+            .inline-setting label { font-size: .78rem; }
+            .inline-setting input, .inline-setting select { flex-basis: 100px; width: 100px; }
+            .compact-rows .stat-name { font-size: .82rem; }
+            .compact-rows .stat-stars { font-size: .75rem; margin-left: 3px; }
+            .compact-rows .val-current { font-size: .74rem; }
+            .compact-rows .val-target { font-size: .9rem; }
+        }
+
+        .estimate-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 10px; }
+        .material-estimator .estimate-heading h3 { margin: 0; font-size: .88rem; }
+        .estimate-heading .inline-setting { margin: 0 0 0 auto; gap: 6px; }
+        .estimate-heading .inline-setting label { font-size: .72rem; }
+        .estimate-heading .inline-setting input { flex-basis: 100px; width: 100px; padding: 6px 8px; font-size: .82rem; }
+        .estimate-heading .inline-setting select { flex-basis: 80px; width: 80px; padding: 6px; font-size: .82rem; }
+        .result-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--panel-border); padding-bottom: 8px; margin-bottom: 10px; }
+        .panel .result-heading h2 { border: 0; padding: 0; margin: 0; white-space: nowrap; }
+        .result-top-controls { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+        .level-transition { font-size: .75rem; color: var(--text-sub); white-space: nowrap; }
+        .level-transition b { color: var(--accent-color); }
+        #copyResultButton { font-size: .8rem; padding: 5px 10px; white-space: nowrap; }
+        #copyResultButton:disabled { opacity: .45; cursor: default; }
+        .result-top-controls .rate-badge { margin-left: 0; font-size: .68rem; }
+        .result-header { padding: 9px 12px; margin-bottom: 10px; }
+        .result-title { margin-bottom: 0; }
+        .stat-rows-panel { background: var(--card-bg); border: 1px solid var(--panel-border); border-radius: 6px; padding: 0 10px; }
+        .compact-rows .stat-card { padding: 6px 0; }
+        @media (max-width: 600px) {
+            .estimate-heading .inline-setting { width: 100%; margin-left: 0; }
+            .estimate-heading .inline-setting label { flex: 1 1 auto; }
+            .result-top-controls { width: 100%; justify-content: flex-start; margin-left: 0; }
+        }
+
+        .result-heading-primary { display: flex; align-items: center; gap: 14px; min-width: 0; }
+        .level-transition { font-size: .9rem; }
+        .result-top-controls { gap: 14px; }
+        .result-top-controls .rate-badge { font-size: .72rem; }
+        .result-heading { gap: 12px 20px; }
+        @media (max-width: 600px) {
+            .result-top-controls { width: auto; margin-left: auto; justify-content: flex-end; gap: 14px; }
+            .result-heading-primary { gap: 12px; }
+        }
+
+        @media (max-width: 900px) {
+            #mobileEstimatePanel > .material-estimator:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+        }
+
+        .trait-heading { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 3px 8px; margin-bottom: 6px; }
+        .trait-heading h3 { margin-bottom: 0; }
+        .trait-total { margin-left: auto; font-size: .75rem; font-weight: bold; color: var(--accent-color); white-space: nowrap; }
+        @media (max-width: 600px) {
+            .trait-total { font-size: .68rem; }
+        }
+
+        .trait-rate-row > div:first-child { display: flex; align-items: baseline; white-space: nowrap; flex: 0 0 auto; }
+        .trait-total-value { font-size: .95rem; }
+        @media (max-width: 600px) {
+            .trait-total-value { font-size: .9rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>⚔️ アーティファクト成長確認ツール 🛡️</h1>
+        <p>テキストをそのまま貼るだけで目標レベルの予測数値を一瞬で算出！</p>
+    </header>
+
+    <div class="grid-layout">
+        <!-- 入力パネル -->
+        <div class="panel" id="inputPanel">
+            <div class="input-heading">
+                <h2>データ入力</h2>
+                <div class="input-top-controls">
+                    <div class="level-control"><label for="targetLv">目標Lv</label><input type="number" id="targetLv" value="4500" min="1" max="1000000" step="1"></div>
+                    <select id="rarityDisplay" aria-label="元アイテムのレア度" onchange="changeRaritySelection()"><option value="auto">自動判定</option><option value="1">コモン</option><option value="2">アンコモン</option><option value="3">レア</option><option value="4">エリート</option><option value="5">エピック</option><option value="6">ヒロイック</option><option value="7">レジェンダリー</option><option value="8">ミシック</option><option value="9">セレスティアル</option><option value="10">ディヴァイン</option><option value="11">トランセンデント</option><option value="12">エターナル</option></select>
+                    <span id="starCountDisplay" class="star-count-badge">星の数：—</span>
+                </div>
+            </div>
+
+            <div class="label-row" style="flex-wrap: wrap;">
+                <label for="rawText">アーティファクトの能力値:</label>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end;">
+                    <button type="button" class="btn-reset" onclick="pasteRawText()">貼り付け</button>
+                </div>
+            </div>
+            <textarea id="rawText" oninput="scheduleCalculation()" placeholder="ゲーム内の能力値テキストをそのまま貼り付けてね&#10;例：【生命の【裏】ミメシアソード Lv2097】パワー5,030&#10;ステータス: 体力+758.30%★★★★★ / 物攻+661.24%★★★★&#10;特性: 運+4496★★★★&#10;付与パッシブ: ミメシアソード"></textarea>
+
+            <div class="material-estimator" id="materialSection">
+                <div class="estimate-heading"><h3 id="materialHeading">素材数・必要金額の目安（Lv4500到達）</h3><div class="inline-setting"><label for="materialUnitPrice">素材1個あたりの相場価格（ゴールド）:</label><input type="text" id="materialUnitPrice" inputmode="decimal" autocomplete="off" placeholder="例：100" oninput="formatMaterialUnitPrice(this, event)" oncompositionend="formatMaterialUnitPrice(this)"></div></div>
+                <p id="materialExtrapolationNote" class="material-estimate-detail" style="margin-bottom: 8px;" hidden>Lv4500を超える能力値は経験式の外挿だよ。素材・費用の見積もりはLv10万までで、Lv4501以降は100Lvごとに素材＋3個、失敗率59%が続くと仮定しているよ。</p>
+
+                <div class="material-estimate-grid">
+                    <div class="material-estimate-card">
+                        <div class="material-estimate-label" id="expectedMaterialProbability">到達する素材数</div>
+                        <div class="material-estimate-number" id="expectedMaterialCount">—</div>
+                        <div class="material-estimate-cost" id="expectedMaterialCost">素材単価を入力すると表示</div>
+                    </div>
+                    <div class="material-estimate-card">
+                        <div class="material-estimate-label">B. 約90%で到達する素材数</div>
+                        <div class="material-estimate-number" id="p90MaterialCount">—</div>
+                        <div class="material-estimate-cost" id="p90MaterialCost">素材単価を入力すると表示</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="material-estimator" id="synthesisSection" aria-label="合成費用の見積もり">
+                <div class="estimate-heading"><h3 id="synthesisHeading">合成費用の目安（Lv4500到達）</h3><div class="inline-setting"><label for="synthesisDiscount">研究による合成費用の軽減率（%）:</label><select id="synthesisDiscount" onchange="scheduleCalculation()"><option value="0">0%</option><option value="10">10%</option><option value="20">20%</option><option value="30" selected>30%</option><option value="40">40%</option><option value="50">50%</option></select></div></div>
+                <p class="material-estimate-detail" id="synthesisStatus" aria-live="polite" hidden></p>
+                <div class="material-estimate-grid">
+                    <div class="material-estimate-card">
+                        <div class="material-estimate-label">期待値到達個数を使用した場合</div>
+                        <div class="material-estimate-number" id="expectedSynthesisCost">—</div>
+                    </div>
+                    <div class="material-estimate-card">
+                        <div class="material-estimate-label">90％到達個数を使用した場合</div>
+                        <div class="material-estimate-number" id="p90SynthesisCost">—</div>
+                    </div>
+                </div>
+                <h3 id="totalHeading" style="margin-top: 16px;">素材代＋合成費用の合計（Lv4500到達）</h3>
+                <div class="material-estimate-grid">
+                    <div class="material-estimate-card">
+                        <div class="material-estimate-label">期待値到達個数を使用した場合</div>
+                        <div class="material-estimate-number" id="expectedTotalCost">素材単価を入力すると表示</div>
+                    </div>
+                    <div class="material-estimate-card">
+                        <div class="material-estimate-label">90％到達個数を使用した場合</div>
+                        <div class="material-estimate-number" id="p90TotalCost">素材単価を入力すると表示</div>
+                    </div>
+                </div>
+            </div>
+            <span id="desktopEstimateAnchor" hidden></span>
+        </div>
+
+        <!-- 結果パネル -->
+        <div class="panel" id="predictionPanel">
+            <div class="result-heading">
+                <div class="result-heading-primary"><h2>予測結果</h2><span id="levelTransition" class="level-transition"></span></div>
+                <div class="result-top-controls">
+                    <button id="copyResultButton" type="button" class="btn-copy" onclick="copyResultText()" disabled>結果をコピー</button>
+                    <span id="growthRatioBadge" class="rate-badge">成長率: —</span>
+                </div>
+            </div>
+
+            <div id="resultContent">
+                <p style="color: var(--text-sub); text-align: center; padding: 40px 0;">
+                    左側に能力値テキストを貼り付けると、自動で予測結果を表示するよ。
+                </p>
+            </div>
+        </div>
+        <div class="panel" id="mobileEstimatePanel" aria-label="素材数と費用の見積もり" hidden></div>
+    </div>
+</div>
+
+<script src="./data.js?v=3228"></script>
+<script>
+    // ゲームのアイテムマスター・日本語辞書を結合した1142件のDB（2026-11-22取得）。
+    const itemDatabase = artifactCalculatorData.items;
+
+    // Excel「強化実績データ」の割合値1293比較を、共通の成長曲線に当てはめた経験式。
+    // 各AFの最初の表示値からの比率を使い、対数比率の二乗誤差を最小化。
+    // 実測範囲はLv43〜3498。範囲外も同じ式を延長するが、ゲームの公式成長式ではない。
+    const GROWTH_LEVEL_OFFSET = 199.1941276291921;
+    const GROWTH_EXPONENT = 0.6999700116560543;
+
+    // Lv1を1とする基準値。倍率では正規化定数が相殺される。
+    // 指数が0より大きく1より小さいため、値は増え続け、増加量は徐々に小さくなる。
+    function getV(lv) {
+        return Math.pow((lv + GROWTH_LEVEL_OFFSET) / (1 + GROWTH_LEVEL_OFFSET), GROWTH_EXPONENT);
+    }
+
+    // 目標レベル到達に必要な素材数の計算設定（初期値Lv4500）
+    let MATERIAL_TARGET_LEVEL = 4500;
+    const MAX_FORECAST_LEVEL = 1000000;
+    const MAX_ESTIMATE_LEVEL = 100000;
+    const MATERIAL_SIMULATION_COUNT = 20000;
+    const MATERIAL_RULES = artifactCalculatorData.materialRules;
+
+    let materialCostByLevel = [];
+    let materialFailByLevel = [];
+    let expectedMaterialsByLevel = [];
+    const materialEstimateCache = new Map();
+    let latestMaterialEstimate = null;
+    let calculationTimer = null;
+
+    function isEstimateTargetSupported() {
+        return Number.isSafeInteger(MATERIAL_TARGET_LEVEL) && MATERIAL_TARGET_LEVEL >= 1 && MATERIAL_TARGET_LEVEL <= MAX_ESTIMATE_LEVEL;
+    }
+
+    function getEstimateSimulationCount(startLevel) {
+        const approximateAttempts = Math.max(1, (MATERIAL_TARGET_LEVEL - startLevel) / 20);
+        return Math.max(200, Math.min(MATERIAL_SIMULATION_COUNT, Math.floor(6000000 / approximateAttempts)));
+    }
+
+    function updateEstimateHeadings(level) {
+        const titles = {materialHeading: '素材数・必要金額の目安', synthesisHeading: '合成費用の目安', totalHeading: '素材代＋合成費用の合計'};
+        for (const [id, title] of Object.entries(titles)) document.getElementById(id).textContent = title + '（Lv' + level + '到達）';
+        document.getElementById('materialExtrapolationNote').hidden = !(level > 4500 && level <= MAX_FORECAST_LEVEL);
+    }
+
+    function setEstimateTargetLevel(level) {
+        updateEstimateHeadings(level);
+        if (level === MATERIAL_TARGET_LEVEL) return;
+        MATERIAL_TARGET_LEVEL = level;
+        materialEstimateCache.clear();
+        synthesisEstimateCache.clear();
+        latestMaterialEstimate = null;
+        latestSynthesisEstimate = null;
+        if (isEstimateTargetSupported()) initializeMaterialTables();
+        else {
+            materialCostByLevel = [];
+            materialFailByLevel = [];
+            expectedMaterialsByLevel = [];
+        }
+    }
+
+    function initializeMaterialTables() {
+        const tableSize = MATERIAL_TARGET_LEVEL + 181;
+        materialCostByLevel = new Array(tableSize).fill(0);
+        materialFailByLevel = new Array(tableSize).fill(0);
+        expectedMaterialsByLevel = new Array(tableSize).fill(0);
+
+        MATERIAL_RULES.forEach(rule => {
+            for (let lv = rule.min; lv < rule.max && lv < tableSize; lv++) {
+                materialCostByLevel[lv] = rule.cost;
+                materialFailByLevel[lv] = rule.fail;
+            }
+        });
+
+        // 現在の強化上限を超えた部分だけ、元ツールと同じ100Lv帯ごとの外挿を使う。
+        for (let lv = 4501; lv < tableSize; lv++) {
+            materialCostByLevel[lv] = MATERIAL_RULES[MATERIAL_RULES.length - 1].cost + 3 * (Math.floor((lv - 4501) / 100) + 1);
+            materialFailByLevel[lv] = MATERIAL_RULES[MATERIAL_RULES.length - 1].fail;
+        }
+
+        // 失敗分を含む期待値を、目標レベルから逆向きに厳密計算する。
+        // E(Lv) = 1回成功するまでの期待消費素材 + 成功後の期待消費素材
+        for (let lv = MATERIAL_TARGET_LEVEL - 1; lv >= 101; lv--) {
+            const normalSum = sumExpectedAfterLevel(lv, 30, 60);
+            const greatSum = sumExpectedAfterLevel(lv, 61, 180);
+            const normalExpected = normalSum / 31;
+            const greatExpected = greatSum / 120;
+            expectedMaterialsByLevel[lv] = materialCostByLevel[lv] / (1 - materialFailByLevel[lv])
+                + normalExpected * 0.9 + greatExpected * 0.1;
+        }
+    }
+
+    function sumExpectedAfterLevel(level, minIncrease, maxIncrease) {
+        let total = 0;
+        for (let increase = minIncrease; increase <= maxIncrease; increase++) {
+            total += expectedMaterialsByLevel[level + increase] || 0;
+        }
+        return total;
+    }
+
+    function getMaterialEstimate(startLevel) {
+        if (startLevel >= MATERIAL_TARGET_LEVEL) {
+            return {
+                expected: 0,
+                expectedRounded: 0,
+                expectedProbability: 1,
+                p90: 0,
+                p90Probability: 1,
+                simulations: MATERIAL_SIMULATION_COUNT
+            };
+        }
+        if (startLevel < 101 || !materialCostByLevel[startLevel]) return null;
+        if (!isEstimateTargetSupported()) return null;
+        if (materialEstimateCache.has(startLevel)) return materialEstimateCache.get(startLevel);
+        const simulationCount = getEstimateSimulationCount(startLevel);
+
+        // 失敗時はレベルを維持し、素材だけ消費する。
+        // 通常成功は+30〜60、大成功は+61〜180。大成功は成功の10%。
+        const samples = new Array(simulationCount);
+        for (let i = 0; i < simulationCount; i++) {
+            let level = startLevel;
+            let materials = 0;
+            let attempts = 0;
+
+            while (level < MATERIAL_TARGET_LEVEL) {
+                const cost = materialCostByLevel[level];
+                if (!cost) break;
+                materials += cost;
+                attempts++;
+
+                if (Math.random() < materialFailByLevel[level]) continue;
+
+                if (Math.random() < 0.10) {
+                    level += 61 + Math.floor(Math.random() * 120);
+                } else {
+                    level += 30 + Math.floor(Math.random() * 31);
+                }
+            }
+            samples[i] = materials;
+        }
+        samples.sort((a, b) => a - b);
+
+        const expected = expectedMaterialsByLevel[startLevel];
+        const expectedRounded = Math.round(expected);
+        const expectedProbability = fractionAtOrBelow(samples, expectedRounded);
+        const p90Index = Math.min(samples.length - 1, Math.ceil(samples.length * 0.90) - 1);
+        const p90 = samples[p90Index];
+        const p90Probability = fractionAtOrBelow(samples, p90);
+
+        const result = { expected, expectedRounded, expectedProbability, p90, p90Probability, simulations: samples.length };
+        materialEstimateCache.set(startLevel, result);
+        return result;
+    }
+
+    function fractionAtOrBelow(sortedValues, threshold) {
+        let low = 0;
+        let high = sortedValues.length;
+        while (low < high) {
+            const mid = (low + high) >> 1;
+            if (sortedValues[mid] <= threshold) low = mid + 1;
+            else high = mid;
+        }
+        return low / sortedValues.length;
+    }
+
+    function formatNumber(value) {
+        return Math.round(value).toLocaleString('ja-JP');
+    }
+
+    function formatPercent(value) {
+        return (value * 100).toFixed(1) + '％';
+    }
+
+    function updateMaterialEstimate(startLevel) {
+        const expectedCountEl = document.getElementById('expectedMaterialCount');
+        const expectedProbEl = document.getElementById('expectedMaterialProbability');
+        const p90CountEl = document.getElementById('p90MaterialCount');
+
+        if (!Number.isFinite(startLevel)) {
+            latestMaterialEstimate = null;
+            expectedCountEl.textContent = '—';
+            expectedProbEl.textContent = '到達する素材数';
+            p90CountEl.textContent = '—';
+            updateMaterialCosts();
+            return;
+        }
+
+        if (startLevel < MATERIAL_TARGET_LEVEL && !isEstimateTargetSupported()) {
+            latestMaterialEstimate = null;
+            expectedCountEl.textContent = '計算対象外';
+            expectedProbEl.textContent = '到達する素材数';
+            p90CountEl.textContent = '計算対象外';
+            updateMaterialCosts();
+            return;
+        }
+
+        if (startLevel < 101 && startLevel < MATERIAL_TARGET_LEVEL) {
+            latestMaterialEstimate = null;
+            expectedCountEl.textContent = '計算対象外';
+            expectedProbEl.textContent = '到達する素材数';
+            p90CountEl.textContent = '計算対象外';
+            updateMaterialCosts();
+            return;
+        }
+
+        const estimate = getMaterialEstimate(startLevel);
+        if (!estimate) {
+            latestMaterialEstimate = null;
+            expectedCountEl.textContent = '計算できないよ';
+            expectedProbEl.textContent = '到達する素材数';
+            p90CountEl.textContent = '計算できないよ';
+            updateMaterialCosts();
+            return;
+        }
+
+        latestMaterialEstimate = estimate;
+        expectedCountEl.textContent = '約' + formatNumber(estimate.expectedRounded) + '個';
+        expectedProbEl.textContent = '約' + formatPercent(estimate.expectedProbability) + 'で到達する素材数';
+        p90CountEl.textContent = '約' + formatNumber(estimate.p90) + '個';
+        updateMaterialCosts();
+    }
+
+    function formatMaterialUnitPrice(input, event) {
+        if (event?.isComposing) return;
+        const previous = input.value.normalize('NFKC');
+        const start = input.selectionStart ?? previous.length;
+        const end = input.selectionEnd ?? start;
+        const logicalStart = previous.slice(0, start).replace(/,/g, '').length;
+        const logicalEnd = previous.slice(0, end).replace(/,/g, '').length;
+        const raw = previous.replace(/,/g, '').trim();
+        if (/^-?\d*(?:\.\d*)?$/.test(raw)) {
+            const sign = raw.startsWith('-') ? '-' : '';
+            const unsigned = sign ? raw.slice(1) : raw;
+            const dot = unsigned.indexOf('.');
+            let integer = dot < 0 ? unsigned : unsigned.slice(0, dot);
+            const decimal = dot < 0 ? '' : unsigned.slice(dot);
+            integer = integer.replace(/^0+(?=\d)/, '');
+            input.value = sign + integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + decimal;
+            const cursorFor = logical => {
+                let cursor = 0, count = 0;
+                while (cursor < input.value.length && count < logical) {
+                    if (input.value[cursor] !== ',') count++;
+                    cursor++;
+                }
+                if (input.value[cursor] === ',') cursor++;
+                return cursor;
+            };
+            input.setSelectionRange(cursorFor(logicalStart), cursorFor(logicalEnd));
+        }
+        updateMaterialCosts();
+    }
+
+    function updateMaterialCosts() {
+        updateCombinedCosts();
+        const priceText = document.getElementById('materialUnitPrice').value.replace(/,/g, '').trim();
+        const expectedCostEl = document.getElementById('expectedMaterialCost');
+        const p90CostEl = document.getElementById('p90MaterialCost');
+        const price = priceText === '' ? NaN : Number(priceText);
+
+        if (!latestMaterialEstimate) {
+            expectedCostEl.textContent = priceText === '' ? '素材単価を入力すると表示' : '素材数を算出すると表示';
+            p90CostEl.textContent = priceText === '' ? '素材単価を入力すると表示' : '素材数を算出すると表示';
+            return;
+        }
+        if (priceText === '') {
+            expectedCostEl.textContent = '素材単価を入力すると表示';
+            p90CostEl.textContent = '素材単価を入力すると表示';
+            return;
+        }
+        if (!Number.isFinite(price) || price < 0) {
+            expectedCostEl.textContent = '0以上の単価を入力してね。';
+            p90CostEl.textContent = '0以上の単価を入力してね。';
+            return;
+        }
+
+        const expectedCost = Math.round(latestMaterialEstimate.expectedRounded * price);
+        const p90Cost = Math.round(latestMaterialEstimate.p90 * price);
+        expectedCostEl.textContent = '必要金額：約' + formatNumber(expectedCost) + 'ゴールド';
+        p90CostEl.textContent = '必要金額：約' + formatNumber(p90Cost) + 'ゴールド';
+    }
+
+    // 基本係数は研究による費用軽減を含めない。rank 1は実測3件、rank 12は採用した実測3件でも照合済み。
+    const SYNTHESIS_COEFFICIENTS = artifactCalculatorData.synthesisCoefficients;
+    const synthesisEstimateCache = new Map();
+    let latestSynthesisEstimate = null;
+
+    // 星数は引数として渡し、費用の計算順序を検証時と同じに保つ。
+    function getSynthesisFee(level, coefficient, stars, discountPercent) {
+        const intermediate = Math.floor(level * coefficient * (1 + 0.3 * stars));
+        return Math.floor(intermediate * (level >= 1000 ? 1.5 : 1) * ((100 - discountPercent) / 100));
+    }
+
+    function getSynthesisEstimate(startLevel, coefficient, stars, discountPercent) {
+        const cacheKey = [MATERIAL_TARGET_LEVEL, startLevel, coefficient, stars, discountPercent].join(':');
+        if (synthesisEstimateCache.has(cacheKey)) return synthesisEstimateCache.get(cacheKey);
+        const simulationCount = getEstimateSimulationCount(startLevel);
+        const fees = new Float64Array(MATERIAL_TARGET_LEVEL + 181);
+        const expectedFees = new Float64Array(fees.length);
+        for (let lv = startLevel; lv < MATERIAL_TARGET_LEVEL; lv++) {
+            fees[lv] = getSynthesisFee(lv, coefficient, stars, discountPercent);
+        }
+        for (let lv = MATERIAL_TARGET_LEVEL - 1; lv >= startLevel; lv--) {
+            let normal = 0, great = 0;
+            for (let increase = 30; increase <= 60; increase++) normal += expectedFees[lv + increase];
+            for (let increase = 61; increase <= 180; increase++) great += expectedFees[lv + increase];
+            expectedFees[lv] = fees[lv] / (1 - materialFailByLevel[lv]) + 0.9 * normal / 31 + 0.1 * great / 120;
+        }
+        // 素材と合成費用を同じ試行から記録。合計予算の90%点は、この同時分布から求める。
+        const materialBudget = Math.round(expectedMaterialsByLevel[startLevel]);
+        let budgetGoldSum = 0, budgetAttemptSum = 0, budgetMaterialSum = 0, budgetReached = 0;
+        const budgetAttemptsByLevel = new Float64Array(MATERIAL_TARGET_LEVEL);
+        const trialLevels = new Array(simulationCount);
+        const goldSamples = new Array(simulationCount);
+        const materialSamples = new Array(simulationCount);
+        for (let sample = 0; sample < simulationCount; sample++) {
+            let lv = startLevel, gold = 0, materials = 0;
+            const levels = [];
+            let budgetClosed = false, budgetGold = 0, budgetAttempts = 0, budgetMaterials = 0;
+            while (lv < MATERIAL_TARGET_LEVEL) {
+                levels.push(lv);
+                // 素材予算内で実行できる試行だけの支出と合成回数を積み上げる。
+                if (!budgetClosed && budgetMaterials + materialCostByLevel[lv] > materialBudget) budgetClosed = true;
+                if (!budgetClosed) {
+                    budgetGold += fees[lv];
+                    budgetAttempts++;
+                    budgetMaterials += materialCostByLevel[lv];
+                    budgetAttemptsByLevel[lv]++;
+                }
+                gold += fees[lv];
+                materials += materialCostByLevel[lv];
+                if (Math.random() < materialFailByLevel[lv]) continue;
+                lv += Math.random() < 0.1 ? 61 + Math.floor(Math.random() * 120) : 30 + Math.floor(Math.random() * 31);
+            }
+            trialLevels[sample] = levels;
+            budgetGoldSum += budgetGold;
+            budgetAttemptSum += budgetAttempts;
+            budgetMaterialSum += budgetMaterials;
+            if (!budgetClosed) budgetReached++;
+            goldSamples[sample] = gold;
+            materialSamples[sample] = materials;
+        }
+        const sortedMaterials = [...materialSamples].sort((a, b) => a - b);
+        const p90MaterialBudget = sortedMaterials[Math.ceil(sortedMaterials.length * 0.9) - 1];
+        let p90BudgetGoldSum = 0, p90BudgetAttemptSum = 0;
+        for (const levels of trialLevels) {
+            let usedMaterials = 0;
+            for (const lv of levels) {
+                if (usedMaterials + materialCostByLevel[lv] > p90MaterialBudget) break;
+                usedMaterials += materialCostByLevel[lv];
+                p90BudgetGoldSum += fees[lv];
+                p90BudgetAttemptSum++;
+            }
+        }
+        const sortedGold = [...goldSamples].sort((a, b) => a - b);
+        const p90 = sortedGold[Math.ceil(sortedGold.length * 0.9) - 1];
+        const result = {
+            expected: expectedFees[startLevel], p90,
+            expectedProbability: fractionAtOrBelow(sortedGold, Math.round(expectedFees[startLevel])),
+            p90Probability: fractionAtOrBelow(sortedGold, p90),
+            goldSamples, materialSamples, startLevel, coefficient, stars, discountPercent,
+            materialBudget,
+            p90MaterialBudget,
+            p90BudgetGoldMean: p90BudgetGoldSum / simulationCount,
+            p90BudgetAttemptMean: p90BudgetAttemptSum / simulationCount,
+            p90BudgetReachedProbability: fractionAtOrBelow(sortedMaterials, p90MaterialBudget),
+            budgetGoldMean: budgetGoldSum / simulationCount,
+            budgetAttemptMean: budgetAttemptSum / simulationCount,
+            budgetMaterialMean: budgetMaterialSum / simulationCount,
+            budgetReachedProbability: budgetReached / simulationCount,
+            budgetAttemptsByLevel
+        };
+        // 大きい試行配列を無制限に保持しない。
+        if (synthesisEstimateCache.size >= 6) synthesisEstimateCache.delete(synthesisEstimateCache.keys().next().value);
+        synthesisEstimateCache.set(cacheKey, result);
+        return result;
+    }
+
+    function syncMaterialBudgetFromSynthesis(estimate) {
+        const sorted = [...estimate.materialSamples].sort((a, b) => a - b);
+        const p90 = sorted[Math.ceil(sorted.length * 0.9) - 1];
+        latestMaterialEstimate = {
+            ...latestMaterialEstimate,
+            expectedProbability: estimate.budgetReachedProbability,
+            p90,
+            p90Probability: fractionAtOrBelow(sorted, p90)
+        };
+        document.getElementById('expectedMaterialProbability').textContent = '約' + formatPercent(estimate.budgetReachedProbability) + 'で到達する素材数';
+        document.getElementById('p90MaterialCount').textContent = '約' + formatNumber(p90) + '個';
+        updateMaterialCosts();
+    }
+
+    function setSynthesisStatus(message, visible = false) {
+        const element = document.getElementById('synthesisStatus');
+        element.textContent = message;
+        element.hidden = !visible;
+    }
+
+    function clearSynthesisEstimate(message) {
+        latestSynthesisEstimate = null;
+        for (const id of ['expectedSynthesisCost', 'p90SynthesisCost']) document.getElementById(id).textContent = '—';
+        setSynthesisStatus(message, !message.startsWith('能力値テキスト') && !message.includes('に到達済み'));
+        updateCombinedCosts();
+    }
+
+    function updateSynthesisEstimate(startLevel, item, stars) {
+        if (!Number.isFinite(startLevel) || !Number.isInteger(startLevel) || startLevel < 1) {
+            clearSynthesisEstimate('能力値テキストを入力すると自動計算するよ。');
+            return;
+        }
+        if (startLevel >= MATERIAL_TARGET_LEVEL) {
+            clearSynthesisEstimate('Lv' + MATERIAL_TARGET_LEVEL + 'に到達済み。到達までの追加費用は0ゴールドだよ。');
+            latestSynthesisEstimate = {expected: 0, p90: 0, expectedProbability: 1, p90Probability: 1, goldSamples: [0], materialSamples: [0], startLevel};
+            document.getElementById('expectedSynthesisCost').textContent = '0ゴールド';
+            document.getElementById('p90SynthesisCost').textContent = '0ゴールド';
+            updateCombinedCosts();
+            return;
+        }
+        if (!isEstimateTargetSupported()) {
+            clearSynthesisEstimate('計算規模の上限のため、素材・費用の見積もりは目標Lv10万まで対応しているよ。能力値の成長予測は引き続き表示できるよ。');
+            return;
+        }
+        if (!item || item.ambiguous) {
+            clearSynthesisEstimate(item?.ambiguous ? '同名でレア度が異なるアイテムがあるため、合成費用を判定できないよ。' : '元アイテムをDBで特定できないため、合成費用を算出できないよ。');
+            return;
+        }
+        if (!Number.isInteger(stars) || stars < 1) {
+            clearSynthesisEstimate('ステータス・特性の★を含む能力値テキストを入力してね。');
+            return;
+        }
+        const discountText = document.getElementById('synthesisDiscount').value.trim();
+        const discount = discountText === '' ? NaN : Number(discountText);
+        if (!Number.isFinite(discount) || discount < 0 || discount > 100) {
+            clearSynthesisEstimate('費用軽減率は0〜100%で入力してね。');
+            return;
+        }
+        const coefficient = SYNTHESIS_COEFFICIENTS[item.rank];
+        if (!Number.isFinite(coefficient) || coefficient <= 0) {
+            latestSynthesisEstimate = null;
+            for (const id of ['expectedSynthesisCost', 'p90SynthesisCost']) document.getElementById(id).textContent = '—';
+            setSynthesisStatus('合成費用の基本係数を確認できないよ。', true);
+            updateCombinedCosts();
+            return;
+        }
+        const currentFee = getSynthesisFee(startLevel, coefficient, stars, discount);
+        if (!Number.isFinite(currentFee) || !Number.isFinite(getSynthesisFee(MATERIAL_TARGET_LEVEL, coefficient, stars, discount))) {
+            latestSynthesisEstimate = null;
+            for (const id of ['expectedSynthesisCost', 'p90SynthesisCost']) document.getElementById(id).textContent = '—';
+            setSynthesisStatus('係数が大きすぎるため計算できないよ。', true);
+            updateCombinedCosts();
+            return;
+        }
+        if (startLevel < 101) {
+            latestSynthesisEstimate = null;
+            document.getElementById('expectedSynthesisCost').textContent = '計算対象外';
+            document.getElementById('p90SynthesisCost').textContent = '計算対象外';
+            setSynthesisStatus('Lv101未満の失敗率・素材数が未設定のため、累計は算出できないよ。', true);
+            updateCombinedCosts();
+            return;
+        }
+        latestSynthesisEstimate = getSynthesisEstimate(startLevel, coefficient, stars, discount);
+        syncMaterialBudgetFromSynthesis(latestSynthesisEstimate);
+        document.getElementById('expectedSynthesisCost').textContent = '約' + formatNumber(latestSynthesisEstimate.budgetGoldMean) + 'ゴールド';
+        document.getElementById('p90SynthesisCost').textContent = '約' + formatNumber(latestSynthesisEstimate.p90BudgetGoldMean) + 'ゴールド';
+        setSynthesisStatus('');
+        updateCombinedCosts();
+    }
+
+    function updateCombinedCosts() {
+        const expectedEl = document.getElementById('expectedTotalCost');
+        const p90El = document.getElementById('p90TotalCost');
+        if (!latestSynthesisEstimate) {
+            expectedEl.textContent = '合成費用を算出すると表示';
+            p90El.textContent = '合成費用を算出すると表示';
+            return;
+        }
+        if (latestSynthesisEstimate.startLevel >= MATERIAL_TARGET_LEVEL) {
+            expectedEl.textContent = '0ゴールド';
+            p90El.textContent = '0ゴールド';
+            return;
+        }
+        const priceText = document.getElementById('materialUnitPrice').value.replace(/,/g, '').trim();
+        const price = priceText === '' ? NaN : Number(priceText);
+        if (!latestMaterialEstimate || !Number.isFinite(price) || price < 0) {
+            const message = priceText === '' ? '素材単価を入力すると表示' : '0以上の素材単価と素材見積もりが必要だよ。';
+            expectedEl.textContent = message;
+            p90El.textContent = message;
+            return;
+        }
+        const estimate = latestSynthesisEstimate;
+
+        expectedEl.textContent = '約' + formatNumber(estimate.budgetGoldMean + estimate.materialBudget * price) + 'ゴールド';
+        p90El.textContent = '約' + formatNumber(estimate.p90BudgetGoldMean + estimate.p90MaterialBudget * price) + 'ゴールド';
+    }
+
+
+    // アイテム名は完全一致を優先し、既知の接頭表記だけを境界として認める。
+    // 単純な includes() は使わず、「近未来クロスボウ」を「クロスボウ」と誤判定しない。
+    const itemByExactName = new Map();
+    for (const item of itemDatabase) {
+        const previous = itemByExactName.get(item.name);
+        if (!previous) itemByExactName.set(item.name, item);
+        else if (previous.rank !== item.rank) itemByExactName.set(item.name, {name: item.name, rank: null, rarity: '同名でレア度が複数', ambiguous: true});
+    }
+    const itemNamesLongestFirst = [...itemDatabase].sort((a, b) => b.name.length - a.name.length);
+
+    function findOriginalItem(artifactName) {
+        const fullName = String(artifactName || '').trim();
+        if (!fullName) return null;
+
+        // 装飾や特殊表記がない、データベース名そのものの一致を最優先する。
+        const exact = itemByExactName.get(fullName);
+        if (exact) return exact;
+
+        // 「〇〇の【裏】アイテム名」形式は、【裏】の後ろを完全一致で照合する。
+        const uraMarker = '【裏】';
+        const uraIndex = fullName.lastIndexOf(uraMarker);
+        if (uraIndex !== -1) {
+            const afterUra = fullName.slice(uraIndex + uraMarker.length).trim();
+            const uraExact = itemByExactName.get(afterUra);
+            if (uraExact) return uraExact;
+            // 【裏】の後ろに別の修飾がある場合でも、「の」を境界にした名前だけを許可。
+            for (const item of itemNamesLongestFirst) {
+                if (afterUra.endsWith('の' + item.name)) return itemByExactName.get(item.name);
+            }
+        }
+
+        // 「〇〇のアイテム名」の形式を、接続助詞「の」を境界として照合。
+        // 文字列の途中一致はしないため「近未来クロスボウ」は「クロスボウ」に一致しない。
+        for (const item of itemNamesLongestFirst) {
+            if (fullName.endsWith('の' + item.name)) return itemByExactName.get(item.name);
+        }
+        return null;
+    }
+
+    let rarityOverrideName = null;
+    let rarityOverrideRank = null;
+    const rarityLabels = ['', 'コモン', 'アンコモン', 'レア', 'エリート', 'エピック', 'ヒロイック', 'レジェンダリー', 'ミシック', 'セレスティアル', 'ディヴァイン', 'トランセンデント', 'エターナル'];
+
+    function changeRaritySelection() {
+        const parsed = parseText(document.getElementById('rawText').value);
+        rarityOverrideName = parsed.name;
+        const value = document.getElementById('rarityDisplay').value;
+        rarityOverrideRank = value === 'auto' ? null : Number(value);
+        scheduleCalculation();
+    }
+
+    function getSelectedItem(artifactName, detectedItem) {
+        if (rarityOverrideName !== artifactName) {
+            rarityOverrideName = artifactName;
+            rarityOverrideRank = null;
+        }
+        if (rarityOverrideRank === null) return detectedItem;
+        if (!Number.isInteger(rarityOverrideRank) || !rarityLabels[rarityOverrideRank]) return detectedItem;
+        return {...(detectedItem || {}), name: detectedItem?.name || artifactName, rank: rarityOverrideRank, rarity: rarityLabels[rarityOverrideRank], ambiguous: false};
+    }
+
+    function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+    }
+
+    function getPassiveInfo(item, pastedName) {
+        const canUseDatabase = !!item?.passiveId;
+        const name = pastedName || (canUseDatabase ? item.passiveName || item.name : '');
+        return {name, description: name ? item?.passiveDescription || '' : ''};
+    }
+
+
+    function updateOriginalItemInfo(item, starCount) {
+        const rarityDisplay = document.getElementById('rarityDisplay');
+        const starCountDisplay = document.getElementById('starCountDisplay');
+        if (starCount === null) clearSynthesisEstimate('能力値テキストを入力すると自動計算するよ。');
+        if (starCount === null) { rarityOverrideName = null; rarityOverrideRank = null; }
+        rarityDisplay.value = item?.rank ? String(item.rank) : 'auto';
+        starCountDisplay.textContent = starCount === null ? '星の数：—' : `星の数：${starCount}個`;
+    }
+
+    function scheduleCalculation() {
+        const text = document.getElementById('targetLv').value.trim();
+        const level = text === '' ? 4500 : Number(text);
+        if (Number.isFinite(level) && Number.isInteger(level) && level >= 1) updateEstimateHeadings(level);
+        clearTimeout(calculationTimer);
+        calculationTimer = setTimeout(() => calculateGrowth(), 180);
+    }
+
+    async function pasteRawText() {
+        const input = document.getElementById('rawText');
+        try {
+            const text = await navigator.clipboard.readText();
+            input.value = text;
+            scheduleCalculation();
+        } catch (err) {
+            alert('クリップボードから読み取れなかったため、Ctrl+Vで貼り付けてね。');
+        }
+    }
+
+    function resetRawText() {
+        clearResultHeader();
+        clearTimeout(calculationTimer);
+        document.getElementById('rawText').value = '';
+        document.getElementById('growthRatioBadge').textContent = '成長率: —';
+        document.getElementById('resultContent').innerHTML = '<p style="color: var(--text-sub); text-align: center; padding: 40px 0;">左側に能力値テキストを貼り付けると、自動で予測結果を表示するよ。</p>';
+        updateMaterialEstimate(NaN);
+        updateOriginalItemInfo(null, null);
+    }
+
+    // 能力値入力と目標レベル変更に連動して自動計算する。
+    document.getElementById('targetLv').addEventListener('input', scheduleCalculation);
+    initializeMaterialTables();
+
+    function parseText(text) {
+        let name = "不明なアイテム";
+        let curLv = 1;
+        let power = 0;
+        let stats = [];
+        let traits = [];
+        let passive = "";
+
+        const headerMatch = text.match(/【(.*?) Lv(\d+)】/);
+        if (headerMatch) {
+            name = headerMatch[1];
+            curLv = parseInt(headerMatch[2], 10);
+        }
+
+        const powerMatch = text.match(/パワー\s*([0-9,]+)/);
+        if (powerMatch) {
+            power = parseInt(powerMatch[1].replace(/,/g, ''), 10);
+        }
+
+        const statIndex = text.indexOf('ステータス:');
+        const traitIndex = text.indexOf('特性:');
+        const passiveIndex = text.indexOf('付与パッシブ:');
+
+        if (statIndex !== -1) {
+            let endIdx = (traitIndex !== -1) ? traitIndex : ((passiveIndex !== -1) ? passiveIndex : text.length);
+            const content = text.substring(statIndex + 6, endIdx).trim();
+            stats = parseList(content);
+        }
+
+        if (traitIndex !== -1) {
+            let endIdx = (passiveIndex !== -1) ? passiveIndex : text.length;
+            const content = text.substring(traitIndex + 3, endIdx).trim();
+            traits = parseList(content);
+        }
+
+        if (passiveIndex !== -1) {
+            passive = text.substring(passiveIndex + 7).trim();
+        }
+
+        return { name, curLv, power, stats, traits, passive };
+    }
+
+    // 固定値・割合（%）の両方および運に対応した高度なパース処理
+    function parseList(content) {
+        const items = content.split('/');
+        const result = [];
+        items.forEach(item => {
+            item = item.trim();
+            if (!item) return;
+            // Copy text can include 回, or omit the unit after 追加ヒット数.
+            const m = item.match(/^(.*?)\+([0-9\.,]+)(%|回)?(★*)$/);
+            if (m) {
+                const valNum = parseFloat(m[2].replace(/,/g, ''));
+                const isPercent = (m[3] === '%');
+                result.push({
+                    name: m[1].trim(),
+                    value: valNum,
+                    isPercent: isPercent,
+                    unit: m[3] || '',
+                    fixed: m[3] === '回' || m[1].normalize('NFKC').trim() === '追加ヒット数',
+                    stars: m[4] ? m[4].length : 0,
+                    starStr: m[4] || ""
+                });
+            }
+        });
+        return result;
+    }
+
+    function forecastMetricText(metric, ratio) {
+        const value = metric.fixed ? metric.value : metric.value * ratio;
+        return metric.isPercent ? value.toFixed(2) + '%' : Math.round(value).toString() + metric.unit;
+    }
+
+    let latestCopyText = '';
+    let copyFeedbackTimer = null;
+
+    function clearResultHeader() {
+        latestCopyText = '';
+        clearTimeout(copyFeedbackTimer);
+        document.getElementById('levelTransition').textContent = '';
+        const button = document.getElementById('copyResultButton');
+        button.disabled = true;
+        button.textContent = '結果をコピー';
+    }
+
+    function calculateGrowth() {
+        clearResultHeader();
+        const text = document.getElementById('rawText').value;
+        if (!text.trim()) {
+            document.getElementById('growthRatioBadge').textContent = '成長率: —';
+            document.getElementById('resultContent').innerHTML = '<p style="color: var(--text-sub); text-align: center; padding: 40px 0;">左側に能力値テキストを貼り付けると、自動で予測結果を表示するよ。</p>';
+            updateMaterialEstimate(NaN);
+            updateOriginalItemInfo(null, null);
+            return;
+        }
+        const validHeader = text.match(/【(.*?) Lv(\d+)】/);
+        if (!validHeader) {
+            document.getElementById('growthRatioBadge').textContent = '成長率: —';
+            document.getElementById('resultContent').innerHTML = '<p style="color: var(--text-sub); text-align: center; padding: 40px 0;">「【アイテム名 Lv数値】」を含む能力値テキストを入力してね。</p>';
+            updateMaterialEstimate(NaN);
+            updateOriginalItemInfo(null, null);
+            return;
+        }
+
+        const parsed = parseText(text);
+        const targetText = document.getElementById('targetLv').value.trim();
+        const targetLv = targetText === '' ? 4500 : Number(targetText);
+        if (!Number.isSafeInteger(targetLv) || targetLv < 1 || targetLv > MAX_FORECAST_LEVEL
+                || !Number.isFinite(parsed.curLv) || parsed.curLv < 1) {
+            document.getElementById('growthRatioBadge').textContent = '成長率: —';
+            document.getElementById('resultContent').innerHTML = '<p style="color: var(--text-sub); text-align: center; padding: 40px 0;">現在レベルは1以上、目標レベルは1〜100万の整数で入力してね。</p>';
+            updateMaterialEstimate(NaN);
+            clearSynthesisEstimate('有効な現在レベルと目標レベルを入力してね。');
+            return;
+        }
+        setEstimateTargetLevel(targetLv);
+        updateMaterialEstimate(parsed.curLv);
+        const detectedItem = findOriginalItem(parsed.name);
+        const originalItem = getSelectedItem(parsed.name, detectedItem);
+        const rarity = originalItem ? originalItem.rarity : 'データベース未登録';
+        const passiveInfo = getPassiveInfo(detectedItem, parsed.passive);
+        const starCount = (text.match(/★/g) || []).length;
+        updateOriginalItemInfo(originalItem, starCount);
+        updateSynthesisEstimate(parsed.curLv, originalItem, starCount);
+
+        // 実測から推定した共通の減衰曲線による成長倍率
+        const vCur = getV(parsed.curLv);
+        const vTgt = getV(targetLv);
+        const ratio = vTgt / vCur;
+
+        document.getElementById('growthRatioBadge').innerText = `成長率: ${ratio.toFixed(3)}倍`;
+
+        const targetPower = Math.round(parsed.power * ratio);
+
+        // カンマ区切りパワー表記の生成
+        const formattedTargetPower = targetPower.toLocaleString();
+
+        let copyText = `【${parsed.name} Lv${targetLv}】パワー${formattedTargetPower}`;
+
+        if (parsed.stats.length > 0) {
+            const statStrs = parsed.stats.map(s => {
+                const targetValStr = forecastMetricText(s, ratio);
+                return `${s.name}+${targetValStr}${s.starStr}`;
+            });
+            copyText += `\nステータス: ${statStrs.join(' / ')}`;
+        }
+
+        if (parsed.traits.length > 0) {
+            const traitStrs = parsed.traits.map(t => {
+                const targetValStr = forecastMetricText(t, ratio);
+                return `${t.name}+${targetValStr}${t.starStr}`;
+            });
+            copyText += `\n特性: ${traitStrs.join(' / ')}`;
+        }
+
+        if (parsed.passive) {
+            copyText += `\n付与パッシブ: ${parsed.passive}`;
+        }
+
+        const resDiv = document.getElementById('resultContent');
+
+        let html = `
+            <div class="result-header">
+                <div class="result-title">${escapeHtml(parsed.name)}</div>
+            </div>
+
+            <div class="stat-group">
+                <div class="stat-card">
+                    <span class="stat-name">パワー</span>
+                    <div class="stat-val-change">
+                        <span class="val-current">${parsed.power.toLocaleString()}</span>
+                        <span class="val-target">${formattedTargetPower}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        if (parsed.stats.length > 0) {
+            html += `<div class="stat-group compact-rows"><h3>📊 ステータス成長予測</h3><div class="stat-rows-panel">`;
+            parsed.stats.forEach(s => {
+                const targetVal = forecastMetricText(s, ratio);
+                const currentVal = s.value + s.unit;
+                html += `
+                    <div class="stat-card">
+                        <div>
+                            <span class="stat-name">${escapeHtml(s.name)}</span>
+                            <span class="stat-stars">${s.starStr}</span>
+                        </div>
+                        <div class="stat-val-change">
+                            <span class="val-current">+${currentVal}</span>
+                            <span class="val-target">+${targetVal}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            html += `</div></div>`;
+        }
+
+        if (parsed.traits.length > 0) {
+            const conversionTrait = parsed.traits.find(trait => trait.name === 'アーティファクト変換率' && trait.isPercent);
+            const dropTrait = parsed.traits.find(trait => trait.name === 'ドロップ率' && trait.isPercent);
+            // 各行に表示する小数2桁の予測値を合計し、画面の数値と一致させる。
+            const traitTotal = conversionTrait && dropTrait
+                ? (Number((conversionTrait.value * ratio).toFixed(2)) + Number((dropTrait.value * ratio).toFixed(2))).toFixed(2)
+                : null;
+            if (traitTotal !== null) copyText = `[計${traitTotal}%]${copyText}`;
+            html += `<div class="stat-group compact-rows"><div class="trait-heading"><h3>✨ 特性成長予測</h3>${traitTotal !== null ? '<span class="trait-total">AF変換率＋ドロップ率合計：<strong class="trait-total-value">' + traitTotal + '％</strong></span>' : ''}</div><div class="stat-rows-panel">`;
+            parsed.traits.forEach(t => {
+                const targetVal = forecastMetricText(t, ratio);
+                const currentVal = t.value + t.unit;
+                html += `
+                    <div class="stat-card${t.name === 'アーティファクト変換率' ? ' trait-rate-row' : ''}">
+                        <div>
+                            <span class="stat-name">${escapeHtml(t.name === 'アーティファクト変換率' ? 'AF変換率' : t.name)}</span>
+                            <span class="stat-stars">${t.starStr}</span>
+                        </div>
+                        <div class="stat-val-change">
+                            <span class="val-current">+${currentVal}</span>
+                            <span class="val-target">+${targetVal}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            html += `</div></div>`;
+        }
+
+        if (passiveInfo.name) {
+            html += `
+                <div class="stat-group">
+                    <h3>🔮 付与パッシブ</h3>
+                    <div class="stat-card passive-card">
+                        <span class="stat-name">${escapeHtml(passiveInfo.name)}</span>
+                        ${passiveInfo.description ? '<p class="passive-description">' + escapeHtml(passiveInfo.description) + '</p>' : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        resDiv.innerHTML = html;
+        latestCopyText = copyText;
+        document.getElementById('levelTransition').innerHTML = 'Lv.' + parsed.curLv + ' ➔ <b>Lv.' + targetLv + '</b>';
+        document.getElementById('copyResultButton').disabled = false;
+    }
+
+    async function copyResultText() {
+        if (!latestCopyText) return;
+        const text = latestCopyText;
+        try {
+            await navigator.clipboard.writeText(text);
+            if (latestCopyText !== text) return;
+            const button = document.getElementById('copyResultButton');
+            button.textContent = 'コピー済み';
+            clearTimeout(copyFeedbackTimer);
+            copyFeedbackTimer = setTimeout(() => {
+                button.textContent = '結果をコピー';
+            }, 1600);
+        } catch (err) {
+            alert('コピーに失敗しちゃった: ' + err);
+        }
+    }
+
+    // 既存の1列表示の幅だけ、見積もり欄を予測結果の後ろへ移す。
+    // 同じDOM要素を移動するため、入力値・イベント・計算結果は維持される。
+    if (typeof window !== 'undefined' && window.matchMedia) {
+        const stackedLayout = window.matchMedia('(max-width: 900px)');
+        const estimateSections = [document.getElementById('materialSection'), document.getElementById('synthesisSection')];
+        const mobileEstimatePanel = document.getElementById('mobileEstimatePanel');
+        const inputPanel = document.getElementById('inputPanel');
+        const desktopEstimateAnchor = document.getElementById('desktopEstimateAnchor');
+        const updateEstimateLayout = () => {
+            if (stackedLayout.matches) {
+                for (const section of estimateSections) mobileEstimatePanel.appendChild(section);
+                mobileEstimatePanel.hidden = false;
+            } else {
+                for (const section of estimateSections) inputPanel.insertBefore(section, desktopEstimateAnchor);
+                mobileEstimatePanel.hidden = true;
+            }
+        };
+        if (stackedLayout.addEventListener) stackedLayout.addEventListener('change', updateEstimateLayout);
+        else stackedLayout.addListener(updateEstimateLayout);
+        updateEstimateLayout();
+    }
+</script>
+<footer style="max-width:1400px;margin:24px auto;padding:12px 20px;color:#a6adc1;font-size:.8rem;text-align:center"><a href="../" style="color:#b8a0ff">はこホム拡張の配布ページへ</a> · 元ツール：<a href="https://artifact-v9.netlify.app/" style="color:#b8a0ff" target="_blank" rel="noopener">artifact-v9</a> · アイテムデータ更新：2026-11-22（1,142件）</footer>
+</body>
+</html>

@@ -12,7 +12,7 @@
   delete globalThis.hakoAfHiddenTitles;
   delete globalThis.hakoAfPartyShareMain;
   const { POWER, SUM, sumRates, dropMetrics, metricValue, viewRule, orderItems } = globalThis.hakoAfListRules;
-  const { TARGET } = globalThis.hakoAf4000;
+  const { getTarget } = globalThis.hakoAf4000;
   delete globalThis.hakoAf4000;
   delete globalThis.hakoAfEffects;
   delete globalThis.hakoAfListRules;
@@ -30,6 +30,10 @@
   let pendingPowerConfig;
   let nextPowerConfigRead = 0;
   let planRevision = 0;
+  document.addEventListener("hako-af:forecast-target", () => {
+    planRevision++;
+    if (currentExplore) currentExplore.cache = null;
+  });
   const powerListener = new Event("hako-af:power-ready");
   const components = new Set(["FlexItemCell", "ItemCell", "ItemDetailButton"]);
   const classicScopes = {
@@ -520,7 +524,7 @@
     const metric = item.metrics.get(key);
     const value = metricValue(item, metric, forecast);
     return { key, value, unit: metric?.unit ?? "", stars: metric?.stars,
-      predicted: value != null && forecast && item.level < TARGET };
+      predicted: value != null && forecast && item.level < getTarget() };
   }
 
   document.addEventListener("hako-af:apply-explore", event => {

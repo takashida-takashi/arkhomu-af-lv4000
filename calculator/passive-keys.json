@@ -1,0 +1,118 @@
+{
+  "subject_locket": {
+    "name": "PASSIVE_ARTIFACT_SUBJECT_LOCKET",
+    "description": "PASSIVE_ARTIFACT_SUBJECT_LOCKET_DESCRIPTION"
+  },
+  "observer_monocle": {
+    "name": "PASSIVE_ARTIFACT_OBSERVER_MONOCLE",
+    "description": "PASSIVE_ARTIFACT_OBSERVER_MONOCLE_DESCRIPTION"
+  },
+  "gas_mask": {
+    "name": "PASSIVE_ARTIFACT_GAS_MASK",
+    "description": "PASSIVE_ARTIFACT_GAS_MASK_DESCRIPTION"
+  },
+  "phlebotomist_gloves": {
+    "name": "PASSIVE_ARTIFACT_PHLEBOTOMIST_GLOVES",
+    "description": "PASSIVE_ARTIFACT_PHLEBOTOMIST_GLOVES_DESCRIPTION"
+  },
+  "aegisnova_shield": {
+    "name": "PASSIVE_ARTIFACT_AEGISNOVA_SHIELD",
+    "description": "PASSIVE_ARTIFACT_AEGISNOVA_SHIELD_DESCRIPTION"
+  },
+  "prototype_solid_rejector": {
+    "name": "PASSIVE_ARTIFACT_PROTOTYPE_SOLID_REJECTOR",
+    "description": "PASSIVE_ARTIFACT_PROTOTYPE_SOLID_REJECTOR_DESCRIPTION"
+  },
+  "desert_king_crown": {
+    "name": "PASSIVE_ARTIFACT_DESERT_KING_CROWN",
+    "description": "PASSIVE_ARTIFACT_DESERT_KING_CROWN_DESCRIPTION"
+  },
+  "hero_shield": {
+    "name": "PASSIVE_ARTIFACT_HERO_SHIELD",
+    "description": "PASSIVE_ARTIFACT_HERO_SHIELD_DESCRIPTION"
+  },
+  "cursed_armor": {
+    "name": "PASSIVE_ARTIFACT_CURSED_ARMOR",
+    "description": "PASSIVE_ARTIFACT_CURSED_ARMOR_DESCRIPTION"
+  },
+  "philosophers_stone": {
+    "name": "PASSIVE_PHILOSOPHERS_STONE_RAINBOW",
+    "description": "PASSIVE_PHILOSOPHERS_STONE_DESCRIPTION"
+  },
+  "sunstone_golem_core": {
+    "name": "PASSIVE_ARTIFACT_SUNSTONE_GOLEM_CORE",
+    "description": "PASSIVE_ARTIFACT_SUNSTONE_GOLEM_CORE_DESCRIPTION"
+  },
+  "silver_rosary": {
+    "name": "PASSIVE_ARTIFACT_SILVER_ROSARY",
+    "description": "PASSIVE_ARTIFACT_SILVER_ROSARY_DESCRIPTION"
+  },
+  "metatron_scriptura_item": {
+    "name": "PASSIVE_ARTIFACT_METATRON_SCRIPTURA_ITEM",
+    "description": "PASSIVE_ARTIFACT_METATRON_SCRIPTURA_ITEM_DESCRIPTION"
+  },
+  "grand_guignol_organon_item": {
+    "name": "PASSIVE_ARTIFACT_GRAND_GUIGNOL_ORGANON_ITEM",
+    "description": "PASSIVE_ARTIFACT_GRAND_GUIGNOL_ORGANON_ITEM_DESCRIPTION"
+  },
+  "tempestus_item": {
+    "name": "PASSIVE_ARTIFACT_TEMPESTUS_ITEM",
+    "description": "PASSIVE_ARTIFACT_TEMPESTUS_ITEM_DESCRIPTION"
+  },
+  "apisophia_core": {
+    "name": "PASSIVE_ARTIFACT_APISOPHIA_CORE",
+    "description": "PASSIVE_ARTIFACT_APISOPHIA_CORE_DESCRIPTION"
+  },
+  "magma_memory": {
+    "name": "PASSIVE_ARTIFACT_MAGMA_MEMORY",
+    "description": "PASSIVE_ARTIFACT_MAGMA_MEMORY_DESCRIPTION"
+  },
+  "laboratory_memory": {
+    "name": "PASSIVE_ARTIFACT_LABORATORY_MEMORY",
+    "description": "PASSIVE_ARTIFACT_LABORATORY_MEMORY_DESCRIPTION"
+  },
+  "spore_core": {
+    "name": "PASSIVE_ARTIFACT_SPORE_CORE",
+    "description": "PASSIVE_ARTIFACT_SPORE_CORE_DESCRIPTION"
+  },
+  "cube": {
+    "name": "PASSIVE_ARTIFACT_CUBE",
+    "description": "PASSIVE_ARTIFACT_CUBE_DESCRIPTION"
+  },
+  "phlebotomy_scalpel": {
+    "name": "PASSIVE_ARTIFACT_PHLEBOTOMY_SCALPEL",
+    "description": "PASSIVE_ARTIFACT_PHLEBOTOMY_SCALPEL_DESCRIPTION"
+  },
+  "electrified_weapon": {
+    "name": "PASSIVE_ELECTRIFIED_WEAPONS",
+    "description": "PASSIVE_ELECTRIFIED_WEAPONS_DESCRIPTION"
+  },
+  "gatling_gun": {
+    "name": "PASSIVE_ARTIFACT_GATLING_GUN",
+    "description": "PASSIVE_ARTIFACT_GATLING_GUN_DESCRIPTION"
+  },
+  "ak74": {
+    "name": "PASSIVE_ARTIFACT_AK74",
+    "description": "PASSIVE_ARTIFACT_AK74_DESCRIPTION"
+  },
+  "m4": {
+    "name": "PASSIVE_ARTIFACT_M4",
+    "description": "PASSIVE_ARTIFACT_M4_DESCRIPTION"
+  },
+  "night_glow_dagger": {
+    "name": "PASSIVE_ARTIFACT_NIGHT_GLOW_DAGGER",
+    "description": "PASSIVE_ARTIFACT_NIGHT_GLOW_DAGGER_DESCRIPTION"
+  },
+  "dead_poison_bow": {
+    "name": "PASSIVE_ARTIFACT_DEAD_POISON_BOW",
+    "description": "PASSIVE_ARTIFACT_DEAD_POISON_BOW_DESCRIPTION"
+  },
+  "hero_sword_arficat_passive": {
+    "name": "PASSIVE_ARTIFACT_HERO_SWORD",
+    "description": "PASSIVE_ARTIFACT_HERO_SWORD_DESCRIPTION"
+  },
+  "thunder_axe": {
+    "name": "PASSIVE_ARTIFACT_THUNDER_AXE",
+    "description": "PASSIVE_ARTIFACT_THUNDER_AXE_DESCRIPTION"
+  }
+}

@@ -231,6 +231,7 @@ if (buildPages) {
   const archiveHash = createHash("sha256").update(archive).digest("hex");
   fs.writeFileSync(path.join(site, "index.html"), renderPage(zipName));
   fs.cpSync(path.join(project, "guide"), path.join(site, "guide"), { recursive: true });
+  fs.cpSync(path.join(project, "calculator"), path.join(site, "calculator"), { recursive: true });
   fs.writeFileSync(path.join(site, scriptName), installer);
   fs.writeFileSync(path.join(safari, scriptName), safariInstaller);
   fs.writeFileSync(path.join(site, metaName), migrationHeader + "\n");

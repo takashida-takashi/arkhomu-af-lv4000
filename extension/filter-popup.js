@@ -2,7 +2,7 @@
   "use strict";
 
   const names = globalThis.hakoAfFeatureNames;
-  const { normalize } = globalThis.hakoAf4000;
+  const { getTarget, normalize } = globalThis.hakoAf4000;
   const { groups } = globalThis.hakoAfEffects;
   const { activeGroup, minimumMatches, supportsAbsence } = globalThis.hakoAfListRules;
   const PRESET_PREFIX = "af-filter-preset:";
@@ -120,10 +120,15 @@
     const header = element("header", "header");
     header.append(title, closeIcon);
 
-    const mode = toggle("Lv4000未満を予測値で比較", state.useForecast, checked => {
+    const mode = toggle(`Lv${getTarget()}未満を予測値で比較`, state.useForecast, checked => {
       state.useForecast = checked;
       onChange();
     });
+    function updateForecastLabel() {
+      const label = `Lv${getTarget()}未満を予測値で比較`;
+      mode.field.setAttribute("aria-label", label);
+      if (mode.wrapper.lastChild.textContent !== label) mode.wrapper.lastChild.textContent = label;
+    }
     const sortKey = element("select");
     sortKey.setAttribute("aria-label", names.sort);
     const sortDirection = element("select");
@@ -750,6 +755,7 @@
     }
 
     function refresh(entries, newCounts, result) {
+      updateForecastLabel();
       const { active: hasConditions, matched, unknown: unknownCount, message, resultLabel, decomposeNotice, selectionNotice } = result;
       mode.field.checked = state.useForecast;
       matchingIds = result.matchingIds;
@@ -812,6 +818,7 @@
       search.value = "";
       if (custom) targetGroup = state.root;
       if (!dialog.isConnected) document.body.append(dialog);
+      updateForecastLabel();
       renderOptions();
       dialog.showModal();
       refreshPresets();

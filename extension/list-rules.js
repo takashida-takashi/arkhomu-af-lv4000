@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const { TARGET, ratio, projected } = globalThis.hakoAf4000;
+  const { getTarget, ratio, projected } = globalThis.hakoAf4000;
   const { readEffects } = globalThis.hakoAfEffects;
   const POWER = "power";
   const SUM = "rate_sum";
@@ -24,7 +24,7 @@
 
   function metricValue(item, metric, forecast) {
     if (!metric) return null;
-    if (!forecast || item.level >= TARGET) return metric.n;
+    if (!forecast || item.level >= getTarget()) return metric.n;
     const multiplier = ratio(item.level);
     if (multiplier === null) return null;
     if (metric.parts) {

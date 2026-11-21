@@ -3,7 +3,7 @@
 
   const { POWER, SUM } = globalThis.hakoAfListRules;
   const { optionFor, groups, parameters } = globalThis.hakoAfEffects;
-  const { TARGET, ratio, projected } = globalThis.hakoAf4000;
+  const { getTarget, ratio, projected } = globalThis.hakoAf4000;
   const limit = 5;
   const numbers = new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 2 });
   const dates = new Intl.DateTimeFormat("ja-JP", { dateStyle: "short", timeZone: "Asia/Tokyo" });
@@ -77,7 +77,11 @@
     const forecast = node("input", "planner-af-checkbox");
     forecast.type = "checkbox";
     forecast.checked = state.useForecast;
-    forecastLabel.append(forecast, "Lv4000予測値で比較");
+    forecastLabel.append(forecast, `Lv${getTarget()}予測値で比較`);
+    document.addEventListener("hako-af:forecast-target", () => {
+      forecastLabel.lastChild.textContent = `Lv${getTarget()}予測値で比較`;
+      if (dialog.open) restart();
+    });
     const filter = globalThis.hakoAfFilterPopup(state, restart, globalThis.hakoAfPresetStorage);
     controls.append(search, sort, direction, rarity, favLabel, forecastLabel, filter.element);
 
@@ -113,7 +117,7 @@
       const rank = rankName(af.rank);
       if (rank) cell.append(node("span", "planner-af-rank", rank));
       if (Number.isFinite(af.power)) cell.append(node("span", "planner-af-power", `PW ${numbers.format(af.power)}`));
-      if (showProjection && state.useForecast && af.level < TARGET && Number.isFinite(af.power) && ratio(af.level) != null) {
+      if (showProjection && state.useForecast && af.level < getTarget() && Number.isFinite(af.power) && ratio(af.level) != null) {
         cell.append(node("span", "planner-af-power-forecast", `→ ${numbers.format(projected({ n: af.power, unit: "" }, ratio(af.level)))}`));
       }
       if (selectedCard || af.favorite) cell.append(node("span", "planner-af-mark", selectedCard ? "×" : "★"));
@@ -154,7 +158,7 @@
       const row = node("div", "planner-af-comparison");
       if (!key) return row;
       const parameter = plainSorts[key] ?? getOption(key).label;
-      const basis = plainSorts[key] || value == null ? "" : predicted ? " · Lv4000予測" : " · 現在値";
+      const basis = plainSorts[key] || value == null ? "" : predicted ? ` · Lv${getTarget()}予測` : " · 現在値";
       row.append(node("span", "planner-af-comparison-label", parameter + basis));
       const date = key === "recent" && value != null ? new Date(value) : null;
       const formatted = date ? Number.isNaN(date.getTime()) ? "—" : dates.format(date) :

@@ -22,10 +22,11 @@ jobs:
           node-version: '22'
       - name: Check JavaScript and build the distribution files
         run: |
-          for script in extension/*.js scripts/*.js scripts/*.cjs guide/*.js tests/*.cjs; do
+          for script in extension/*.js scripts/*.js scripts/*.cjs guide/*.js calculator/*.js tests/*.cjs; do
             node --check "$script"
           done
           node tests/update-check.cjs
+          node tests/forecast-target.cjs
           node tests/settings-storage.cjs
           node tests/training-sources.cjs
           node tests/training-share.cjs
@@ -34,7 +35,7 @@ jobs:
           node tests/guild-global-order.cjs
           node tests/monster-guards.cjs
           node scripts/build-userscripts.cjs --pages
-          for script in dist/pages/*.js dist/pages/safari/*.js; do
+          for script in dist/pages/*.js dist/pages/safari/*.js dist/pages/calculator/*.js; do
             node --check "$script"
           done
           version=$(node -p 'require("./dist/pages/pc.json").version')

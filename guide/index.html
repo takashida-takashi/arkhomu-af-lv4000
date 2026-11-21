@@ -76,6 +76,10 @@
 
     <section id="af" aria-labelledby="af-title">
       <h2 id="af-title">AF強化後予測値表示</h2>
+      <p>予測の目標は初期値Lv4500です。「拡張設定 → AFの予測 → 目標レベル」で1〜1,000,000の整数に変更できます。予測表示・コピー・ソート・フィルタ・強化見積もり・プランナー内のAF比較に反映し、目標以上のAFは現在値を使います。以前に保存したフィルタ条件や「予測値順」の設定はそのまま使えます。</p>
+      <p class="hint">追加ヒット数は目標レベルに関係なく現在の回数を維持します。Lv4500を超える部分は経験式の外挿で、将来のゲームの仕様を保証するものではありません。強化費用の見積もりは計算負荷を抑えるためLv100,000までです。</p>
+      <p><a href="../calculator/">AF強化シミュレーター</a>では、ゲーム内の「性能をコピー」の内容を貼り付け、目標レベルを指定して性能や強化費用を試算できます。単独で動作し、拡張機能のインストールは不要です。</p>
+      <p class="hint">以下の画像は旧版の実画面です。予測欄の目標レベルは、現在は設定した値（初期値Lv4500）を表示します。</p>
       <div class="pair">
         <figure data-shot="af-detail"></figure>
         <figure data-shot="af-filter"></figure>
@@ -192,7 +196,7 @@
     <section id="other" aria-labelledby="other-title">
       <h2 id="other-title">その他の機能</h2>
       <figure data-shot="estimate"></figure>
-      <p class="hint">強化画面でAFを切り替えても、拡張強化見積もりの開閉状態と素材ごとの手入力単価を保持します。Lv4000以上のAFを選ぶと見積もりを隠し、強化途中のAFへ戻ると再表示します。</p>
+      <p class="hint">強化画面でAFを切り替えても、拡張強化見積もりの開閉状態と素材ごとの手入力単価を保持します。Lv4500以上のAFを選ぶと見積もりを隠し、強化途中のAFへ戻ると再表示します。</p>
       <div class="cards compact">
         <article><h3>フリマの価格追跡</h3><ol class="steps"><li>フリマで通常アイテム・永久スキルを選ぶ</li><li>「最安値を追跡」を押す</li><li>「最安値の推移」で履歴を確認</li></ol></article>
         <article><h3>控えの配置を保存</h3><ol class="steps"><li>ホムンクルス詳細のスキルを開く</li><li>プリセット名を入れ「現在の控えを保存」</li><li>読み込んだ差分を見て控えボタンで切替</li></ol></article>
@@ -204,6 +208,6 @@
     </section>
   </main>
   <footer class="shell"><a href="../">← はこホム拡張の配布ページ</a><span>画像はゲーム内を撮影し、操作箇所を切り出しています。一部の名前や残高を伏せています。</span></footer>
-  <script src="./shots.js?v=3210" defer></script>
+  <script src="./shots.js?v=3226" defer></script>
 </body>
 </html>

@@ -2,6 +2,7 @@
   "use strict";
 
   // Public title definitions and the documented unlock conditions.
+  // Special client-defined titles can be absent from the public title master.
   globalThis.hakoAfHiddenTitles = [
     ["hidden_fickle","浮気者","#f472b6","homunculus","100 種類のホムンクルスを戦闘に出すと解放"],
     ["hidden_devoted","一途な人","#fb7185","homunculus","同じ種類のホムンクルスを 30 日連続で戦闘に出すと解放"],
@@ -56,7 +57,8 @@
     ["hidden_guild_dungeon_loot_defeat_1000","ダンジョンの養分","#a3a3a3","race_world_guild","ギルドダンジョンで負けて品を盗まれた回数 N 回で解放"],
     ["hidden_former_king","元国王","#9c9284","race_world_guild","国王の任期を終えると解放"],
     ["hidden_slot_net_loss_2_5b","ギャンブルやめて😭","#facc15","money","スロットの収支の累計が −2,500,000,000 G に届くと解放"],
-    ["hidden_slot_net_loss_10b","終わった人","#ef4444","money","スロットの収支の累計が −10,000,000,000 G に届くと解放"]
+    ["hidden_slot_net_loss_10b","終わった人","#ef4444","money","スロットの収支の累計が −10,000,000,000 G に届くと解放"],
+    ["hidden_rollback_veteran","ロルバ経験者","#ef4444","life","運営のロールバックを受ける"]
   ].map(([id, label, color, theme, conditionText]) => ({
     id, label, color, theme, conditionText,
     category: "hidden", condition: { type: "achievement" }, hidden: true, unlocked: false

@@ -2,8 +2,7 @@
   "use strict";
 
   const names = globalThis.hakoAfFeatureNames;
-  const target = globalThis.hakoAf4000.TARGET;
-  const trials = 4096;
+  const { getTarget, MAX_ESTIMATE_TARGET } = globalThis.hakoAf4000;
   // The v9 calculator models a great success as 10% of successful attempts.
   const greatShare = .1;
   const format = new Intl.NumberFormat("ja-JP");
@@ -12,11 +11,15 @@
   });
   const clampProbability = value => Math.max(0, Math.min(1, value));
 
-  async function calculate(start, rules, stars, valid) {
+  async function calculate(start, rules, stars, valid, target = getTarget()) {
+    if (!Number.isSafeInteger(start) || start < 1 || !Number.isSafeInteger(target) || target <= start || target > MAX_ESTIMATE_TARGET || !valid()) return;
     if (!Array.isArray(rules.successGain) || !Array.isArray(rules.greatGain)) return;
     const regular = rules.successGain.map(value => Math.floor(Number(value)));
     const great = rules.greatGain.map(value => Math.floor(Number(value)));
     if ([regular, great].some(range => range.length !== 2 || !range.every(Number.isFinite) || range[0] < 1 || range[1] < range[0])) return;
+    // Keep distant targets responsive without changing ordinary-target sampling.
+    const trials = Math.max(128, Math.min(4096, Math.floor(1_000_000 * Math.min(regular[0], great[0]) / (target - start))));
+    const yieldToBrowser = () => new Promise(resolve => setTimeout(resolve, 0));
     const items = new Float64Array(target);
     const fees = new Float64Array(target);
     const failureLog = new Float64Array(target);
@@ -24,6 +27,10 @@
     const nextAverage = (level, [min, max]) =>
       (suffix[Math.min(target, level + min)] - suffix[Math.min(target, level + max + 1)]) / (max - min + 1);
     for (let level = target - 1; level >= start; level--) {
+      if ((target - 1 - level) % 8192 === 0) {
+        await yieldToBrowser();
+        if (!valid()) return;
+      }
       const step = Math.ceil(level / 100);
       const advanced = level >= rules.baseCap;
       const multiplier = advanced ? rules.advancedCost : 1;
@@ -44,7 +51,6 @@
       seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
       return seed / 4294967296;
     }
-    const yieldToBrowser = () => new Promise(resolve => setTimeout(resolve, 0));
     const affordableAttempts = (budget, spent, cost, attempts) =>
       Math.max(0, Math.min(attempts, Math.floor((budget - spent) / cost)));
     let goldExpected = 0, goldP90 = 0, p90;
@@ -180,7 +186,7 @@
         return [row.insertCell(), row.insertCell()];
       });
       body.append(label, market, marketStatus, source, status, table);
-      root.append(node("summary", "estimate-heading", `${names.enhanceEstimate}（Lv${target}）`), body);
+      root.append(node("summary", "estimate-heading", `${names.enhanceEstimate}（Lv${getTarget()}）`), body);
       root.open = expanded;
       anchor.after(root);
       const panel = { root, price, market, marketStatus, source, status, table, rows, ticket: 0 };
@@ -230,6 +236,7 @@
 
     async function refresh(panel) {
       if (!panel.root.open) return;
+      const target = getTarget();
       const { data } = panel;
       if (!data.rules) {
         panel.key = undefined;
@@ -240,7 +247,7 @@
         render(panel);
         return;
       }
-      const key = JSON.stringify([data.level, data.stars, data.rules]);
+      const key = JSON.stringify([target, data.level, data.stars, data.rules]);
       const entry = results.get(key);
       if (panel.key !== key) {
         panel.key = key;
@@ -250,13 +257,18 @@
       panel.result = entry;
       render(panel, entry);
       const discountNote = `強化費用の研究軽減 ${Math.round(data.rules.discount * 100)}%を反映`;
-      if (entry) panel.status.textContent = discountNote;
+      const notes = target > 4500 ? `${discountNote}。Lv4500を超える部分は、現在の強化設定を外挿した目安です。` : discountNote;
+      if (entry) panel.status.textContent = notes;
       if (entry || panel.calculating) return;
+      if (target > MAX_ESTIMATE_TARGET) {
+        panel.status.textContent = `計算負荷を抑えるため、強化費用の見積もりはLv${format.format(MAX_ESTIMATE_TARGET)}までです。性能の予測は表示できます。`;
+        return;
+      }
       panel.calculating = true;
       panel.status.textContent = "計算中…";
       const ticket = ++panel.ticket;
       const valid = () => ticket === panel.ticket && panel.root.isConnected && panel.root.open;
-      const result = await calculate(data.level, data.rules, data.stars, valid);
+      const result = await calculate(data.level, data.rules, data.stars, valid, target);
       if (!valid()) return;
       panel.calculating = false;
       panel.result = result;
@@ -264,7 +276,7 @@
         if (results.size >= 24) results.delete(results.keys().next().value);
         results.set(key, result);
       }
-      panel.status.textContent = result ? discountNote : "この強化条件では見積もりを計算できません。";
+      panel.status.textContent = result ? notes : "この強化条件では見積もりを計算できません。";
       render(panel, result);
     }
 
@@ -273,10 +285,12 @@
       if (!enabled("enhanceEstimate")) return;
       let data;
       try { data = JSON.parse(event.detail); } catch { return; }
-      if (!Number.isInteger(data.level) || data.level < 1 || data.level >= target || !(event.target instanceof Element)) return;
+      if (!Number.isInteger(data.level) || data.level < 1 || data.level >= getTarget() || !(event.target instanceof Element)) return;
       const anchor = event.target;
       current.add(anchor);
       const panel = panels.get(anchor) ?? mount(anchor);
+      const signature = event.detail + ":" + getTarget();
+      panel.root.querySelector("summary").textContent = `${names.enhanceEstimate}（Lv${getTarget()}）`;
       const detached = !panel.root.isConnected;
       if (detached) {
         if (lookup?.panel === panel) closeLookup();
@@ -284,7 +298,7 @@
         panel.calculating = false;
       }
       if (panel.root.previousElementSibling !== anchor) anchor.after(panel.root);
-      if (panel.signature === event.detail) {
+      if (panel.signature === signature) {
         if (detached) refresh(panel);
         return;
       }
@@ -294,7 +308,7 @@
         panel.marketStatus.textContent = "";
         panel.invalidPrice = false;
       }
-      panel.signature = event.detail;
+      panel.signature = signature;
       panel.data = data;
       if (sourceChanged || panel.price !== document.activeElement && !panel.invalidPrice && !manual.has(data.source)) {
         updatePriceInput(panel);

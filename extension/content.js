@@ -4,7 +4,7 @@
   if (globalThis.hakoAfFrameContext?.active === false) return;
 
   const names = globalThis.hakoAfFeatureNames;
-  const { TARGET, normalize, levelFrom, valueFrom, ratio, projected, text } = globalThis.hakoAf4000;
+  const { getTarget, normalize, levelFrom, valueFrom, ratio, projected, text } = globalThis.hakoAf4000;
   const { parameters, readEffects, optionFor, groups } = globalThis.hakoAfEffects;
   const { POWER, SUM, DROP, CONVERSION, sumRates, dropMetrics, metricValue, viewRule, orderItems } = globalThis.hakoAfListRules;
   const conditionRows = globalThis.hakoAfConditionRows;
@@ -163,7 +163,7 @@
     const conditions = [match.min && `${match.min}${match.unit}以上`, match.max && `${match.max}${match.unit}以下`,
       match.minimumStars && `★${match.minimumStars}以上`].filter(Boolean);
     const reading = text(match.value, match.unit, false) + (match.stars > 0 ? `・★${match.stars}` : "");
-    return `${label} ${match.predicted ? "Lv4000予測 " : ""}${reading}（${conditions.join("・") || "特性あり"}）`;
+    return `${label} ${match.predicted ? `Lv${getTarget()}予測 ` : ""}${reading}（${conditions.join("・") || "特性あり"}）`;
   }
 
   function showExploreMatches(tile, descriptions) {
@@ -197,7 +197,7 @@
           const { label } = effectOption(sort.key);
           const line = exploreValueLine("explore-sort-value", exploreLabel(sort.key), sort);
           const reading = sort.value == null ? "値を確認できません" : text(sort.value, sort.unit, false);
-          line.title = `${label} ${sort.predicted ? "Lv4000予測 " : ""}${reading}`;
+          line.title = `${label} ${sort.predicted ? `Lv${getTarget()}予測 ` : ""}${reading}`;
           line.setAttribute("aria-label", line.title);
           footer.append(line);
         }
@@ -276,6 +276,7 @@
         const label = labelFor(displayLabel);
         const value = valueFrom(nativeText(valueEl));
         if (!label || !value) continue;
+        if (label === "追加ヒット数") value.fixed = true;
         const isTrait = title === "特性";
         const knownTraitKeys = [DROP, CONVERSION, ...standardTraits.map(([key]) => "trait:" + key)];
         const key = isTrait
@@ -291,14 +292,14 @@
     return { hero, name, baseName: alternate || name, level, p, power, entries, sum, metrics, passive };
   }
 
-  const COPY_LABEL = "Lv4000予測をコピー";
+  const copyLabel = () => `Lv${getTarget()}予測をコピー`;
 
   function forecastCopyText(detail) {
     const multiplier = ratio(detail.level);
     const name = detail.baseName.replace(/\s+Lv\s*\.?\s*[\d,]+$/i, "");
     const power = detail.power ? "パワー" + text(projected(detail.power, multiplier), "", false) : "";
     const sum = detail.sum ? "[計" + text(compare(detail.sum, multiplier), "%", false) + "]" : "";
-    const lines = [`${sum}【${name} Lv4000】${power}`];
+    const lines = [`${sum}【${name} Lv${getTarget()}】${power}`];
     for (const [isTrait, heading] of [[false, "ステータス"], [true, "特性"]]) {
       const entries = detail.entries.filter(entry => entry.isTrait === isTrait);
       if (!entries.length) continue;
@@ -315,12 +316,12 @@
       root.querySelector(':scope > button[title*="性能をテキストでコピー"], :scope > div > button[title*="性能をテキストでコピー"]');
     let button = forecastCopyButtons.get(root);
     if (!button) {
-      button = node("button", "copy-forecast", COPY_LABEL);
+      button = node("button", "copy-forecast", copyLabel());
       button.type = "button";
       button.addEventListener("click", async event => {
         event.stopPropagation();
         const current = detailData(root);
-        if (!current || current.level >= TARGET) return;
+        if (!current || current.level >= getTarget()) return;
         const value = forecastCopyText(current);
         try {
           await navigator.clipboard.writeText(value);
@@ -333,17 +334,21 @@
           field.value = value;
           field.readOnly = true;
           field.rows = 3;
-          field.setAttribute("aria-label", "Lv4000予測のコピーテキスト");
+          field.setAttribute("aria-label", `Lv${getTarget()}予測のコピーテキスト`);
           if (!field.isConnected) current.hero.after(field);
           decorated.add(field);
           field.focus({ preventScroll: true });
           field.select();
           button.textContent = "手動でコピーできます";
         }
-        setTimeout(() => { button.textContent = COPY_LABEL; }, 1500);
+        setTimeout(() => { button.textContent = copyLabel(); }, 1500);
       });
       for (const event of ["pointerdown", "dblclick"]) button.addEventListener(event, e => e.stopPropagation());
       forecastCopyButtons.set(root, button);
+    }
+    if (button.dataset.target !== String(getTarget())) {
+      button.dataset.target = String(getTarget());
+      button.textContent = copyLabel();
     }
     if (original) {
       if (original.nextElementSibling !== button) original.after(button);
@@ -398,10 +403,10 @@
       detailSnapshots.set(root, token);
       renderDetailSwitch(root);
       if (!showDetailForecast) continue;
-      const low = level < TARGET;
+      const low = level < getTarget();
       const multiplier = ratio(level);
-      const heading = low ? `現在 Lv${level.toLocaleString("ja-JP")} → Lv4000予測` : "";
-      adorn(hero, "detail-legend", heading, "artifact-v9 の経験式による予測値");
+      const heading = low ? `現在 Lv${level.toLocaleString("ja-JP")} → Lv${getTarget()}予測` : "";
+      adorn(hero, "detail-legend", heading, "artifact-v9 の経験式による予測値。Lv4500を超える部分は外挿です。追加ヒット数は現在の回数を維持します。");
       if (low && (power || entries.length)) renderForecastCopy(root, detail);
       if (p && power) adorn(p, "detail-value", low ? "→ " + text(projected(power, multiplier), "", false) : "");
       for (const { el, value } of entries) {
@@ -719,7 +724,7 @@
 
   function renderListValue(item, effect = null) {
     const { card, level, power, powerEl, placement } = item;
-    const low = level !== null && level < TARGET;
+    const low = level !== null && level < getTarget();
     const multiplier = ratio(level);
     const estimate = low && power ? "→ " + text(projected(power, multiplier), "", false) : "";
     if (placement === "market") {
@@ -731,9 +736,9 @@
         const { label, metric } = effect;
         parts.push(`${label} → ${text(projected(metric, multiplier), metric.unit, true)}`);
       }
-      adorn(holder, "market-value", parts.length ? "Lv4000予測｜" + parts.join(" / ") : "");
+      adorn(holder, "market-value", parts.length ? `Lv${getTarget()}予測｜` + parts.join(" / ") : "");
     } else if (powerEl) {
-      adorn(powerEl, placement, estimate, "右の数値はLv4000予測");
+      adorn(powerEl, placement, estimate, `右の数値はLv${getTarget()}予測`);
     }
   }
 
@@ -839,7 +844,7 @@
     }
     const input = label.firstElementChild;
     input.checked = state.nativeForecast === true;
-    input.title = isMarketList(type) ? "Lv4000予測値順に並べます（このページのみ）" : "Lv4000予測値順に並べます";
+    input.title = `Lv${getTarget()}予測値順に並べます` + (isMarketList(type) ? "（このページのみ）" : "");
   }
 
   function setGridPlan(type, plan, section = -1) {
@@ -887,7 +892,7 @@
     const result = metricValue(item, value, sort.forecast);
     const label = effectOption(sort.key).label;
     const valueText = result == null ? "—" : text(result, value.unit, false);
-    const mode = sort.forecast && item.level < TARGET && result != null ? "Lv4000予測 " : "";
+    const mode = sort.forecast && item.level < getTarget() && result != null ? `Lv${getTarget()}予測 ` : "";
     if (item.placement === "auction" || item.placement === "trade" || sort.key !== POWER || result === null) {
       const holder = item.placement === "auction" ? item.nameEl.parentElement : item.card;
       adorn(holder, "sort-value", `${label} ${mode}${valueText}`);
@@ -1329,6 +1334,10 @@
   document.addEventListener("input", nativeSortChanged, true);
   document.addEventListener("change", nativeSortChanged, true);
   document.addEventListener("hako-af:grid-rendered", requestScan);
+  document.addEventListener("hako-af:forecast-target", () => {
+    sentPlans.clear();
+    requestScan();
+  });
   document.addEventListener("hako-af:guild-filter-data", requestScan);
   document.addEventListener("click", event => {
     if (event.target instanceof Element && (event.target.closest(trainingRoots) ||

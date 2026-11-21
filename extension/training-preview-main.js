@@ -5,7 +5,7 @@
   const readMasters = globalThis.hakoAfTrainingSources?.readMasters;
   const { readSnapshot, artifactPower } = globalThis.hakoAfEffects;
   const { POWER, SUM, dropMetrics, metricValue, viewRule } = globalThis.hakoAfListRules;
-  const { TARGET } = globalThis.hakoAf4000;
+  const { getTarget } = globalThis.hakoAf4000;
   const stats = ["hp", "atk", "mtk", "def", "mdf", "spd", "lck", "cri", "cdmg"];
   const core = stats.slice(0, 6);
   const day = 86400000;
@@ -227,7 +227,7 @@
       const value = metric ? metricValue(metrics, metric, useForecast) : sortKey === "name" ? name :
         sortKey === "level" ? number(af.level) : sortKey === "recent" ? item.created_at : null;
       records.push({ item, value, power, unit: metric?.unit ?? "",
-        predicted: value != null && !!metric && !!useForecast && metrics.level < TARGET });
+        predicted: value != null && !!metric && !!useForecast && metrics.level < getTarget() });
     }
     const direction = sortDirection === "asc" ? 1 : -1;
     records.sort((a, b) => {
