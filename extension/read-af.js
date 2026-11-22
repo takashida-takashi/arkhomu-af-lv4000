@@ -671,7 +671,7 @@
             for (const area of areas) enhanceRoots.add(area);
           }
         }
-        if ((vnode.type === "span" || vnode.type === "dt") && vnode.children === "必要素材" && el?.getClientRects().length) {
+        if ((vnode.type === "span" || vnode.type === "dt") && ["必要素材", "素材"].includes(vnode.children) && el?.getClientRects().length) {
           estimateAnchors.add(el.parentElement.parentElement);
         }
       }
@@ -708,7 +708,10 @@
         if (monster && (name === "FlexMonsterSkillEditor" || name === "SkillReserveToggle")) {
           trainingRoutes?.readSkillState(name, monster, props, el);
         }
-        if (name === "ItemDetailPanel" || name === "FlexItemDetail") extras?.readInventoryItem(name, props?.item, el);
+        if (name === "ItemDetailPanel" || name === "FlexItemDetail") {
+          extras?.readInventoryItem(name, props?.item, el);
+          globalThis.hakoAfOPInsights?.render(el, props?.item, instance?.subTree);
+        }
         if (gacha && name === "RevealCard") {
           extras.readGachaCard(gacha, vnode, props, el, snapshot, cachedPower, configFromCache);
         }
@@ -855,7 +858,7 @@
       // Vue can cache or clone the requirements markup without retaining individual label VNodes.
       // Read its live labels inside the rendered enhancement view as well.
       for (const area of enhanceRoots) for (const label of area.querySelectorAll("span,dt")) {
-        if (label.textContent.trim() === "必要素材" && label.getClientRects().length && label.parentElement?.parentElement) {
+        if (["必要素材", "素材"].includes(label.textContent.trim()) && label.getClientRects().length && label.parentElement?.parentElement) {
           estimateAnchors.add(label.parentElement.parentElement);
         }
       }

@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+const scope={Intl,setTimeout,Float64Array,performance,hakoAfFeatureNames:{},hakoAf4000:{getTarget:()=>4500,MAX_ESTIMATE_TARGET:100000}};vm.createContext(scope);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../extension/enhance-estimate.js'),'utf8').replace('globalThis.hakoAfEnhanceEstimate = { start };','globalThis.calculate = calculate;'),scope);
+const rules={successGain:[1,1],greatGain:[1,1],baseCap:1000,advancedCost:1,advancedSuccess:.75,itemsPerStep:1,gamma:0,goldMultiplier:1,basePrice:1,starCoefficient:0,discount:0,failRate:.75,failMax:.75,failStep:0,failReduction:.3,potionSuccessMultiplier:1.5};
+(async()=>{const normal=await scope.calculate(4000,rules,0,()=>true,4100,false),potion=await scope.calculate(4000,rules,0,()=>true,4100,true);
+ assert.equal(normal.expected,Math.round(100/.4125));assert.equal(potion.expected,Math.round(100/.61875));assert.equal(potion.potionsExpected,Math.ceil(100/.61875));assert.ok(potion.potionsP90>=potion.potionsExpected);assert.ok(potion.p90<normal.p90);assert.ok(potion.goldExpected<normal.goldExpected);
+ const capped=await scope.calculate(1,{...rules,failRate:0,failMax:0,failReduction:0,advancedSuccess:1},0,()=>true,5,true);assert.equal(capped.expected,4);assert.equal(capped.potionsExpected,4);assert.equal(capped.potionsP90,4,'Success never exceeds 100%, and each attempt consumes one potion');
+ assert.equal(await scope.calculate(4000,rules,0,()=>false,4500,true),undefined);
+ console.log('Enhancement potion: post-research/advanced success x1.5, 100% cap, exact expected items/attempts, separate p90 budgets, fees and cancellation passed.');
+})().catch(e=>{console.error(e);process.exitCode=1});

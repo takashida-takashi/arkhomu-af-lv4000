@@ -17,6 +17,7 @@
 Node.js 22で、リポジトリのルートから実行します。
 
 ```sh
+npm ci --ignore-scripts
 node scripts/build-userscripts.cjs
 node --check dist/arkhomu-af-lv4000.user.js
 ```

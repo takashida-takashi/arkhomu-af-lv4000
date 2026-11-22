@@ -1,1 +1,4 @@
 /dist/
+/node_modules/
+/docs/af-op-method.md
+/docs/ui-audit-2026-11-22.md

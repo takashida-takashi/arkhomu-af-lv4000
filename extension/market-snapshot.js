@@ -47,8 +47,18 @@
 
   function publicEnemyNames(enemies) {
     return Array.isArray(enemies) ? enemies.map(enemy => enemy && ({
-      master_id: enemy.master_id, name_key: enemy.name_key, name: enemy.name, nickname: enemy.nickname
+      master_id: enemy.master_id, name_key: enemy.name_key, name: enemy.name, nickname: enemy.nickname, level: enemy.level
     })) : null;
+  }
+  const guildKey = (id, slot) => Number(slot) > 1 ? `${id}:${Number(slot)}` : String(id);
+  function publicGuildDefinition(value) {
+    if (!value) return null;
+    const keys = ["description", "sourceDungeonId", "version", "mobDifficulty", "bossDifficulty", "entryFee", "specialEntryFee", "strength",
+      "passiveSlots", "mobTrialPassive", "bossTrialPassive", "dungeonEffectList", "upperPrefixFloor", "trialDropFactor", "rank6MobDrop", "rateBoosts"];
+    return { ...Object.fromEntries(keys.filter(key => Object.hasOwn(value, key)).map(key => [key, value[key]])),
+      mobEnemies: publicEnemyNames(value.mobEnemies), bossEnemies: publicEnemyNames(value.bossEnemies),
+      enemyArtifacts: value.enemyArtifacts?.map(item => ({ source_item_id: item.source_item_id })),
+      bossEnemyArtifacts: value.bossEnemyArtifacts?.map(item => ({ source_item_id: item.source_item_id })) };
   }
 
   function readStoredGuildLineup(id) {
@@ -73,6 +83,7 @@
       mobEnemies: publicEnemyNames(definition.mobEnemies ?? []) ?? sameRevision?.mobEnemies ?? null,
       bossEnemies: publicEnemyNames(definition.bossEnemies ?? []) ?? sameRevision?.bossEnemies ?? null
     };
+    record.definition = publicGuildDefinition(definition);
     if (!record.mobEnemies && !record.bossEnemies) return;
     const value = JSON.stringify(record);
     if (value === JSON.stringify(previous)) return;
@@ -168,7 +179,8 @@
         const id = row?.guild_id;
         const published = row?.published;
         if (!id || !published) continue;
-        guildLayouts.set(String(id), {
+        guildLayouts.set(guildKey(id, row.slot), {
+          ...publicGuildDefinition(published),
           mobDifficulty: published.mobDifficulty, bossDifficulty: published.bossDifficulty,
           entryFee: published.entryFee, specialEntryFee: published.specialEntryFee,
           mobStars: published.strength?.mob?.stars, bossStars: published.strength?.boss?.stars,
@@ -185,7 +197,7 @@
     Promise.resolve(response).then(payload => {
       // Session-specific details can describe an earlier version and stay in the game's own view.
       if (path && !options?.query?.sessionId && String(payload?.guildId) === decodeURIComponent(path[1])) {
-        rememberGuildLineup(String(payload.guildId), payload.revision, payload.definition);
+        rememberGuildLineup(guildKey(payload.guildId, payload.slot), payload.revision, payload.definition);
       }
       guildFilterDataChanged();
     }).catch(() => {});

@@ -13,7 +13,7 @@
   const emptyGroupAttribute = "data-ha4-guild-empty";
   const storageKey = "hakoAf4000:guild-dungeon-filter-state";
   const difficulty = ["通常", "過酷", "凶悪", "災厄", "修羅", "修羅Ⅱ", "修羅Ⅲ", "神域", "黙示録",
-    "裏Ⅰ", "裏Ⅱ", "裏Ⅲ", "裏Ⅳ", "裏Ⅴ"].map((label, index) => [String(index + 1), label]);
+    "裏Ⅰ", "裏Ⅱ", "裏Ⅲ", "裏Ⅳ", "裏Ⅴ", "裏Ⅵ"].map((label, index) => [String(index + 1), label]);
   const text = (label, group) => ({ label, group, kind: "text", sortable: false });
   const number = (label, group, unit) => ({ label, group, unit, kind: "number" });
   const choice = (label, group, choices, sortable = false) => ({ label, group, kind: "choice", choices, sortable });
@@ -35,6 +35,23 @@
     ["todayClearers", number("今日のクリア人数", "other", "人")],
     ["todayClearRate", number("今日のクリア率", "other", "%")]
   ]);
+  for (const [side, label] of [["mob", "道中"], ["boss", "ボス"]]) {
+    for (const [suffix, title, unit] of [["Count", "のホム数", "体"], ["MaxLevel", "の最高Lv", "Lv"],
+      ["PassiveCount", "の付与パッシブ枠数", "個"], ["ChosenCount", "の指定パッシブ数", "個"], ["RandomCount", "のランダムパッシブ数", "個"],
+      ["ArtifactCount", "の装備AF数", "個"], ["DropRate", "のドロップ倍率", "倍"], ["StealRate", "の盗み倍率", "倍"], ["TrialDrop", "の試練によるドロップ・AF変換率補正", "%"]]) fields.set(side + suffix, number(label + title, "trial", unit));
+    fields.set(side + "Passives", text(label + "の指定パッシブ", "trial"));
+    fields.set(side + "Artifacts", text(label + "の装備AF", "trial"));
+    fields.set(side + "TrialPassive", choice(label + "の報酬元専用パッシブ", "trial", [["1", "あり"], ["0", "なし"]]));
+  }
+  for (const [key, title, unit] of [["effectCount", "ダンジョン効果数", "個"], ["upperChance", "真・極化の最低確率", "%"],
+    ["upperMinRank", "真・極化保証の対象最低ランク", "Rank"], ["rank6MobDrop", "道中R6数によるドロップ補正", "%"], ["rank6MobFull", "道中R6の補正解除必要数", "体"],
+    ["visits", "累計入場回数", "回"], ["clears", "累計攻略回数", "回"], ["clearRate", "累計クリア率", "%"],
+    ["winsRemaining", "今日あと道中勝利可能回数", "回"], ["bossRemaining", "今日あとボス挑戦可能回数", "回"],
+    ["reviewAverage", "レビュー平均評価", "★"], ["reviewCount", "レビュー件数", "件"], ["slot", "ギルド内のダンジョン番号", "番"]]) fields.set(key, number(title, "other", unit));
+  fields.set("dungeonEffects", text("ダンジョン効果", "other"));fields.set("description", text("ダンジョン説明", "other"));
+  fields.set("sourceDungeon", text("報酬元ダンジョン", "other"));
+  fields.set("nation", text("国", "other"));fields.set("version", text("ダンジョンの公開バージョン", "other"));
+  fields.set("todayShared", choice("今日の入場・攻略人数の集計範囲", "other", [["1", "ギルド合計"], ["0", "ダンジョン単独"]]));
   const normalize = text => text.normalize("NFKC").trim().toLowerCase().replace(/[ァ-ヶ]/g, kana =>
     String.fromCharCode(kana.charCodeAt(0) - 0x60));
   const isActive = condition => fields.get(condition.key)?.kind === "number"

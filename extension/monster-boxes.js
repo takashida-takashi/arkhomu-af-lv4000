@@ -111,7 +111,7 @@
       return saved;
     }
 
-    function openDialog(title, dismissOutside = false) {
+    function openDialog(title) {
       if (dialog?.open) dialog.close();
       refreshDialog = null;
       const panel = dialog = element("dialog", "monster-box-dialog");
@@ -121,23 +121,6 @@
         button("monster-box-button", "閉じる", () => panel.close()));
       const body = element("div", "monster-box-dialog-body");
       panel.append(header, body);
-      if (dismissOutside) {
-        let startedOutside = false;
-        const outside = event => {
-          const rect = panel.getBoundingClientRect();
-          return event.target === panel && (event.clientX < rect.left || event.clientX > rect.right ||
-            event.clientY < rect.top || event.clientY > rect.bottom);
-        };
-        panel.addEventListener("pointerdown", event => { startedOutside = event.button === 0 && outside(event); });
-        panel.addEventListener("click", event => {
-          const close = startedOutside && outside(event);
-          startedOutside = false;
-          if (!close) return;
-          event.preventDefault();
-          event.stopPropagation();
-          panel.close();
-        });
-      }
       panel.addEventListener("close", () => panel.remove(), { once: true });
       document.body.append(panel);
       panel.showModal();
@@ -341,7 +324,7 @@
     }
 
     function assignBoxes(id) {
-      const body = openDialog(featureName + "に入れる", true);
+      const body = openDialog(featureName + "に入れる");
       for (const [box, name] of account.boxes) {
         const row = element("label", "monster-box-choice");
         const input = element("input", "monster-box-check");

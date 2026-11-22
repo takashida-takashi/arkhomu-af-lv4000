@@ -20,6 +20,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
       - name: Check JavaScript and build the distribution files
         run: |
           for script in extension/*.js scripts/*.js scripts/*.cjs guide/*.js calculator/*.js tests/*.cjs; do
@@ -27,6 +29,13 @@ jobs:
           done
           node tests/update-check.cjs
           node tests/forecast-target.cjs
+          node tests/op-insights.cjs
+          node tests/stat-compensation.cjs
+          node tests/enhance-potion.cjs
+          node tests/popup-dismiss.cjs
+          node tests/public-stat-copy.cjs
+          node tests/guild-fields.cjs
+          node tests/af-research.cjs
           node tests/settings-storage.cjs
           node tests/training-sources.cjs
           node tests/training-share.cjs

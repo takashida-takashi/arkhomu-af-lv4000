@@ -1,0 +1,13 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
+const layouts=new Map(),scope={hakoAfGuildBrowseLayouts:layouts,hakoAfGuildLineups:{get:()=>null}};vm.createContext(scope);
+let source=fs.readFileSync(path.join(__dirname,'../extension/guild-dungeon-main.js'),'utf8').replace('{ startScan };','{ startScan, rowData };');vm.runInContext(source,scope);
+const translated=k=>({'PASSIVE_HP_NAME':'体力強化','EFFECT_NAME':'燃焼'}[k]??k),row=definition=>({guildId:'guild',slot:2,id:'guild:2',summary:{todayEntrants:10,todayClearers:8},detail:{revision:2,definition,visits:100,clears:80,dailyRemaining:{wins:40,boss:1},reviewSummary:{avg:4.5,count:10}}});
+const definition={bossEnemies:Array.from({length:12},(_,i)=>({master_id:'boss',name:'ボス',level:500+i})),mobEnemies:[{master_id:'mob',name:'雑魚',level:300}],passiveSlots:{boss:{total:3,random:1,chosen:[{skillId:'hp',nameKey:'PASSIVE_HP_NAME'}]}},bossTrialPassive:true,rateBoosts:{boss:{drop:2.5,steal:5}},trialDropFactor:{boss:.7},dungeonEffectList:[{nameKey:'EFFECT_NAME'}],upperPrefixFloor:{chance:.2,minRank:7},rank6MobDrop:{factor:.5,full:6}};
+let current=row(definition),read=()=>JSON.parse(scope.hakoAfGuildDungeonMain.rowData(current,translated,0)),value=read();
+assert.equal(value.bossCount,12);assert.equal(value.mobCount,1);assert.equal(value.bossMaxLevel,511);assert.deepEqual(value.bossPassives.names,['体力強化']);assert.equal(value.bossDropRate,2.5);assert.equal(value.bossTrialDrop,70);assert.equal(value.upperChance,20);assert.equal(value.clearRate,80);assert.equal(value.reviewAverage,4.5);
+current.detail.dailyRemaining.wins=20;assert.equal(read().winsRemaining,20,'In-place updates are reflected');
+current.summary.nationId='nox';assert.deepEqual(JSON.parse(scope.hakoAfGuildDungeonMain.rowData(current,translated,0,'プリマ中央経済国')).nation.names,['プリマ中央経済国','nox'],'Use current native nation labels, including renamed nations');
+layouts.set('guild',{revision:2,bossEnemies:[{name:'別のダンジョン'}]});current={guildId:'guild',slot:2,id:'guild:2',summary:{}};assert.equal(read().bossCount,null,'Separate slots never reuse another dungeon');
+layouts.set('guild:2',{revision:2,bossEnemies:definition.bossEnemies});assert.equal(read().bossCount,12);
+current={guildId:'guild',summary:{}};layouts.clear();value=read();assert.equal(value.bossCount,null);assert.equal(value.bossDropRate,null,'Unknown is never treated as default or zero');
+console.log('Guild fields: 12 bosses, levels/passives/effects/drop/reviews, live updates, separate slots and unknown data passed.');

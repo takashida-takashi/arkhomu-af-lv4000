@@ -233,11 +233,13 @@
     const price = readMarketPrices().get(source);
     publish(anchor, "hako-af:enhance-estimate", {
       level: Number(item._artifact.level), source, name: translate(item.m_items?.name_key || source), stars,
+      potionOwned: Number.isFinite(Number(profile?.getResource?.("enhance_preserve_potion"))) ? Math.max(0, Number(profile.getResource("enhance_preserve_potion"))) : null,
       market: price && Date.now() - price.at < marketPriceLifetime ? price : null,
       rules: settings && Number.isFinite(basePrice) ? {
         basePrice, baseCap: Number(config.artifact.param?.max_level) || 1000,
         itemsPerStep: Number(settings.items_per_100level) || 1, gamma: Number(settings.items_curve_gamma) || 1,
         advancedCost: settings.advanced_cost_multiplier ?? 1.5, advancedSuccess: settings.advanced_success_rate_multiplier ?? .75,
+        potionSuccessMultiplier: settings.potion_success_multiplier ?? 1.5,
         successGain: settings.success_gain ?? [1, 50], greatGain: settings.great_gain ?? [50, 100],
         failRate: settings.fail_rate ?? .3, failStep: settings.fail_rate_per_step ?? 0, failMax: settings.fail_rate_max ?? .75,
         failReduction: (settings.fail_reduction_per_level ?? .05) * countUpgrades("artifact_enhance_rate_lv", 6),

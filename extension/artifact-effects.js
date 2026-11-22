@@ -17,7 +17,7 @@
     physical: "物理", magic: "魔法", fire: "炎", ice: "氷", thunder: "雷", wind: "風",
     earth: "地", holy: "光", dark: "闇", breath: "ブレス", poison: "毒", burn: "火傷",
     blood: "出血", frozen: "凍結", sleep: "睡眠", paralysis: "麻痺", stun: "スタン",
-    slow: "スロウ", charm: "魅了", curse: "呪い", fear: "恐怖", pain: "痛み",
+    slow: "スロウ", charm: "魅了", curse: "呪い", fear: "恐怖", pain: "痛み", heal: "回復",
     blind: "暗闇", silence: "沈黙", acid: "劣化", deterioration: "劣化"
   };
   const damageTypes = { song: "歌唱", shot: "射撃", slash: "斬撃", spear: "刺突", punch: "格闘", breath: "ブレス" };

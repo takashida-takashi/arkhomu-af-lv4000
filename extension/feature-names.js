@@ -24,6 +24,7 @@
     partyShare: "拡張編成共有",
     trainingRoutes: "拡張育成ルート",
     trainingPlanner: "拡張育成プランナー",
+    statSimulator: "拡張ステータスシミュレーター",
     chat: "拡張チャット",
     daily: "拡張日次収支"
   });

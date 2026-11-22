@@ -10,7 +10,6 @@
   const listSelector = flexList + ',[aria-label="ギルドダンジョンの一覧"]';
   const listAttribute = "data-ha4-guild-filter-list";
   const rowAttribute = "data-ha4-guild-filter-row";
-  const snapshots = new WeakMap();
   const number = value => (typeof value === "number" || typeof value === "string" && value.trim()) &&
     Number.isFinite(Number(value)) ? Number(value) : null;
   const flag = value => typeof value === "boolean" ? String(Number(value)) : null;
@@ -67,9 +66,9 @@
     return lineup?.[key] ?? fromList?.[key];
   }
 
-  function rowData(entry, translate, order) {
+  function rowData(entry, translate, order, nationName) {
     const summary = entry.summary ?? {};
-    const id = String(entry.guildId);
+    const id = Number(entry.slot ?? summary.slot) > 1 ? `${entry.guildId}:${Number(entry.slot ?? summary.slot)}` : String(entry.guildId);
     const fromList = summary.sessionId ? null : browseLayouts?.get(id);
     const revision = fromList?.revision;
     const current = entry.detail;
@@ -77,15 +76,20 @@
       current.revision !== revision ? null : current;
     const definition = detail?.definition;
     const lineup = observedLineups?.get(id, revision);
-    const cached = snapshots.get(entry);
-    if (cached && cached.fromList === fromList && cached.detail === detail && cached.lineup === lineup &&
-      cached.order === order && cached.todayClosed === summary.todayClosed) return cached.value;
+    const settings = definition ?? lineup?.definition ?? fromList;
+    const completeSettings = !!(definition || lineup?.definition);
     const specialToday = detail?.business?.hasSpecialRewards ?? summary.specialToday;
     const normalFee = number(definition?.entryFee ?? fromList?.entryFee ?? summary.entryFee);
     const specialFee = number(definition?.specialEntryFee ?? fromList?.specialEntryFee ?? summary.specialEntryFee) ?? normalFee;
     const entryFee = specialToday === true ? specialFee : specialToday === false || normalFee === specialFee ? normalFee : null;
     const todayEntrants = number(summary.todayEntrants);
     const todayClearers = number(summary.todayClearers);
+    const mobEnemies = lineupEnemies(definition, lineup, fromList, "mobEnemies"), bossEnemies = lineupEnemies(definition, lineup, fromList, "bossEnemies");
+    const names = values => values ? { names: values.map(item => {
+      const key = item.nameKey ?? item.name_key ?? (item.skillId ? "PASSIVE_" + item.skillId.toUpperCase() + "_NAME" : item.source_item_id ? "ITEM_" + item.source_item_id.toUpperCase() + "_NAME" : "");
+      const name = translate(key);return name && name !== key ? name : "";
+    }).filter(Boolean), complete: values.every(item => { const key = item.nameKey ?? item.name_key ?? (item.skillId ? "PASSIVE_" + item.skillId.toUpperCase() + "_NAME" : item.source_item_id ? "ITEM_" + item.source_item_id.toUpperCase() + "_NAME" : "");return !!key && translate(key) !== key; }) } : null;
+    const maxLevel = rows => Array.isArray(rows) && rows.filter(Boolean).every(e => number(e.level) != null) ? Math.max(0, ...rows.filter(Boolean).map(e => Number(e.level))) : null;
     const data = {
       nativeOrder: order,
       name: entry.name ?? summary.name,
@@ -100,21 +104,53 @@
       specialToday: flag(specialToday),
       todayClosed: flag(summary.todayClosed),
       todayEntrants, todayClearers,
-      todayClearRate: todayEntrants > 0 && todayClearers != null ? (todayClearers / todayEntrants) * 100 : null
+      todayClearRate: todayEntrants > 0 && todayClearers != null ? (todayClearers / todayEntrants) * 100 : null,
+      description: settings?.description ?? entry.description ?? summary.description,
+      nation: summary.nationId ? { names: [nationName, String(summary.nationId)].filter(Boolean), complete: !!nationName } : null,
+      version: settings?.version == null ? null : String(settings.version),
+      slot: number(entry.slot ?? summary.slot) ?? 1,
+      sourceDungeon: settings?.sourceDungeonId ? { names: [translate("DUNGEON_" + settings.sourceDungeonId.toUpperCase() + "_NAME"), settings.sourceDungeonId], complete: true } : null,
+      mobCount: Array.isArray(mobEnemies) ? mobEnemies.filter(Boolean).length : null,
+      bossCount: Array.isArray(bossEnemies) ? bossEnemies.filter(Boolean).length : null,
+      mobMaxLevel: maxLevel(mobEnemies), bossMaxLevel: maxLevel(bossEnemies),
+      dungeonEffects: names(settings?.dungeonEffectList ?? (completeSettings ? [] : null)), effectCount: settings?.dungeonEffectList?.length ?? (completeSettings ? 0 : null),
+      upperChance: number(settings?.upperPrefixFloor?.chance) == null ? null : Number(settings.upperPrefixFloor.chance) * 100,
+      upperMinRank: number(settings?.upperPrefixFloor?.minRank),
+      rank6MobDrop: number(settings?.rank6MobDrop?.factor) == null ? null : Number(settings.rank6MobDrop.factor) * 100,
+      rank6MobFull: number(settings?.rank6MobDrop?.full),
+      visits: number(detail?.visits), clears: number(detail?.clears),
+      clearRate: Number(detail?.visits) > 0 && number(detail?.clears) != null ? Number(detail.clears) / Number(detail.visits) * 100 : null,
+      winsRemaining: number(detail?.dailyRemaining?.wins), bossRemaining: number(detail?.dailyRemaining?.boss),
+      reviewAverage: number(detail?.reviewSummary?.avg), reviewCount: number(detail?.reviewSummary?.count),
+      todayShared: flag(detail?.today?.shared ?? summary.todayShared)
     };
-    const value = JSON.stringify(data);
-    if (data.mobEnemies?.complete !== false && data.bossEnemies?.complete !== false) {
-      snapshots.set(entry, { fromList, detail, lineup, order, todayClosed: summary.todayClosed, value });
+    for (const side of ["mob", "boss"]) {
+      const slots = settings?.passiveSlots?.[side];
+      data[side + "Passives"] = names(slots?.chosen ?? (completeSettings ? [] : null));
+      data[side + "PassiveCount"] = number(slots?.total) ?? (completeSettings ? 0 : null);
+      data[side + "ChosenCount"] = slots?.chosen?.length ?? (completeSettings ? 0 : null);
+      data[side + "RandomCount"] = number(slots?.random) ?? (completeSettings ? 0 : null);
+      const trial = settings?.[side + "TrialPassive"];
+      data[side + "TrialPassive"] = typeof trial === "boolean" ? flag(trial) : completeSettings ? "0" : null;
+      for (const rate of ["drop", "steal"]) data[side + (rate === "drop" ? "DropRate" : "StealRate")] = number(settings?.rateBoosts?.[side]?.[rate]) ?? (completeSettings ? 1 : null);
+      const factor = number(settings?.trialDropFactor?.[side]) ?? (completeSettings ? 1 : null);
+      data[side + "TrialDrop"] = factor == null ? null : factor * 100;
+      const equipped = side === "boss" && settings?.bossEnemyArtifacts ? settings.bossEnemyArtifacts : settings?.enemyArtifacts;
+      data[side + "Artifacts"] = names(equipped ?? (completeSettings ? [] : null));data[side + "ArtifactCount"] = equipped?.length ?? (completeSettings ? 0 : null);
     }
+    const value = JSON.stringify(data);
     return value;
   }
 
   function startScan(dependencies, translate) {
     if (!document.querySelector(listSelector)) return;
     const contexts = new WeakMap();
+    const countries = new Map();
+    const rememberCountries = groups => { for (const group of groups) if (group.nationId != null && group.name) countries.set(String(group.nationId), group.name); };
     return (name, instance, vnode, el) => {
       if (classicLists.has(name) && instance && el?.nodeType === 1) {
         const groups = instance.props?.groups ?? [];
+        rememberCountries(groups);
         const rows = entries(groups);
         contexts.set(instance, { rows: new Map(rows.map(row => [row.id, row])), order: nativeOrder(instance, groups, dependencies) });
         if (!el.hasAttribute(listAttribute)) el.setAttribute(listAttribute, "");
@@ -123,6 +159,7 @@
         const groups = dependencies(instance.effect).map(ref => ref._value).find(value =>
           Array.isArray(value) && value.some(group => Array.isArray(group?.entries) && group.entries.some(row => row?.is_guild)));
         const rows = groups ? entries(groups) : [];
+        rememberCountries(groups ?? []);
         contexts.set(instance, { rows: new Map(rows.map(row => [row.id, row])), order: nativeOrder(instance, groups ?? [], dependencies) });
       }
       if (el?.nodeType !== 1 || !vnode.ctx) return;
@@ -134,7 +171,7 @@
       } else if (vnode.type === "li" && vnode.key != null) {
         const entry = rows.get(vnode.key);
         if (!entry) return;
-        const value = rowData(entry, translate, order.get(entry.id));
+        const value = rowData(entry, translate, order.get(entry.id), countries.get(String(entry.summary?.nationId)));
         if (el.getAttribute(rowAttribute) !== value) el.setAttribute(rowAttribute, value);
       }
     };

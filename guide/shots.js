@@ -1,6 +1,16 @@
 "use strict";
 
 const screenshots = {
+  "stat-compensation": {
+    title: "変更前後の換算結果を確認する",
+    filename: "stat-compensation.jpg",
+    steps: [[3, 22, "比較している変更前・変更後の世代"], [3, 43, "同じ効果に相当するボーナスパラメータの加算量"], [36, 57, "AFで補う場合の追加ptと合計値"]]
+  },
+  "op-simulator": {
+    title: "OPを選んで想定値を比較する",
+    filename: "op-simulator.jpg",
+    steps: [[3, 12, "試算するレア度とLvを指定"], [3, 24, "真・極の補正と、そろえる星の評価を指定"], [3, 42, "OPを追加・変更・削除。条件の変更は即時反映"], [3, 78, "見出しのLvと想定値を確認する"]]
+  },
   "planner-search": {
     title: "タグやカテゴリでスキルを探す",
     filename: "planner-search.jpg",

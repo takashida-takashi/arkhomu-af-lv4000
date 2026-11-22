@@ -617,6 +617,8 @@
             <div class="material-estimator" id="materialSection">
                 <div class="estimate-heading"><h3 id="materialHeading">素材数・必要金額の目安（Lv4500到達）</h3><div class="inline-setting"><label for="materialUnitPrice">素材1個あたりの相場価格（ゴールド）:</label><input type="text" id="materialUnitPrice" inputmode="decimal" autocomplete="off" placeholder="例：100" oninput="formatMaterialUnitPrice(this, event)" oncompositionend="formatMaterialUnitPrice(this)"></div></div>
                 <p id="materialExtrapolationNote" class="material-estimate-detail" style="margin-bottom: 8px;" hidden>Lv4500を超える能力値は経験式の外挿だよ。素材・費用の見積もりはLv10万までで、Lv4501以降は100Lvごとに素材＋3個、失敗率59%が続くと仮定しているよ。</p>
+                <label><input type="checkbox" id="enhancePotion" style="width:auto" onchange="setPotionEstimate()"> 強化補助薬を使用して見積もる</label>
+                <p id="potionEstimate" class="material-estimate-detail" hidden></p>
 
                 <div class="material-estimate-grid">
                     <div class="material-estimate-card">
@@ -707,9 +709,19 @@
     let materialCostByLevel = [];
     let materialFailByLevel = [];
     let expectedMaterialsByLevel = [];
+    let expectedAttemptsByLevel = [];
+    let useEnhancePotion = false;
     const materialEstimateCache = new Map();
     let latestMaterialEstimate = null;
     let calculationTimer = null;
+    function setPotionEstimate() {
+        useEnhancePotion = document.getElementById('enhancePotion').checked;
+        document.getElementById('potionEstimate').hidden = !useEnhancePotion;
+        document.getElementById('potionEstimate').textContent = '計算中…';
+        materialEstimateCache.clear();synthesisEstimateCache.clear();latestMaterialEstimate = null;latestSynthesisEstimate = null;
+        if (isEstimateTargetSupported()) initializeMaterialTables();
+        scheduleCalculation();
+    }
 
     function isEstimateTargetSupported() {
         return Number.isSafeInteger(MATERIAL_TARGET_LEVEL) && MATERIAL_TARGET_LEVEL >= 1 && MATERIAL_TARGET_LEVEL <= MAX_ESTIMATE_LEVEL;
@@ -747,6 +759,7 @@
         materialCostByLevel = new Array(tableSize).fill(0);
         materialFailByLevel = new Array(tableSize).fill(0);
         expectedMaterialsByLevel = new Array(tableSize).fill(0);
+        expectedAttemptsByLevel = new Array(tableSize).fill(0);
 
         MATERIAL_RULES.forEach(rule => {
             for (let lv = rule.min; lv < rule.max && lv < tableSize; lv++) {
@@ -760,6 +773,7 @@
             materialCostByLevel[lv] = MATERIAL_RULES[MATERIAL_RULES.length - 1].cost + 3 * (Math.floor((lv - 4501) / 100) + 1);
             materialFailByLevel[lv] = MATERIAL_RULES[MATERIAL_RULES.length - 1].fail;
         }
+        if (useEnhancePotion) for (let lv = 0; lv < tableSize; lv++) materialFailByLevel[lv] = 1 - Math.min(1, (1 - materialFailByLevel[lv]) * 1.5);
 
         // 失敗分を含む期待値を、目標レベルから逆向きに厳密計算する。
         // E(Lv) = 1回成功するまでの期待消費素材 + 成功後の期待消費素材
@@ -770,6 +784,10 @@
             const greatExpected = greatSum / 120;
             expectedMaterialsByLevel[lv] = materialCostByLevel[lv] / (1 - materialFailByLevel[lv])
                 + normalExpected * 0.9 + greatExpected * 0.1;
+            let normalAttempts = 0, greatAttempts = 0;
+            for (let step = 30; step <= 60; step++) normalAttempts += expectedAttemptsByLevel[lv + step] || 0;
+            for (let step = 61; step <= 180; step++) greatAttempts += expectedAttemptsByLevel[lv + step] || 0;
+            expectedAttemptsByLevel[lv] = 1 / (1 - materialFailByLevel[lv]) + normalAttempts / 31 * .9 + greatAttempts / 120 * .1;
         }
     }
 
@@ -788,6 +806,7 @@
                 expectedRounded: 0,
                 expectedProbability: 1,
                 p90: 0,
+                potionsExpected: 0, potionsP90: 0,
                 p90Probability: 1,
                 simulations: MATERIAL_SIMULATION_COUNT
             };
@@ -800,6 +819,7 @@
         // 失敗時はレベルを維持し、素材だけ消費する。
         // 通常成功は+30〜60、大成功は+61〜180。大成功は成功の10%。
         const samples = new Array(simulationCount);
+        const attemptsSamples = new Array(simulationCount);
         for (let i = 0; i < simulationCount; i++) {
             let level = startLevel;
             let materials = 0;
@@ -820,8 +840,10 @@
                 }
             }
             samples[i] = materials;
+            attemptsSamples[i] = attempts;
         }
         samples.sort((a, b) => a - b);
+        attemptsSamples.sort((a, b) => a - b);
 
         const expected = expectedMaterialsByLevel[startLevel];
         const expectedRounded = Math.round(expected);
@@ -830,7 +852,8 @@
         const p90 = samples[p90Index];
         const p90Probability = fractionAtOrBelow(samples, p90);
 
-        const result = { expected, expectedRounded, expectedProbability, p90, p90Probability, simulations: samples.length };
+        const result = { expected, expectedRounded, expectedProbability, p90, p90Probability, simulations: samples.length,
+            potionsExpected: Math.ceil(expectedAttemptsByLevel[startLevel]), potionsP90: attemptsSamples[p90Index] };
         materialEstimateCache.set(startLevel, result);
         return result;
     }
@@ -858,6 +881,7 @@
         const expectedCountEl = document.getElementById('expectedMaterialCount');
         const expectedProbEl = document.getElementById('expectedMaterialProbability');
         const p90CountEl = document.getElementById('p90MaterialCount');
+        if (useEnhancePotion) document.getElementById('potionEstimate').textContent = '入力した現在Lvから試算します。';
 
         if (!Number.isFinite(startLevel)) {
             latestMaterialEstimate = null;
@@ -900,6 +924,7 @@
         expectedCountEl.textContent = '約' + formatNumber(estimate.expectedRounded) + '個';
         expectedProbEl.textContent = '約' + formatPercent(estimate.expectedProbability) + 'で到達する素材数';
         p90CountEl.textContent = '約' + formatNumber(estimate.p90) + '個';
+        if (useEnhancePotion) document.getElementById('potionEstimate').textContent = '強化補助薬：期待値 約' + formatNumber(estimate.potionsExpected) + '個／約90%到達 ' + formatNumber(estimate.potionsP90) + '個。';
         updateMaterialCosts();
     }
 

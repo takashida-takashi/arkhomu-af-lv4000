@@ -5,7 +5,7 @@
 
   const names = globalThis.hakoAfFeatureNames;
   const cabinetSelector = ".fx-slot-machine";
-  const chatSelector = "#home-chat,.fx-home__chat";
+  const chatSelector = "#home-chat,.fx-chat-dock:not(.fx-chat-dock--drawer),.fx-home__chat";
   const modalSelector = 'dialog[open],[role="dialog"],[aria-modal="true"],[data-base-modal-root]';
   const homePaths = new Set(["/", "/f", "/f/"]);
   const onSlotPage = path => /^\/slot\/?$/.test(path);

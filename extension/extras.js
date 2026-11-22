@@ -91,6 +91,8 @@
     const featurePreferences = { skipExploreLogs: stored.skipExploreLogs, ...stored.features };
     return {
       forecastTarget: normalizeTarget(stored.forecastTarget),
+      opDecimalStars: stored.opDecimalStars === true,
+      opNativeStars: stored.opNativeStars === true,
       features: Object.fromEntries(Object.keys(features).map(id => [id, featurePreferences[id] !== false])),
       paging: ["standard", "all", "priority"].includes(stored.paging) ? stored.paging : "priority",
       candidates: ["mark", "first", "only"].includes(stored.candidates) ? stored.candidates : "first",
@@ -478,6 +480,10 @@
       labeled(forecastSection, "目標レベル", targetInput);
       forecastSection.append(node("p", "extra-note", `初期値は${DEFAULT_TARGET}です。1〜${MAX_TARGET}の整数を指定すると、予測表示・コピー・ソート・フィルタ・強化見積もり・プランナーのAF比較に反映します。目標以上のAFは現在値で比較します。`));
       forecastSection.append(node("p", "extra-note", `Lv4500を超える部分は経験式の外挿です。強化費用の見積もりは計算負荷を抑えるためLv${MAX_ESTIMATE_TARGET}まで対応します。追加ヒット数はレベルによって増やしません。`));
+      field(forecastSection, "OPの星を小数1桁で評価する（推定）", "checkbox", settings.opDecimalStars, value => { settings.opDecimalStars = value; });
+      forecastSection.append(node("p", "extra-note", "初期設定はオフです。AF詳細の拡張OP評価で、星の推定レンジ内の位置を★1.0〜★5.9で表示します。抽選確率や公式の内部評価値ではありません。"));
+      field(forecastSection, "本体のAF詳細の星を小数評価に置き換える（推定）", "checkbox", settings.opNativeStars, value => { settings.opNativeStars = value; });
+      forecastSection.append(node("p", "extra-note", "本体の対応する特性を推定★x.xで表示します。初期設定はオフ。固定回数や未対応の星は変更せず、オフにすると元の表示に戻ります。"));
       targetInput.addEventListener("input", () => targetInput.setCustomValidity(""));
       targetInput.addEventListener("change", () => {
         const value = Number(targetInput.value);

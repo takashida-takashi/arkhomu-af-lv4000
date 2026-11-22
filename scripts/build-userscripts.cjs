@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createHash } = require("node:crypto");
 const { execFileSync } = require("node:child_process");
+const { minify_sync } = require("terser");
 
 const project = path.resolve(__dirname, "..");
 const outputs = path.join(project, "dist");
@@ -80,10 +81,10 @@ function copyPreviousDownloads(site) {
   }
 }
 
-const files = ["feature-names.js", "forecast.js", "artifact-effects.js", "list-rules.js", "filter-popup.js", "hidden-titles.js", "extras.js", "extras-main.js",
-  "enhance-estimate.js", "explore-analysis.js", "market-watch.js", "party-share-main.js", "training-sources-main.js", "training-preview-main.js", "training-routes-main.js",
+const files = ["feature-names.js", "popup-dismiss.js", "forecast.js", "artifact-effects.js", "list-rules.js", "filter-popup.js", "hidden-titles.js", "extras.js", "extras-main.js",
+  "enhance-estimate.js", "explore-analysis.js", "market-watch.js", "party-share-main.js", "training-sources-main.js", "training-preview-main.js", "stat-compensation.js", "training-routes-main.js",
   "party-share.js", "training-routes.js", "training-artifacts.js", "training-preview.js", "training-planner.js", "expedition.js", "guild-dungeon-filter.js", "dungeon-rewards.js", "content.js", "gacha-sets.js",
-  "expedition-main.js", "expedition-native.js", "monster-boxes.js", "guild-dungeon-main.js", "dungeon-rewards-main.js", "read-af.js"];
+  "expedition-main.js", "expedition-native.js", "monster-boxes.js", "guild-dungeon-main.js", "dungeon-rewards-main.js", "stat-simulator-main.js", "op-model-data.js", "op-insights-main.js", "read-af.js"];
 const desktopOnly = new Set(["frame-context.js", "local-reload.js", "desktop-update.js", "slot-home.js"]);
 const bundled = new Set([...files, "market-snapshot.js", "update-check.js"]);
 const desktopModules = new Set(mobileManifest.content_scripts.flatMap(entry => entry.js));
@@ -93,7 +94,13 @@ if (missing.length || extra.length) {
   throw new Error(`Userscript module mismatch. Missing: ${missing.join(", ")}. Extra: ${extra.join(", ")}.`);
 }
 // Register the UI before the game bridge discards the module exports it uses. The first scan runs next frame.
-const moduleSource = file => "// " + file + "\n" + read(file).replaceAll("globalThis.hakoAf", "modules.hakoAf");
+const compactModules = new Set(["stat-simulator-main.js", "stat-compensation.js", "op-insights-main.js"]);
+const moduleSource = file => {
+  const source = read(file).replaceAll("globalThis.hakoAf", "modules.hakoAf");
+  return "// " + file + "\n" + (compactModules.has(file) ? minify_sync(source, {
+    compress: false, mangle: true, format: { comments: false, ascii_only: false }
+  }).code : source);
+};
 const modules = files.map(moduleSource);
 const css = read("style.css") + `
 
@@ -188,7 +195,9 @@ if (promote) void promote.then(loaded => { if (!loaded) startRuntime(); });
 else startRuntime();
 })();`;
 const observers = `function startNativeObservers() {\n${moduleSource("market-snapshot.js")}\n}`;
+// Existing bridge modules inspect function source; preserve their formatting and exported property names.
 const runtime = [header, start, observers, mount, ...modules, ready].join("\n\n") + "\n";
+if (Buffer.byteLength(runtime, "utf8") >= 1048576) throw new Error("Runtime exceeds the 1 MiB limit supported by existing automatic updaters.");
 const scriptName = "arkhomu-af-lv4000.user.js";
 const installerGrants = [
   "// @grant        GM.getValue",

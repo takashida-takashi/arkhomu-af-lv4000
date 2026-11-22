@@ -11,7 +11,7 @@
   });
   const clampProbability = value => Math.max(0, Math.min(1, value));
 
-  async function calculate(start, rules, stars, valid, target = getTarget()) {
+  async function calculate(start, rules, stars, valid, target = getTarget(), usePotion = false) {
     if (!Number.isSafeInteger(start) || start < 1 || !Number.isSafeInteger(target) || target <= start || target > MAX_ESTIMATE_TARGET || !valid()) return;
     if (!Array.isArray(rules.successGain) || !Array.isArray(rules.greatGain)) return;
     const regular = rules.successGain.map(value => Math.floor(Number(value)));
@@ -24,6 +24,9 @@
     const fees = new Float64Array(target);
     const failureLog = new Float64Array(target);
     const suffix = new Float64Array(target + 1);
+    const potionSuffix = usePotion ? new Float64Array(target + 1) : null;
+    const potionSamples = usePotion ? new Float64Array(trials) : null;
+    const potionMultiplier = Number(rules.potionSuccessMultiplier) >= 1 && Number(rules.potionSuccessMultiplier) <= 3 ? Number(rules.potionSuccessMultiplier) : 1.5;
     const nextAverage = (level, [min, max]) =>
       (suffix[Math.min(target, level + min)] - suffix[Math.min(target, level + max + 1)]) / (max - min + 1);
     for (let level = target - 1; level >= start; level--) {
@@ -38,11 +41,15 @@
       const baseFee = Math.floor(rules.goldMultiplier * level * rules.basePrice * (1 + stars * rules.starCoefficient));
       fees[level] = Math.floor(baseFee * multiplier * Math.max(0, 1 - rules.discount));
       const failure = Math.min(rules.failMax, rules.failRate + (step - 1) * rules.failStep);
-      const success = (1 - clampProbability(failure - rules.failReduction)) * (advanced ? rules.advancedSuccess : 1);
+      const success = Math.min(1, (1 - clampProbability(failure - rules.failReduction)) * (advanced ? rules.advancedSuccess : 1) * (usePotion ? potionMultiplier : 1));
       if (!(success > 0 && success <= 1 && Number.isFinite(items[level]) && Number.isFinite(fees[level]))) return;
       failureLog[level] = Math.log1p(-success);
       const expected = items[level] / success + (1 - greatShare) * nextAverage(level, regular) + greatShare * nextAverage(level, great);
       suffix[level] = suffix[level + 1] + expected;
+      if (potionSuffix) {
+        const after = ([min, max]) => (potionSuffix[Math.min(target, level + min)] - potionSuffix[Math.min(target, level + max + 1)]) / (max - min + 1);
+        potionSuffix[level] = potionSuffix[level + 1] + 1 / success + (1 - greatShare) * after(regular) + greatShare * after(great);
+      }
     }
     const expected = Math.round(suffix[start] - suffix[start + 1]);
     const samples = new Float64Array(trials);
@@ -64,7 +71,7 @@
           if (!valid()) return;
           sliceStarted = performance.now();
         }
-        let spent = 0;
+        let spent = 0, potionCount = 0;
         for (let level = start; level < target;) {
           const attempts = 1 + Math.floor(Math.log1p(-random()) / failureLog[level]);
           const count = items[level];
@@ -73,14 +80,16 @@
             goldP90 += fees[level] * affordableAttempts(p90, spent, count, attempts);
           }
           spent += count * attempts;
+          if (usePotion) potionCount += attempts;
           const [low, high] = random() < greatShare ? great : regular;
           level += low + Math.floor(random() * (high - low + 1));
         }
-        if (!measureGold) samples[trial] = spent;
+        if (!measureGold) { samples[trial] = spent;if (potionSamples) potionSamples[trial] = potionCount; }
       }
       if (!measureGold) p90 = samples.sort()[Math.ceil(trials * .9) - 1];
     }
-    return { expected, p90, goldExpected: Math.round(goldExpected / trials), goldP90: Math.round(goldP90 / trials) };
+    return { expected, p90, goldExpected: Math.round(goldExpected / trials), goldP90: Math.round(goldP90 / trials),
+      ...(usePotion ? { potionsExpected: Math.ceil(potionSuffix[start] - potionSuffix[start + 1]), potionsP90: potionSamples.sort()[Math.ceil(trials * .9) - 1] } : {}) };
   }
 
   function start(node, enabled, requestScan) {
@@ -89,6 +98,8 @@
     const results = new Map();
     let lookup;
     let expanded = false;
+    let usePotion = false;
+    try { usePotion = localStorage.getItem("hakoAf4000:enhance-use-potion") === "true"; } catch { /* Default off. */ }
 
     function updatePriceInput(panel) {
       const value = manual.get(panel.data.source) ?? panel.data.market?.price;
@@ -166,11 +177,14 @@
       const marketStatus = node("p", "estimate-market-status");
       marketStatus.setAttribute("aria-live", "polite");
       const source = node("p", "estimate-source");
+      const potionLabel = document.createElement("label"), potion = document.createElement("input");
+      potion.type = "checkbox";potion.checked = usePotion;
+      potionLabel.append(potion, "強化補助薬を使用して見積もる");
       const status = node("p", "estimate-status");
       status.setAttribute("role", "status");
       const table = node("table", "estimate-table");
-      const head = document.createElement("thead").insertRow();
-      for (const text of ["", "期待値の素材数", "約90%到達"]) {
+      const head = table.createTHead().insertRow();
+      for (const text of ["", "期待値", "約90%到達"]) {
         const th = document.createElement("th");
         th.scope = "col";
         th.textContent = text;
@@ -185,11 +199,19 @@
         row.append(th);
         return [row.insertCell(), row.insertCell()];
       });
-      body.append(label, market, marketStatus, source, status, table);
+      const potionRow = tbody.insertRow(1), potionHeader = document.createElement("th");
+      potionHeader.scope = "row";potionHeader.textContent = "強化補助薬";potionRow.append(potionHeader);
+      const potionCells = [potionRow.insertCell(), potionRow.insertCell()];potionRow.hidden = !usePotion;
+      body.append(label, market, marketStatus, source, potionLabel, status, table);
       root.append(node("summary", "estimate-heading", `${names.enhanceEstimate}（Lv${getTarget()}）`), body);
       root.open = expanded;
       anchor.after(root);
-      const panel = { root, price, market, marketStatus, source, status, table, rows, ticket: 0 };
+      const panel = { root, price, market, marketStatus, source, status, table, rows, potion, potionRow, potionCells, ticket: 0 };
+      potion.addEventListener("change", () => {
+        usePotion = potion.checked;
+        try { localStorage.setItem("hakoAf4000:enhance-use-potion", String(usePotion)); } catch { /* Keep the in-tab selection. */ }
+        for (const entry of panels.values()) { entry.potion.checked = usePotion;refresh(entry); }
+      });
       market.addEventListener("click", event => {
         if (event.isTrusted && panel.data?.source && root.open) readMarket(panel);
       });
@@ -222,8 +244,15 @@
         : "最近の売上平均なし";
       source.textContent = `${data.name} · ${invalidPrice ? "単価は0以上の整数で入力" : entered != null ? "手入力の単価を使用" : observed}`;
       table.hidden = !result;
+      panel.potionRow.hidden = !usePotion;
       if (!result) return;
       const { expected, p90, goldExpected, goldP90 } = result;
+      if (usePotion) {
+        for (const [index, count] of [result.potionsExpected, result.potionsP90].entries()) {
+          const shortage = Number.isFinite(data.potionOwned) ? Math.max(0, count - data.potionOwned) : 0;
+          panel.potionCells[index].textContent = `${format.format(count)} 個${shortage ? "（不足 " + format.format(shortage) + "）" : ""}`;
+        }
+      }
       const gold = number => `${format.format(number)} G`;
       for (const [column, count, fee] of [[0, expected, goldExpected], [1, p90, goldP90]]) {
         const material = price == null ? null : count * price;
@@ -247,7 +276,7 @@
         render(panel);
         return;
       }
-      const key = JSON.stringify([target, data.level, data.stars, data.rules]);
+      const key = JSON.stringify([target, data.level, data.stars, data.rules, usePotion]);
       const entry = results.get(key);
       if (panel.key !== key) {
         panel.key = key;
@@ -268,7 +297,7 @@
       panel.status.textContent = "計算中…";
       const ticket = ++panel.ticket;
       const valid = () => ticket === panel.ticket && panel.root.isConnected && panel.root.open;
-      const result = await calculate(data.level, data.rules, data.stars, valid, target);
+      const result = await calculate(data.level, data.rules, data.stars, valid, target, usePotion);
       if (!valid()) return;
       panel.calculating = false;
       panel.result = result;

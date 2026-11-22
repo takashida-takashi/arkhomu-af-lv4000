@@ -411,7 +411,7 @@
       const permitted = refsById.filter(([, item]) => item && available(item)).map(([ref, item]) => {
         const level = number(input.skillLevels?.[ref], 1);
         if (level <= 1) return [ref, item];
-        const variant = storedLevels(ref)?.[level];
+        const variant = input.skillDefinitions?.[ref] ?? storedLevels(ref)?.[level];
         if (!variant) { missingLevels.add(ref); return [ref, item]; }
         return [ref, { ...item, ...variant, id: item.id }];
       });
@@ -461,6 +461,8 @@
   function storedLevels(ref) {
     try { return JSON.parse(localStorage.getItem(skillLevelsPrefix + ref)); } catch { return null; }
   }
+
+  globalThis.hakoAfTrainingModel = Object.freeze({ calculate, settings, startingStats });
 
   document.addEventListener("hako-af:read-planner-levels", event => {
     let ids;

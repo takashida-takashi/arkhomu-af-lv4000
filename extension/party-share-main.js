@@ -5,6 +5,7 @@
 
   const panels = new WeakMap();
   const individuals = new WeakMap();
+  const simulatorMembers = new WeakMap();
   const detailAnchors = new WeakMap();
   const profileViews = new Set(["ProfilePublicView", "FlexPublicProfileView"]);
   const profileParties = new Set(["TopRatedPartyModal", "ColosseumTopRatedPartyModal", "FlexProfilePartyDialog"]);
@@ -14,6 +15,7 @@
   const bonusKeys = new Set([...baseBonusKeys, "lck", "cri", "cdmg"]);
   let readers;
   let effectReaders;
+  let simulatorTraining;
 
   function nativeUrl(file, base = location.origin) {
     const url = new URL(file, base);
@@ -65,6 +67,19 @@
 
   function getReaders() {
     return readers ??= loadReaders().catch(error => { readers = null; throw error; });
+  }
+
+  async function readTrainingFactory() {
+    const script = [...document.querySelectorAll('script[type="module"][src]')].find(node => /^\/_nuxt\/[\w-]+\.js$/.test(new URL(node.src).pathname));
+    const entry = nativeUrl(script?.src), source = await nativeSource(entry);
+    const route = /name:\s*["']monsters["'][^{}]{0,240}?\bimport\(\s*["']([^"']+)["']/.exec(source);
+    const page = nativeUrl(route?.[1], entry), pageSource = await nativeSource(page);
+    const lazy = /\bimport\(\s*["']([^"']+)["']/.exec(pageSource);
+    const detail = nativeUrl(lazy?.[1], page), detailSource = await nativeSource(detail);
+    const controller = importedBinding(detailSource, destructuredFrom(detailSource, "effectiveTrainingBonus"), detail);
+    const controllerSource = await nativeSource(controller.url);
+    const training = importedBinding(controllerSource, destructuredFrom(controllerSource, "deployBonus"), controller.url);
+    return (await import(training.url))[training.exported];
   }
 
   async function loadEffectReaders() {
@@ -132,11 +147,12 @@
     if (!panel.hasAttribute("data-ha4-party-panel")) panel.setAttribute("data-ha4-party-panel", "");
   }
 
-  function clearMember(anchor) {
+  function clearMember(anchor, preserveSimulator = false) {
     anchor.removeAttribute("data-ha4-share-member");
     anchor.removeAttribute("data-ha4-training-target");
     anchor.removeAttribute("data-ha4-training-import-member");
     individuals.delete(anchor);
+    if (!preserveSimulator) { anchor.removeAttribute("data-ha4-stat-member");simulatorMembers.delete(anchor); }
   }
 
   function showsPublicSkills(props) {
@@ -171,11 +187,16 @@
     const native = monster?.t_user_monsters ?? monster;
     const id = monster?.user_monster_id ?? native?.user_monster_id;
     const record = id == null || !Array.isArray(owned) ? null : owned.find(member => member?.user_monster_id === id);
+    if (monster && native) {
+      anchor.setAttribute("data-ha4-stat-member", "");
+      simulatorMembers.set(anchor, { monster, props, instance: vnode.component, publicTraining: !record,
+        skillsVisible: !!record || showsPublicSkills(props) });
+    } else { clearMember(anchor);return; }
     const trainingSource = isTrainingSource(vnode.component);
     root.toggleAttribute("data-ha4-public-training-detail", trainingSource);
     const publicTraining = trainingSource && showsPublicSkills(props);
     if (props?.maskSkills || !record && !publicTraining) {
-      clearMember(anchor);
+      clearMember(anchor, true);
       detailAnchors.delete(vnode.component);
       return;
     }
@@ -339,5 +360,66 @@
       reply("error", "この画面から編成情報を読み取れませんでした。編成画面を再読み込みしてからお試しください。");
     }
   });
-  globalThis.hakoAfPartyShareMain = { bind, bindMember, bindHall, getReaders, getEffectReaders };
+  async function readSimulatorMember(anchor) {
+    const selected = simulatorMembers.get(anchor);
+    if (!selected || !anchor.isConnected) return null;
+    const properties = document.getElementById("__nuxt")?.__vue_app__?.config?.globalProperties;
+    const tools = await getReaders();
+    const levelStore = properties.$pinia?._s?.get("skillLevelDisplay");
+    if (!selected.publicTraining) await levelStore?.ensureAccount?.();
+    let trainingFactory;
+    if (!selected.publicTraining) try { trainingFactory = await (simulatorTraining ??= readTrainingFactory().catch(error => { simulatorTraining = null;throw error; })); } catch { /* The UI reports omitted training data. */ }
+    if (simulatorMembers.get(anchor)?.monster !== selected.monster || selected.props.monster !== selected.monster) return null;
+    const run = properties.$nuxt?.runWithContext?.bind(properties.$nuxt) ?? document.getElementById("__nuxt").__vue_app__.runWithContext.bind(document.getElementById("__nuxt").__vue_app__);
+    return run(() => {
+      const monster = selected.monster, native = monster.t_user_monsters ?? monster;
+      const master = native.m_monsters ?? monster.m_monsters ?? native.official_master ?? monster.official_master ?? native.master ?? monster.master;
+      const learned = tools.learned(), masters = tools.masters();
+      const settings = selected.publicTraining ? null : properties.$pinia?._s?.get("skillSettings");
+      const skillsVisible = !selected.publicTraining || showsPublicSkills(selected.props);
+      const snapshot = skillsVisible ? monsterSnapshot(monster, learned, masters, settings, properties.$t ?? (key => key)) : {
+        name: properties.$t?.(master?.name_key) ?? master?.name ?? native.monster_id,
+        generation: Number(native.generation_value ?? monster.generation_value) || 0,
+        level: Number(native.level ?? monster.level) || 1, bonus: bonusParameters(monster, native), active: [], passive: [] };
+      const active = skillsVisible ? learned.getActiveSkills(monster, { includeReserved: false }) : [];
+      const passive = skillsVisible ? learned.getPassiveSkills(monster, { includeReserved: false, includeDisabled: false }) : [];
+      const allowed = (entry, kind) => snapshot[kind].some(item => !item.reserved && item.name ===
+        (properties.$t?.(entry.name_key ?? (kind === "active" ? masters.getActiveSkill(entry.id) : masters.getPassiveSkill(entry.id))?.name_key) ?? entry.id));
+      const usedActive = active.filter(entry => allowed(entry, "active")), usedPassive = passive.filter(entry => allowed(entry, "passive"));
+      const refs = [...usedActive.map(entry => "s." + entry.id), ...usedPassive.map(entry => "p." + entry.id)];
+      const skillLevels = {}, skillDefinitions = {};
+      const publicLevels = monster._skillLevels ?? native._skillLevels;
+      const levels = selected.publicTraining ? (publicLevels ? levelStore?.displayFor?.(publicLevels) : null) : levelStore?.account;
+      for (const ref of refs) {
+        const key = (ref[0] === "p" ? "passive:" : "skill:") + ref.slice(2);
+        const level = Number(levels?.levels?.[key] ?? publicLevels?.[key]) || 1;
+        skillLevels[ref] = level;
+        const definition = levels?.definitions?.[key];
+        if (level > 1 && definition) skillDefinitions[ref] = definition;
+      }
+      const deployed = selected.publicTraining ? null : selected.props.trainingBonus ?? monster._trainingBonus ?? trainingFactory?.().deployBonus?.value;
+      const training = deployed ? { params: deployed.params ?? {}, raceParams: deployed.raceParams ?? {}, source: deployed.source } : null;
+      const rows = selected.publicTraining ? [] : properties.$pinia?._s?.get("userItems")?.allArtifacts ?? [];
+      const detail = selected.instance.subTree?.el?.nodeType === 1 ? selected.instance.subTree.el : anchor.parentElement;
+      const text = detail?.textContent ?? "", observed = {};
+      for (const [key, label] of Object.entries({ hp: "体力", atk: "物攻", mtk: "魔攻", def: "物防", mdf: "魔防", spd: "速度", lck: "運" })) {
+        const found = text.match(new RegExp(label + "\\s*([\\d,]+)"));
+        if (found) observed[key] = Number(found[1].replaceAll(",", ""));
+      }
+      const loadout = mode => rows.filter(item => mode === "boss" ? item._artifact?.is_equipped_boss : mode === "pvp" ? item._artifact?.is_equipped_rating :
+        (item._artifact?.is_equipped_normal ?? item._artifact?.is_equipped)).slice(0, 5).map(item => ({
+          level: item._artifact.level, params: item._artifact.params ?? {}, traits: item._artifact.traits ?? [],
+          passive: item.m_items?.artifact_passive ?? item.artifact_passive }));
+      return { format: "hako-stat-v1", exportedAt: new Date().toISOString(),
+        species: native.monster_id ?? native.master_id ?? master?.id, name: snapshot.name, level: snapshot.level,
+        rank: Math.max(1, Number(master?.rank ?? native.rank) || 1) + Math.max(0, Number(native.rank_up ?? monster.rank_up) || 0),
+        generation: snapshot.generation ?? 0, bonus: snapshot.bonus ?? {}, observed,
+        public: selected.publicTraining, skillsUnavailable: !skillsVisible,
+        skills: refs, skillLevels, skillDefinitions, training, trainingLoaded: !!trainingFactory || !!deployed,
+        rank6Enabled: !master?.rank6_unique_skill || [...usedActive, ...usedPassive].some(entry => entry.id === master.rank6_unique_skill),
+        loadouts: { normal: loadout("normal"), boss: loadout("boss"), pvp: loadout("pvp") },
+        afsLoaded: !selected.publicTraining && (!!properties.$pinia?._s?.get("userItems")?.isEquippedArtifactsLoaded || !!properties.$pinia?._s?.get("userItems")?.isArtifactsLoaded) };
+    });
+  }
+  globalThis.hakoAfPartyShareMain = { bind, bindMember, bindHall, getReaders, getEffectReaders, readSimulatorMember };
 })();
