@@ -492,9 +492,11 @@
       detail: JSON.stringify({ id: request.id, ...result })
     }));
     const build = props()?.$config?.public?.buildId ?? props()?.$nuxt?.$config?.public?.buildId;
-    const data = await readMasters?.(build, "game-config");
-    if (!data) { reply({ missing: "図鑑とゲームデータを読み込めませんでした。" }); return; }
-    try { reply(calculate(request, data, seasonEnd(request.seasonEnd, Date.now()))); }
+    try {
+      const data = await readMasters?.(build, "game-config");
+      if (!data) { reply({ missing: "図鑑とゲームデータを読み込めませんでした。" }); return; }
+      reply(calculate(request, data, seasonEnd(request.seasonEnd, Date.now())));
+    }
     catch { reply({ missing: "入力した内容で計算できませんでした。" }); }
   });
 

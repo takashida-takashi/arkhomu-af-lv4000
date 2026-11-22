@@ -127,7 +127,8 @@ const arkHomuUpdateFiles = (() => {
     }
   }
 
-  async function install(folder, buffer, version) {
+  async function install(folder, buffer, version, report = () => {}) {
+    report("extract");
     const files = await extractFiles(buffer);
     const manifestFile = files.get("manifest.json");
     const manifest = JSON.parse(new TextDecoder().decode(manifestFile));
@@ -142,6 +143,7 @@ const arkHomuUpdateFiles = (() => {
     const originals = [];
     try {
       for (const [name, contents] of files) {
+        report("write", { file: name, index: originals.length + 1, total: files.size });
         const existing = await folder.getFileHandle(name).catch(error => {
           if (error.name !== "NotFoundError") throw error;
           return null;
@@ -153,6 +155,7 @@ const arkHomuUpdateFiles = (() => {
         if (existing) originals.push({ name, handle, original });
       }
     } catch (error) {
+      report("rollback");
       const rollback = await Promise.allSettled(originals.reverse().map(({ name, handle, original }) =>
         original ? write(handle, original) : folder.removeEntry(name)));
       if (rollback.some(result => result.status === "rejected")) console.warn("はこホム拡張の更新から一部のファイルを復元できませんでした。");

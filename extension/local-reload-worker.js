@@ -18,10 +18,18 @@ const legacyArchiveHashes = {
 let checking;
 let cleanup;
 let zipOperations = Promise.resolve();
+let fileOperations = Promise.resolve();
+let installing = false;
 
 function queueZipOperation(run) {
   const operation = zipOperations.then(run);
   zipOperations = operation.catch(() => {});
+  return operation;
+}
+
+function queueFileOperation(run) {
+  const operation = fileOperations.then(run);
+  fileOperations = operation.catch(() => {});
   return operation;
 }
 
@@ -70,6 +78,9 @@ function cleanUpAppliedZips() {
 }
 
 async function checkLocalUpdate(tabId, url) {
+  // The manifest is written last. Do not reload during our own file transaction,
+  // but let a completed manual replacement recover without waiting for ZIP jobs.
+  if (installing) return;
   const { installType } = await chrome.management.getSelf();
   if (installType !== "development") return;
 
@@ -83,23 +94,36 @@ async function checkLocalUpdate(tabId, url) {
   chrome.runtime.reload();
 }
 
-async function applyUpdate(version) {
+async function applyUpdate(version, report = () => {}) {
+  report("extension");
   const current = chrome.runtime.getManifest().version;
   if (!newerArkHomuRelease(version, current) || (await chrome.management.getSelf()).installType !== "development") return false;
+  report("folder");
   const folder = await arkHomuUpdateFiles.readFolder();
-  if (!folder || await folder.queryPermission({ mode: "readwrite" }) !== "granted") return false;
+  if (!folder) return false;
+  report("permission");
+  if (await folder.queryPermission({ mode: "readwrite" }) !== "granted") return false;
 
+  report("manifest");
   const installed = await arkHomuUpdateFiles.readManifest(folder);
   if (!arkHomuUpdateFiles.matchesExtension(installed) || ![current, version].includes(installed.version)) return false;
+  report("archive");
   const { [archiveKey]: record } = await chrome.storage.local.get(archiveKey);
   if (record?.version !== version || typeof record.url !== "string" ||
       !record.url.startsWith(zipDataPrefix) || record.url.length > 2_667_000) return false;
   if (installed.version === current) {
+    report("verify");
     const archive = await (await fetch(record.url)).arrayBuffer();
     if (!await matchesArkHomuReleaseHash(archive, record.sha256)) return false;
-    await arkHomuUpdateFiles.install(folder, archive, version);
+    installing = true;
+    try {
+      await arkHomuUpdateFiles.install(folder, archive, version, report);
+    } finally {
+      installing = false;
+    }
   }
 
+  report("complete");
   const latest = (await chrome.storage.local.get(archiveKey))[archiveKey];
   if (latest?.version === version) await chrome.storage.local.set({ [archiveKey]: { ...latest, applied: true } });
   return true;
@@ -145,11 +169,32 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     return true;
   }
   if (message?.type === "hako-af:apply-update") {
-    void queueZipOperation(() => applyUpdate(message.version)).then(applied => {
+    let stage = "queue", file;
+    const controller = new AbortController();
+    const report = (next, details = {}) => {
+      stage = next;
+      file = details.file;
+      if (typeof message.token === "string" && /^[\da-f-]{36}$/.test(message.token)) {
+        void chrome.tabs.sendMessage(sender.tab.id, { type: "hako-af:update-apply-progress", token: message.token,
+          stage, index: details.index, total: details.total }, { documentId: sender.documentId }).catch(() => {});
+      }
+    };
+    // A timeout only releases the reply. Keep an unfinished write serialized so
+    // a retry cannot race it; ZIP downloads and local version checks are independent.
+    void waitForArkHomuUpdate(() => queueFileOperation(() => {
+      if (controller.signal.aborted) throw new DOMException("Update cancelled", "AbortError");
+      return applyUpdate(message.version, report);
+    }), 60_000, () => controller.abort()).then(applied => {
       respond(applied);
       if (applied && message.reload === true)
-        void queueZipOperation(() => checkLocalUpdate(sender.tab.id, sender.url)).catch(() => {});
-    }, () => respond(false));
+        void checkLocalUpdate(sender.tab.id, sender.url).catch(() => {});
+    }, error => {
+      console.warn("[はこホム拡張] PC更新の適用に失敗しました", { stage, file, error });
+      const failedStage = stage;
+      report("failed");
+      respond(typeof message.token === "string" && /^[\da-f-]{36}$/.test(message.token)
+        ? { applied: false, failed: true, stage: failedStage } : false);
+    });
     return true;
   }
   if (message?.type === "hako-af:download-update") {
@@ -159,7 +204,8 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (message?.type !== "hako-af:check-local-update") return;
 
   void cleanUpAppliedZips();
-  checking ??= queueZipOperation(() => checkLocalUpdate(sender.tab.id, sender.url)).catch(() => {}).finally(() => { checking = null; });
+  checking ??= waitForArkHomuUpdate(() => checkLocalUpdate(sender.tab.id, sender.url), 15_000)
+    .catch(error => console.warn("[はこホム拡張] ローカル更新の確認に失敗しました", error)).finally(() => { checking = null; });
   void checking.then(() => respond());
   return true;
 });

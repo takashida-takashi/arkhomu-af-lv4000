@@ -646,7 +646,7 @@
       if (!enabled()) return;
       for (const anchor of document.querySelectorAll(detailsSelector)) {
         const target = readTarget(anchor);
-        if (!target?.id || !anchor.getClientRects().length) continue;
+        if (!target?.id) continue;
         let panel = anchor.querySelector(':scope > [data-ha4="training-detail"]');
         if (!panel) {
           panel = node("div", "training-detail");

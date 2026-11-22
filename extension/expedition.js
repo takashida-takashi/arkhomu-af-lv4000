@@ -240,6 +240,7 @@
       return {
         panel,
         update({ gate, repeatReady, foodReady: ready }) {
+          if (panel.parentElement !== anchor) anchor.prepend(panel);
           panel.hidden = !enabled();
           repeat.disabled = !gate;
           repeatLabel.title = gate ? `遠征の門の上限 ${duration(gate)}`
@@ -398,7 +399,7 @@
         anchor.removeAttribute("data-ha4-expedition-preparing");
         return;
       }
-      if (previous?.phase === phase) return;
+      if (previous?.phase === phase && previous.element.isConnected) return;
       previous?.element.remove();
       const element = node("div", "expedition-preparation-controls");
       const trigger = button(phase === "editing" ? "遠征状況に戻る" : phase === "ready" ? "下書きを反映" : "遠征画面を開く");

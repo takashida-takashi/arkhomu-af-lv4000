@@ -334,6 +334,9 @@
     finally { for (const action of actions) action.disabled = !data; }
   }
   function scan() {
+    for (const controls of document.querySelectorAll('[data-ha4="stat-copy-actions"]')) {
+      if (!controls.parentElement?.hasAttribute("data-ha4-stat-member")) controls.remove();
+    }
     const planner = document.querySelector('[data-ha4="training-planner-launch"]');
     if (planner && !document.querySelector('[data-ha4="stat-simulator-launch"]')) {
       const launch = planner.cloneNode(true);launch.dataset.ha4 = "stat-simulator-launch";launch.removeAttribute("id");
@@ -344,7 +347,9 @@
       launch.addEventListener("click", () => { void open(); });planner.after(launch);
     }
     for (const anchor of document.querySelectorAll("[data-ha4-stat-member]")) {
-      if (copiedButtons.get(anchor)?.isConnected) continue;
+      const previous = copiedButtons.get(anchor);
+      if (previous?.isConnected && previous.parentElement === anchor && previous.children.length === 2) continue;
+      previous?.remove();
       const copy = button("拡張コピー", async () => {
         try {
           const snapshot = await partyShare.readSimulatorMember(anchor);
@@ -358,9 +363,16 @@
         try { const snapshot = await partyShare.readSimulatorMember(anchor);if (snapshot) void open(snapshot); }
         catch { simulate.textContent = "読み込めませんでした。個体詳細を開き直してください"; }
       });
-      const row = element("div");row.className = "ha4-stat-actions";row.dataset.ha4 = "stat-copy-actions";row.append(copy, simulate);anchor.append(row);copiedButtons.set(anchor, copy);
+      const row = element("div");row.className = "ha4-stat-actions";row.dataset.ha4 = "stat-copy-actions";row.append(copy, simulate);anchor.append(row);copiedButtons.set(anchor, row);
     }
   }
+  let scanFrame;
+  function scheduleScan() {
+    if (!scanFrame) scanFrame = requestAnimationFrame(() => { scanFrame = 0;scan(); });
+  }
+  document.addEventListener("hako-af:member-ready", scheduleScan);
+  document.addEventListener("hako-af:ui-ready", scheduleScan);
+  scheduleScan();
   setInterval(scan, 1000);
   globalThis.hakoAfStatSimulator = { open };
 })();

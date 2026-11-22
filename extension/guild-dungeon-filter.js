@@ -155,6 +155,13 @@
     list.toggleAttribute("data-ha4-guild-ungrouped", combined);
   }
 
+  function listSort(list, state) {
+    if (state.sortKey) return { key: state.sortKey, direction: state.sortDirection };
+    const fee = state.combineNations && [...list.querySelectorAll("select")].some(select => !select.closest("[data-ha4]") &&
+      (select.value === "fee_low" || select.selectedOptions?.[0]?.textContent.replace(/\s/g, "") === "入場料の安い順"));
+    return { key: fee ? "entryFee" : "", direction: "asc" };
+  }
+
   function start(isEnabled) {
     const state = { root: { join: "and", children: [] }, showUnknown: false, sortKey: "", sortDirection: "asc", combineNations: false, hideFinished: false };
     try {
@@ -332,18 +339,19 @@
           } else rate?.remove();
         }
         for (const [heading, visible] of headers) heading.toggleAttribute(emptyGroupAttribute, !visible);
-        const order = state.sortKey && (state.sortDirection === "asc" ? 1 : -1);
-        const prioritizeMatches = active && state.showUnknown && pending > 0;
+        const sorting = listSort(list, state);
+        const order = sorting.key && (sorting.direction === "asc" ? 1 : -1);
+        const prioritizeMatches = !state.combineNations && active && state.showUnknown && pending > 0;
         if (order || prioritizeMatches || state.combineNations) {
           rows.sort((a, b) => {
             if (state.combineNations && a.finished !== b.finished) return a.finished ? 1 : -1;
             if (prioritizeMatches && (a.result === null) !== (b.result === null)) return a.result === null ? 1 : -1;
             if (!order) return state.combineNations ? (a.data.nativeOrder ?? 0) - (b.data.nativeOrder ?? 0) : 0;
-            const left = a.data[state.sortKey];
-            const right = b.data[state.sortKey];
+            const left = a.data[sorting.key];
+            const right = b.data[sorting.key];
             if (left == null) return right == null ? 0 : 1;
             if (right == null) return -1;
-            return order * (left - right);
+            return order * (left - right) || (state.combineNations ? (a.data.nativeOrder ?? 0) - (b.data.nativeOrder ?? 0) : 0);
           });
         }
         rows.forEach(({ el }, index) => {

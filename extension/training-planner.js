@@ -18,7 +18,7 @@
     return { used, overflow, extra: Math.max(0, used - limit) };
   }
   const batchSize = 60;
-  const requests = new Set();
+  const requests = new Map();
   const explanations = new Map();
   const explanationErrors = new Map();
   const explanationKey = (id, level = 1) => `${id}@${level}`;
@@ -635,7 +635,14 @@
         const level = tooltipLevel;
         const ref = explanationKey(id, level);
         if (!requests.has(ref) && !explanations.has(ref)) tooltipTimer = setTimeout(() => {
-          requests.add(ref);
+          const attempt = {};
+          requests.set(ref, attempt);
+          setTimeout(() => {
+            if (requests.get(ref) !== attempt) return;
+            requests.delete(ref);
+            explanationErrors.set(ref, "効果の詳細を取得できませんでした。スキル名をもう一度選ぶと再取得します。");
+            dialog?.dispatchEvent(new Event("ha4-refresh-description"));
+          }, 10_000);
           document.dispatchEvent(new CustomEvent("hako-af:read-training-description", { detail: JSON.stringify({ id, level }) }));
         }, pin ? 0 : 180);
       }

@@ -193,7 +193,11 @@
       if (typeof key !== "string" || typeof name !== "string") return;
       const anchor = event.target;
       active.add(anchor);
-      if (targets.get(anchor)?.key === key) return;
+      if (targets.get(anchor)?.key === key) {
+        const button = targets.get(anchor).button;
+        if (button.parentElement !== anchor) anchor.append(button);
+        return;
+      }
       targets.get(anchor)?.button.remove();
       const button = node("button", "market-watch-button");
       button.type = "button";

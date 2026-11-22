@@ -123,6 +123,7 @@
     }
 
     function update(list, panel) {
+      if (list.previousElementSibling !== panel.root) list.before(panel.root);
       let report;
       try { report = JSON.parse(list.getAttribute("data-ha4-dungeon-reward-list")); } catch { return; }
       if (!Array.isArray(report?.dungeons)) return;

@@ -331,6 +331,7 @@
         if (!rows.length) continue;
         const presets = syncRoutePreset(key, monsterId, rows);
         let panel = skillPanels.get(root);
+        if (panel && panel.bar.parentElement !== root) root.prepend(panel.bar);
         if (!panel) {
           const bar = node("div", "skill-presets");
           const picker = document.createElement("select");
@@ -672,8 +673,20 @@
       document.dispatchEvent(new CustomEvent("hako-af:apply-explore", { detail }));
     }
 
+    function placeExploreStatus(anchor, status) {
+      const summary = anchor.closest(".fx-summary") ?? anchor.parentElement?.parentElement;
+      const banner = summary?.querySelector(".fx-summary__banner") ?? [...(summary?.querySelectorAll("span") ?? [])]
+        .find(el => el.textContent.trim() === "アーティファクトアイテムを獲得しました！")?.parentElement;
+      const after = banner ?? anchor;
+      if (after.nextElementSibling !== status) after.after(status);
+    }
+
     function prepareExplore(anchor) {
-      if (explore?.anchor === anchor) return explore;
+      if (explore?.anchor === anchor) {
+        if (explore.controls.parentElement !== anchor) anchor.append(explore.controls);
+        placeExploreStatus(anchor, explore.status);
+        return explore;
+      }
       clearExplore();
       sentExplore = undefined;
       const panel = makePanel("explore");
@@ -699,11 +712,7 @@
       });
       controls.append(panel.element, mode, legend, matchLegend);
       anchor.append(controls);
-      const summary = anchor.closest(".fx-summary") ?? anchor.parentElement?.parentElement;
-      const banner = summary?.querySelector(".fx-summary__banner") ?? [...(summary?.querySelectorAll("span") ?? [])]
-        .find(el => el.textContent.trim() === "アーティファクトアイテムを獲得しました！")?.parentElement;
-      if (banner) banner.after(status);
-      else anchor.after(status);
+      placeExploreStatus(anchor, status);
       explore = { anchor, panel, controls, status, statusCount, statusBasis, statusDetail, mode, legend, matchLegend };
       return explore;
     }

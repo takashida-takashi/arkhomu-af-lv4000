@@ -15,17 +15,32 @@
     if (cached?.buildId === buildId && Date.now() - readAt < 60_000 &&
         (!requiredKind || (Array.isArray(requested) ? requested.length : requested))) return Promise.resolve(cached);
     return pending ??= new Promise((resolve, reject) => {
-      const request = indexedDB.open("master-cache");
+      let db, tx, finished = false;
+      const finish = (value, error) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        db?.close();
+        if (error) reject(error);
+        else resolve(value);
+      };
+      const timer = setTimeout(() => {
+        try { tx?.abort(); } catch { /* The read may have completed. */ }
+        finish(null);
+      }, 10_000);
+      let request;
+      try { request = indexedDB.open("master-cache"); }
+      catch (error) { finish(null, error);return; }
       request.onupgradeneeded = () => request.transaction.abort();
-      request.onerror = () => reject(request.error);
+      request.onerror = () => finish(null, request.error);
       request.onsuccess = () => {
-        const db = request.result;
+        db = request.result;
+        if (finished) { db.close(); return; }
         if (!db.objectStoreNames.contains("masters")) {
-          db.close();
-          resolve(null);
+          finish(null);
           return;
         }
-        const tx = db.transaction("masters", "readonly");
+        tx = db.transaction("masters", "readonly");
         const store = tx.objectStore("masters");
         const result = { buildId };
         for (const kind of kinds) {
@@ -42,8 +57,8 @@
             };
           };
         }
-        tx.oncomplete = () => { db.close(); resolve(result); };
-        tx.onabort = () => { db.close(); reject(tx.error); };
+        tx.oncomplete = () => finish(result);
+        tx.onabort = () => finish(null, tx.error);
       };
     }).then(result => {
       cached = result;

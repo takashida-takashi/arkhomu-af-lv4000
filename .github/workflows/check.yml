@@ -28,12 +28,15 @@ jobs:
             node --check "$script"
           done
           node tests/update-check.cjs
+          node tests/desktop-update.cjs
           node tests/forecast-target.cjs
           node tests/op-insights.cjs
           node tests/stat-compensation.cjs
           node tests/enhance-potion.cjs
           node tests/popup-dismiss.cjs
           node tests/public-stat-copy.cjs
+          node tests/member-actions.cjs
+          node tests/display-timeouts.cjs
           node tests/guild-fields.cjs
           node tests/af-research.cjs
           node tests/settings-storage.cjs

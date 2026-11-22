@@ -1127,6 +1127,22 @@
     return active || discard || checked || !!state.kept?.size;
   }
 
+  const uiFailures = new Map();
+  function renderUI(label, render) {
+    try {
+      const value = render();
+      uiFailures.delete(label);
+      return value;
+    } catch (error) {
+      const failures = (uiFailures.get(label) ?? 0) + 1;
+      uiFailures.set(label, failures);
+      if (failures <= 2) {
+        console.warn(`[はこホム拡張] ${label}の表示を再試行します`, error);
+        setTimeout(requestScan, failures * 250);
+      }
+    }
+  }
+
   function scan() {
     frame = 0;
     const oldMarks = Array.from(decorated);
@@ -1148,9 +1164,9 @@
     classicUI = [];
     gridReports = new WeakMap();
     gachaControls.clear();
-    extras?.beforeRead();
-    const trainingData = trainingRoutes?.update();
-    marketWatch?.beforeRead();
+    renderUI("拡張設定", () => extras?.beforeRead());
+    const trainingData = renderUI("育成ルート読込", () => trainingRoutes?.update());
+    renderUI("相場読込", () => marketWatch?.beforeRead());
     if (extras?.enabled("daily")) document.dispatchEvent(new Event("hako-af:read-balance"));
     if (extras?.enabled("home")) document.dispatchEvent(new Event("hako-af:read-home"));
     if (["/market", "/explore-result", "/expedition", "/guild", "/guild-raid-result", "/base", "/items", "/slot", "/mating", "/monsters", "/soul", "/hall-of-fame"].includes(normalRoute()) ||
@@ -1159,31 +1175,34 @@
         document.querySelector(`${FLEX_LISTS},${CLASSIC_GRID},${MARKET_SORT},[data-base-modal-root],${TRADE_ROOTS},${partyRoots},${trainingRoots}`)) {
       document.dispatchEvent(new Event("hako-af:read-list"));
     }
-    partyShare?.scan();
-    guildDungeonFilter?.scan();
-    dungeonRewards?.scan();
-    renderSkinSort();
-    trainingRoutes?.scan(trainingData);
-    trainingPlanner?.scan();
-    finishEstimateScan?.();
-    exploreAnalysis?.finishScan();
-    marketWatch?.afterRead();
-    if (extras?.enabled("gacha")) renderGachaStats();
-    if (extras?.enabled("explore")) renderExploreCards();
-    if (!extras || extras.enabled("detail")) renderDetails();
+    renderUI("編成共有", () => partyShare?.scan());
+    renderUI("ギルダン", () => guildDungeonFilter?.scan());
+    renderUI("初回報酬", () => dungeonRewards?.scan());
+    renderUI("スキン", renderSkinSort);
+    if (trainingData) renderUI("育成ルート", () => trainingRoutes?.scan(trainingData));
+    renderUI("育成プランナー", () => trainingPlanner?.scan());
+    document.dispatchEvent(new Event("hako-af:ui-ready"));
+    renderUI("強化見積もり", () => finishEstimateScan?.());
+    renderUI("探索統計", () => exploreAnalysis?.finishScan());
+    renderUI("相場表示", () => marketWatch?.afterRead());
+    if (extras?.enabled("gacha")) renderUI("ガチャ", renderGachaStats);
+    if (extras?.enabled("explore")) renderUI("探索結果", renderExploreCards);
+    if (!extras || extras.enabled("detail")) renderUI("AF予測", renderDetails);
     if (!extras || extras.enabled("inventory")) {
-      ownedFlex();
-      ownedClassic();
-      for (const [anchor, state] of gachaControls) renderGachaInput(anchor, state);
+      renderUI("AF一覧", () => {
+        ownedFlex();
+        ownedClassic();
+        for (const [anchor, state] of gachaControls) renderGachaInput(anchor, state);
+      });
     } else {
       for (const type of SCOPES) {
         if (sentPlans.has(type)) setGridPlan(type, { enabled: false });
       }
     }
     if (!extras || extras.enabled("market")) {
-      market();
-      auction();
-      trade();
+      renderUI("フリマ", market);
+      renderUI("オークション", auction);
+      renderUI("取引", trade);
     } else if (sentPlans.has("trade")) {
       setGridPlan("trade", { enabled: false });
     }
@@ -1202,7 +1221,7 @@
       nativeChoices.delete(scope);
       restoredNativeSorts.delete(select);
     }
-    extras?.refresh();
+    renderUI("通知・プリセット", () => extras?.refresh());
     for (const el of oldMarks) if (!decorated.has(el)) el.remove();
     for (const el of oldFiltered) if (!filtered.has(el)) delete el.dataset.ha4Filtered;
     for (const el of oldBulkButtons) if (!protectedBulkButtons.has(el)) delete el.dataset.ha4BulkBlocked;
@@ -1334,6 +1353,8 @@
   document.addEventListener("input", nativeSortChanged, true);
   document.addEventListener("change", nativeSortChanged, true);
   document.addEventListener("hako-af:grid-rendered", requestScan);
+  document.addEventListener("hako-af:member-ready", requestScan);
+  document.addEventListener("hako-af:power-ready", requestScan);
   document.addEventListener("hako-af:forecast-target", () => {
     sentPlans.clear();
     requestScan();
@@ -1345,7 +1366,8 @@
   }, true);
   document.addEventListener("change", event => {
     if (event.target instanceof Element && (event.target.matches(MARKET_SORT) ||
-        event.target.closest(GACHA_INPUT))) requestScan();
+        event.target.closest(GACHA_INPUT) || event.target.matches("select") &&
+        event.target.closest("[data-ha4-guild-filter-list]") && !event.target.closest(OWN))) requestScan();
   }, true);
 
   new MutationObserver(records => {
@@ -1356,7 +1378,13 @@
       if (record.type === "characterData" && target?.matches(AUCTION_CLOCK)) continue;
       const changed = [...record.addedNodes, ...record.removedNodes];
       const gameChanges = changed.filter(n => !(n.nodeType === 1 && n.matches(OWN)));
-      if (record.type === "childList" && !gameChanges.length) continue;
+      if (record.type === "childList" && !gameChanges.length) {
+        if (record.removedNodes.length) requestScan();
+        // A native redraw may remove only our controls while keeping the header.
+        if (record.removedNodes.length && target?.closest(`${partyRoots},[data-ha4-stat-member],[data-ha4-training-target]`))
+          document.dispatchEvent(new Event("hako-af:member-ready"));
+        continue;
+      }
       if (record.type === "attributes") {
         if (isOwnProfile() && (target?.matches(titleSearch) || target?.querySelector(titleSearch))) {
           requestScan();

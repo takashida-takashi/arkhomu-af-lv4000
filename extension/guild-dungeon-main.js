@@ -4,6 +4,7 @@
   if (globalThis.hakoAfFrameContext?.active === false) return;
 
   const browseLayouts = globalThis.hakoAfGuildBrowseLayouts;
+  const browseOrder = globalThis.hakoAfGuildBrowseOrder;
   const observedLineups = globalThis.hakoAfGuildLineups;
   const classicLists = new Set(["GuildDungeonNationList", "ExploreGuildDungeonNationList"]);
   const flexList = ".fx-dungeon__list";
@@ -18,8 +19,19 @@
     return groups.flatMap(group => group.entries).filter(entry => entry?.is_guild && entry.id && entry.guildId);
   }
 
-  function nativeOrder(instance, groups, dependencies) {
+  function nativeOrder(instance, groups, dependencies, list) {
     const grouped = entries(groups);
+    const container = list?.querySelector?.(listSelector) ?? list;
+    const selected = [...container?.querySelectorAll("select") ?? []].find(select => !select.closest("[data-ha4]"));
+    // The game regroups its sorted browse response by country before rendering.
+    // Keep the original order, including server-only rankings and bookmark order.
+    if (selected && browseOrder?.sort === selected.value && browseOrder.positions.size) {
+      const positions = browseOrder.positions;
+      const key = row => Number(row.slot ?? row.summary?.slot) > 1 ? `${row.guildId}:${Number(row.slot ?? row.summary?.slot)}` : String(row.guildId);
+      if (grouped.some(row => positions.has(key(row)))) {
+        return new Map(grouped.map((row, index) => [row.id, positions.get(key(row)) ?? positions.size + index]));
+      }
+    }
     const ids = new Set(grouped.map(row => row.id));
     const pending = [];
     for (let owner = instance, depth = 0; owner && depth < 4; owner = owner.parent, depth++) {
@@ -152,7 +164,7 @@
         const groups = instance.props?.groups ?? [];
         rememberCountries(groups);
         const rows = entries(groups);
-        contexts.set(instance, { rows: new Map(rows.map(row => [row.id, row])), order: nativeOrder(instance, groups, dependencies) });
+        contexts.set(instance, { rows: new Map(rows.map(row => [row.id, row])), order: nativeOrder(instance, groups, dependencies, el) });
         if (!el.hasAttribute(listAttribute)) el.setAttribute(listAttribute, "");
       } else if (name === "FlexDungeonSelectDialog" && instance) {
         // Its list renders grouped dungeon entries, including details fetched by the game's selector.
@@ -160,7 +172,7 @@
           Array.isArray(value) && value.some(group => Array.isArray(group?.entries) && group.entries.some(row => row?.is_guild)));
         const rows = groups ? entries(groups) : [];
         rememberCountries(groups ?? []);
-        contexts.set(instance, { rows: new Map(rows.map(row => [row.id, row])), order: nativeOrder(instance, groups ?? [], dependencies) });
+        contexts.set(instance, { rows: new Map(rows.map(row => [row.id, row])), order: nativeOrder(instance, groups ?? [], dependencies, el) });
       }
       if (el?.nodeType !== 1 || !vnode.ctx) return;
       const context = contexts.get(vnode.ctx);

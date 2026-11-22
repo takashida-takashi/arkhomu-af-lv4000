@@ -7,6 +7,8 @@
   const individuals = new WeakMap();
   const simulatorMembers = new WeakMap();
   const detailAnchors = new WeakMap();
+  const memberWatches = new WeakSet();
+  const memberStates = new WeakMap();
   const profileViews = new Set(["ProfilePublicView", "FlexPublicProfileView"]);
   const profileParties = new Set(["TopRatedPartyModal", "ColosseumTopRatedPartyModal", "FlexProfilePartyDialog"]);
   const guildDetails = new Set(["GuildMonsterDetailModal", "FlexGuildMembers", "FlexGuildDetailDialog"]);
@@ -26,9 +28,12 @@
   }
 
   async function nativeSource(url) {
-    const response = await fetch(url, { cache: "force-cache", credentials: "omit", redirect: "error" });
-    if (!response.ok) throw new Error("Native module unavailable");
-    return response.text();
+    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const response = await fetch(url, { cache: "force-cache", credentials: "omit", redirect: "error", signal: controller.signal });
+      if (!response.ok) throw new Error("Native module unavailable");
+      return await response.text();
+    } finally { clearTimeout(timer); }
   }
 
   function importedBinding(source, local, base) {
@@ -174,7 +179,7 @@
     return false;
   }
 
-  function bindMember(name, props, vnode, owned, translate) {
+  function bindMemberDetail(name, props, vnode, owned, translate) {
     const tree = vnode.component?.subTree;
     const root = tree?.el?.nodeType === 1 ? tree.el : Array.isArray(tree?.children) ?
       tree.children.find(child => child?.el?.nodeType === 1)?.el : null;
@@ -183,6 +188,7 @@
       root.querySelector(".fx-mdetail__head") ?? root;
     const previous = detailAnchors.get(vnode.component);
     if (previous && previous !== anchor) clearMember(previous);
+    detailAnchors.set(vnode.component, anchor);
     const monster = props?.monster;
     const native = monster?.t_user_monsters ?? monster;
     const id = monster?.user_monster_id ?? native?.user_monster_id;
@@ -197,10 +203,8 @@
     const publicTraining = trainingSource && showsPublicSkills(props);
     if (props?.maskSkills || !record && !publicTraining) {
       clearMember(anchor, true);
-      detailAnchors.delete(vnode.component);
       return;
     }
-    detailAnchors.set(vnode.component, anchor);
     individuals.set(anchor, { monster, props, instance: vnode.component, publicTraining });
     anchor.toggleAttribute("data-ha4-share-member", !!record);
     anchor.toggleAttribute("data-ha4-training-import-member", publicTraining);
@@ -217,6 +221,32 @@
     const target = JSON.stringify({ id: String(id), name: level ? `${nameLabel} Lv${level}` : nameLabel });
     if (anchor.dataset.ha4TrainingTarget !== target) anchor.dataset.ha4TrainingTarget = target;
     return { anchor, monster, record, id: String(id) };
+  }
+
+  function bindMember(name, props, vnode, owned, translate) {
+    const instance = vnode.component;
+    const ownedNow = () => document.getElementById("__nuxt")?.__vue_app__?.config?.globalProperties?.$pinia?._s?.get("userMonsters")?.monsters ?? owned;
+    const result = bindMemberDetail(name, props, vnode, ownedNow(), translate);
+    if (!instance) return result;
+    const anchor = detailAnchors.get(instance);
+    const state = [anchor, props?.monster, anchor?.isConnected, anchor?.hasAttribute("data-ha4-share-member"),
+      anchor?.hasAttribute("data-ha4-training-import-member"), anchor?.hasAttribute("data-ha4-stat-member"),
+      anchor?.getAttribute("data-ha4-training-target")];
+    const previous = memberStates.get(instance);
+    if (!previous || state.some((value, index) => value !== previous[index])) {
+      memberStates.set(instance, state);
+      document.dispatchEvent(new Event("hako-af:member-ready"));
+    }
+    if (!memberWatches.has(instance) && typeof instance.proxy?.$watch === "function") {
+      memberWatches.add(instance);
+      // Observe late ownership data; Vue disposes this watch on unmount.
+      instance.proxy.$watch(() => {
+        const monster = props?.monster, native = monster?.t_user_monsters ?? monster, rows = ownedNow();
+        return [monster, monster?.user_monster_id, native?.user_monster_id, native?.level, props?.maskSkills, props?.hideHeader,
+          monster?._maskSkills, native?._maskSkills, monster?.build_hidden, native?.build_hidden, rows, rows?.length, isTrainingSource(instance)];
+      }, () => bindMember(name, props, vnode, owned, translate), { flush: "post" });
+    }
+    return result;
   }
 
   function bonusParameters(monster, native) {

@@ -94,7 +94,8 @@ if (missing.length || extra.length) {
   throw new Error(`Userscript module mismatch. Missing: ${missing.join(", ")}. Extra: ${extra.join(", ")}.`);
 }
 // Register the UI before the game bridge discards the module exports it uses. The first scan runs next frame.
-const compactModules = new Set(["stat-simulator-main.js", "stat-compensation.js", "op-insights-main.js"]);
+// These UI modules do not inspect function source like the game bridges do.
+const compactModules = new Set(["stat-simulator-main.js", "stat-compensation.js", "op-insights-main.js", "market-watch.js", "guild-dungeon-filter.js"]);
 const moduleSource = file => {
   const source = read(file).replaceAll("globalThis.hakoAf", "modules.hakoAf");
   return "// " + file + "\n" + (compactModules.has(file) ? minify_sync(source, {

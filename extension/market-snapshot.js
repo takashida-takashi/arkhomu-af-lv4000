@@ -25,6 +25,7 @@
   ]);
   const expeditionData = new Map();
   const guildLayouts = new Map();
+  const guildBrowseOrder = { sort: "", positions: new Map() };
   const guildLineups = new Map();
   const guildLineupPrefix = "hakoAf4000:guild-lineup:";
   const seasonKey = "hakoAf4000:official-season-end";
@@ -37,6 +38,7 @@
   let watchMatings = false;
   globalThis.hakoAfMarketSnapshots = globalThis[key] = prices;
   globalThis.hakoAfGuildBrowseLayouts = guildLayouts;
+  globalThis.hakoAfGuildBrowseOrder = guildBrowseOrder;
   globalThis.hakoAfGuildLineups = {
     get(id, revision) {
       if (!Number.isSafeInteger(revision)) return;
@@ -172,11 +174,21 @@
 
   function observeGuildBrowse(options, response) {
     const sequence = ++guildBrowseSequence;
+    const sort = String(options?.query?.sort ?? "new");
+    const more = !!options?.query?.cursor;
     Promise.resolve(response).then(payload => {
       if (sequence !== guildBrowseSequence || !Array.isArray(payload?.rows)) return;
-      if (!options?.query?.cursor) guildLayouts.clear();
+      if (!more) {
+        guildLayouts.clear();
+        guildBrowseOrder.positions.clear();
+        guildBrowseOrder.sort = sort;
+      }
       for (const row of payload.rows) {
         const id = row?.guild_id;
+        const key = id && guildKey(id, row.slot);
+        if (key && guildBrowseOrder.sort === sort && !guildBrowseOrder.positions.has(key)) {
+          guildBrowseOrder.positions.set(key, guildBrowseOrder.positions.size);
+        }
         const published = row?.published;
         if (!id || !published) continue;
         guildLayouts.set(guildKey(id, row.slot), {

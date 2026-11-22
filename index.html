@@ -54,7 +54,7 @@
 <body>
   <main>
     <header>
-      <div class="version">v3.3.0</div>
+      <div class="version">v3.3.1</div>
       <h1>はこホム拡張</h1>
       <p class="intro">AFのLv4500予測・絞り込み、探索統計、ホーム通知、編成共有、ホムンクルスの育成を補助します。</p>
       <div class="links"><a class="button primary" href="./guide/#planner">拡張育成プランナーの使い方</a><a class="button" href="./guide/">画像付きの取説を開く</a><a class="button" href="./calculator/">AF強化シミュレーターを開く</a></div>
@@ -65,7 +65,7 @@
       <div class="platforms">
         <article>
           <h3>PC（Chrome・Edge）</h3>
-          <div class="links"><a class="button primary" href="./arkhomu-af-lv4000-v3.3.0.zip" download>PC用ZIPをダウンロード</a></div>
+          <div class="links"><a class="button primary" href="./arkhomu-af-lv4000-v3.3.1.zip" download>PC用ZIPをダウンロード</a></div>
           <ol>
             <li>ZIPを展開します。</li>
             <li>「拡張機能の管理」でデベロッパーモードを有効にし、「パッケージ化されていない拡張機能を読み込む」で展開したフォルダーを選びます。</li>
@@ -106,6 +106,13 @@
 
     <section aria-labelledby="changes">
       <h2 id="changes">最近の変更</h2>
+      <h3>v3.3.1</h3>
+      <ul>
+        <li>ギルダンの「国の区別なく並べる」を修正しました。オンのときだけ、入場料・新しい順・報酬・入場者数・抽選人数・評価・試練・ブックマークなど、本体の全9種類の並び順を全国共通で適用します。未確認の行も指定順に並べ、終了済みの区分・非表示は維持します。</li>
+        <li>「この個体を共有」や育成ルートなどのボタンが、データの読み込み待ちや画面の再描画で表示されないことがある問題を修正しました。相場、遠征、初回報酬、プリセットなどの追加表示も再描画後に復元します。</li>
+        <li>育成プランナー・ステータスプレビューなどの読み込みが止まった場合に再試行できるようにしました。一つの追加表示に問題が起きても、他の拡張表示を続けます。</li>
+        <li>PC更新でフォルダー確認や書き込みの待機が終わらない場合に、時間切れを表示するようにしました。書き込みの進捗とZIP保存の結果も表示し、手動のファイル差し替え後の復帰処理を改善しました。</li>
+      </ul>
       <h3>v3.3.0</h3>
       <ul>
         <li>拡張OP評価を追加。同じ星の中の推定位置、現在Lvと目標Lvの参考レンジを表示します。本体の星を小数評価へ置き換えるオプション（初期オフ）、すべて推定★5.9にそろえた場合などのOP試算にも対応します。試算するOPを自由に追加・変更・削除でき、条件の変更は即時反映されます。</li>

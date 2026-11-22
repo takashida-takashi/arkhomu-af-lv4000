@@ -13,7 +13,8 @@
       return chrome.storage.local.set({ [key]: value });
     }
   };
-  let archive, pendingDownload;
+  let archive, pendingDownload, pendingApply;
+  let applyFailed = false;
   let state = { text: "", busy: false, error: false };
 
   function usable(record) {
@@ -26,21 +27,54 @@
     document.dispatchEvent(new Event("hako-af:desktop-update-archive"));
   }
 
-  async function saveArchive(record = archive) {
+  async function saveArchive(record = archive, manual = false) {
     if (!record) return;
+    const token = manual ? crypto.randomUUID() : undefined;
+    if (manual) {
+      pendingDownload = { token, version: record.version };
+      setState("ZIPをダウンロード中…", true);
+    }
     try {
-      return await chrome.runtime.sendMessage({ type: "hako-af:download-update", version: record.version });
-    } catch {
+      const started = await waitForArkHomuUpdate(() => chrome.runtime.sendMessage({ type: "hako-af:download-update", token, version: record.version }), 30_000);
+      if (!started) throw new Error("Could not start the ZIP download");
+      return true;
+    } catch (error) {
+      console.warn("[はこホム拡張] 更新ZIPの保存に失敗しました", error);
+      if (manual && pendingDownload?.token === token) {
+        pendingDownload = null;
+        setState("ZIPを保存できませんでした。拡張機能ページで再読み込みしてください", false, true);
+      }
       return false;
     }
   }
 
-  async function applyArchive(version, reload = false) {
+  async function applyArchive(version, reload = false, manual = false) {
+    const token = crypto.randomUUID();
+    if (manual) { pendingApply = token; applyFailed = false; }
     try {
-      return await chrome.runtime.sendMessage({ type: "hako-af:apply-update", version, reload });
-    } catch {
+      const result = await waitForArkHomuUpdate(() => chrome.runtime.sendMessage({ type: "hako-af:apply-update", version, reload, token }), 65_000);
+      if (manual && result?.failed === true) applyFailed = true;
+      return result === true || result?.applied === true;
+    } catch (error) {
+      console.warn("[はこホム拡張] PC更新の応答を確認できませんでした", error);
+      if (manual) applyFailed = true;
       return false;
+    } finally {
+      if (pendingApply === token) pendingApply = null;
     }
+  }
+
+  function onApplyProgress(message) {
+    if (message?.type !== "hako-af:update-apply-progress" || !pendingApply || message.token !== pendingApply) return;
+    const labels = { extension: "拡張機能を確認中…", folder: "更新先フォルダーを確認中…", permission: "書き込み権限を確認中…",
+      manifest: "現在のファイルを確認中…", archive: "更新ZIPを確認中…", verify: "更新ZIPを検証中…", extract: "更新ZIPを展開中…",
+      write: "更新を書き込み中…", rollback: "元のファイルに戻しています…", complete: "更新の適用を確認中…" };
+    if (message.stage === "failed") { applyFailed = true; return; }
+    let label = labels[message.stage];
+    if (!label) return;
+    if (message.stage === "write" && Number.isInteger(message.index) && Number.isInteger(message.total))
+      label = `更新を書き込み中（${message.index}/${message.total}）…`;
+    setState(label, true);
   }
 
   function openFolderSettings() {
@@ -105,7 +139,7 @@
       }
       setState("更新先フォルダーを確認中…", true);
       const samePage = page === location.href;
-      if (await applyArchive(available, samePage)) {
+      if (await applyArchive(available, samePage, true)) {
         setState(samePage ? `v${available} に更新しました。再読み込みします…` : `v${available} を適用できます`, samePage);
         if (samePage) setTimeout(() => setState(`v${available} をフォルダーに適用しました。タブを再読み込みしてください`, false), 5000);
         return;
@@ -114,9 +148,10 @@
       token = crypto.randomUUID();
       pendingDownload = { token, version: available };
       setState("ZIPをダウンロード中…", true);
-      const started = await chrome.runtime.sendMessage({ type: "hako-af:download-update", token, version: available });
+      const started = await waitForArkHomuUpdate(() => chrome.runtime.sendMessage({ type: "hako-af:download-update", token, version: available }), 30_000);
       if (!started) throw new Error("Could not start the ZIP download");
-    } catch {
+    } catch (error) {
+      console.warn("[はこホム拡張] PC更新を完了できませんでした", error);
       if (token && pendingDownload?.token !== token) return;
       pendingDownload = null;
       setState(downloading ? "ZIPを取得できませんでした" : "更新を確認できませんでした", false, true);
@@ -131,7 +166,7 @@
       setState("ZIPのダウンロードが中断されました", false, true);
       return;
     }
-    setState(`v${downloaded} のZIPを保存しました。更新先フォルダーを設定できます`, false);
+    setState(`v${downloaded} のZIPを保存しました。${applyFailed ? "拡張機能ページで再読み込みしてから更新を試してください" : "更新先フォルダーを設定できます"}`, false);
   }
 
   function onArchiveChanged(changes, area) {
@@ -145,6 +180,7 @@
     globalThis.hakoAfDesktopVersion = version;
     if (window.top !== window) return;
     chrome.runtime.onMessage.addListener(onDownloadFinished);
+    chrome.runtime.onMessage.addListener(onApplyProgress);
     chrome.storage.onChanged.addListener(onArchiveChanged);
   } catch (error) {
     if (error?.message === "Extension context invalidated.") return;
@@ -154,5 +190,5 @@
   storage.getValue(archiveKey, null).then(setArchive).catch(() => {});
   const updates = startArkHomuReleaseCheck(distribution, storage, "hakoAfDesktopUpdateNextCheck", "arkhomu-af-desktop-update", receive, version);
   globalThis.hakoAfDesktopUpdates = { version, archiveVersion: () => archive?.version,
-    archiveApplied: () => archive?.applied === true, openFolderSettings, saveArchive: () => saveArchive(), checkNow, status: () => state };
+    archiveApplied: () => archive?.applied === true, openFolderSettings, saveArchive: () => saveArchive(archive, true), checkNow, status: () => state };
 })();

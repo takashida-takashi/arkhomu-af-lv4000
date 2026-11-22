@@ -31,7 +31,7 @@
     const teamFields = node("div", "planner-preview-fields");
     const mode = document.createElement("select");
     mode.append(new Option("通常", "normal"), new Option("公式戦", "official"));
-    let sequence = 0, timer, lastInput, lastRoutes;
+    let sequence = 0, timer, responseTimer, lastInput, lastRoutes;
     let skillLevels = {}, levelSignature, levelOptions = {};
 
     function field(parent, label, control) {
@@ -84,9 +84,7 @@
       control.addEventListener(control.tagName === "SELECT" ? "change" : "input", () => refresh());
     }
     rank.addEventListener("change", () => onRankChange?.());
-    root.addEventListener("toggle", () => {
-      if (root.open) refresh(true);
-    });
+    root.addEventListener("toggle", () => refresh(true));
     document.addEventListener("hako-af:planner-season", () => { if (mode.value === "official") refresh(true); });
     const refreshLevels = () => { levelSignature = undefined; if (root.closest("dialog")?.open) refresh(true); };
     document.addEventListener("hako-af:planner-levels-ready", refreshLevels);
@@ -228,7 +226,7 @@
         levelSignature = nextLevels;
         document.dispatchEvent(new CustomEvent("hako-af:read-planner-levels", { detail: nextLevels }));
       }
-      if (!root.open) return;
+      if (!root.open) { clearTimeout(timer);clearTimeout(responseTimer);lastInput = undefined;return; }
       if (!draft.species) {
         status.textContent = "育成対象のホムンクルスを選んでください。";
         output.replaceChildren();
@@ -255,12 +253,18 @@
       if (!force && input === lastInput) return;
       lastInput = input;
       clearTimeout(timer);
+      clearTimeout(responseTimer);
       output.replaceChildren();
       status.textContent = "試算中…";
       const id = ++sequence;
-      timer = setTimeout(() => document.dispatchEvent(new CustomEvent("hako-af:calculate-training-preview", {
-        detail: JSON.stringify({ id, ...request })
-      })), 150);
+      timer = setTimeout(() => {
+        responseTimer = setTimeout(() => {
+          if (id !== sequence) return;
+          lastInput = undefined;
+          status.textContent = "試算結果を取得できませんでした。開き直すと再試行できます。";
+        }, 12_000);
+        document.dispatchEvent(new CustomEvent("hako-af:calculate-training-preview", { detail: JSON.stringify({ id, ...request }) }));
+      }, 150);
     }
 
     function drawTable(title, rows, columns) {
@@ -347,7 +351,7 @@
       if (!root.open || typeof event.detail !== "string") return;
       let report;
       try { report = JSON.parse(event.detail); } catch { return; }
-      if (report.id === sequence) renderResult(report);
+      if (report.id === sequence) { clearTimeout(responseTimer);renderResult(report); }
     });
     return { root, load, getValues, refresh, skillLevelField };
   }

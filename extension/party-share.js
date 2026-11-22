@@ -579,13 +579,13 @@
     function scanPublicTraining() {
       const show = openTrainingTarget && trainingEnabled?.();
       for (const [anchor, controls] of trainingLaunchers) {
-        if (show && anchor.isConnected && anchor.matches(publicTrainingAction)) continue;
+        if (show && anchor.isConnected && anchor.matches(publicTrainingAction) && controls.isConnected && controls.parentElement === anchor) continue;
         controls.remove();
         trainingLaunchers.delete(anchor);
       }
       if (!show) return;
       for (const anchor of document.querySelectorAll(publicTrainingAction)) {
-        if (trainingLaunchers.has(anchor) || !anchor.getClientRects().length) continue;
+        if (trainingLaunchers.has(anchor)) continue;
         const controls = node("div", "party-member-actions");
         const train = makeButton(trainingLabel);
         const status = node("span", "extra-note");
@@ -639,7 +639,7 @@
     function scan() {
       scanPublicTraining();
       for (const [anchor, button] of detailLaunchers) {
-        if (enabled() && anchor.isConnected && anchor.matches(detailActions)) continue;
+        if (enabled() && anchor.isConnected && anchor.matches(detailActions) && button.isConnected && button.parentElement === anchor) continue;
         button.remove();
         detailLaunchers.delete(anchor);
       }
@@ -652,7 +652,7 @@
         if (launcher.parentElement !== actions) actions.append(launcher);
       } else launcher.remove();
       for (const anchor of document.querySelectorAll(detailActions)) {
-        if (detailLaunchers.has(anchor) || !anchor.getClientRects().length) continue;
+        if (detailLaunchers.has(anchor)) continue;
         const individual = anchor.hasAttribute("data-ha4-share-member");
         const button = makeButton(individual ? "この個体を共有" : "この編成を共有・育成に使う");
         button.setAttribute("aria-haspopup", "dialog");
