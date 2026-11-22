@@ -14,8 +14,8 @@
   const CLASSIC_EQUIP = "[data-artifact-equip-inventory],[data-artifact-equip-slot]";
   const FLEX_GRID = ".fx-agrid";
   const FLEX_FILTER = ".fx-alist-controls";
-  const FLEX_LISTS = ".fx-artifact__list,.fx-aenh,.fx-adec";
-  const SCOPES = new Set(["inventory", "enhance", "decompose", "gacha"]);
+  const FLEX_LISTS = ".fx-artifact__list,.fx-aenh,.fx-adec,.fx-arr";
+  const SCOPES = new Set(["inventory", "enhance", "decompose", "gacha", "reroll"]);
   const GACHA_INPUT = ".fx-agacha,[data-ha4-gacha-root],#agacha-auto-set";
   const gachaSetKey = "hakoAf4000:gacha-use-sets";
   const TRADE_ROOTS = '#fx-trade-artifact-controls,.fx-trade,[data-ha4-trade-controls],.fx-agrid,.virtual-item-grid';
@@ -493,7 +493,7 @@
       for (const item of items) renderListValue(item);
       if (inventory && isDisplayed(inventory)) {
         const type = inventory.matches(".fx-aenh") ? "enhance" :
-          inventory.matches(".fx-adec") ? "decompose" : "inventory";
+          inventory.matches(".fx-adec") ? "decompose" : inventory.matches(".fx-arr") ? "reroll" : "inventory";
         const virtual = !!grid.querySelector(".fx-agrid__rows--virtual");
         const control = inventory.querySelector(FLEX_FILTER) || inventory.querySelector(".fx-artifact__list-controls");
         const active = filterGroup(type, control || grid, control ? "inside" : "before", items, virtual,

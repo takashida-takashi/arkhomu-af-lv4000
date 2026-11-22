@@ -16,7 +16,7 @@
   document.addEventListener("hako-af:op-sort", event => {
     try {
       const { scope, key } = JSON.parse(event.detail);
-      if (!["inventory", "enhance", "decompose", "gacha", "trade", "market", "auction"].includes(scope) ||
+      if (!["inventory", "enhance", "decompose", "gacha", "reroll", "trade", "market", "auction"].includes(scope) ||
           key != null && (typeof key !== "string" || !key.startsWith(OP_STAR) || key.length > 100)) return;
       if ((starSorts.get(scope) ?? null) === key) return;
       if (key == null) starSorts.delete(scope);else starSorts.set(scope, key);
@@ -51,15 +51,16 @@
     ArtifactEquipPanel: "inventory",
     ArtifactEnhancePanel: "enhance",
     ArtifactDecomposePanel: "decompose",
+    ArtifactTraitRerollPanel: "reroll",
     ArtifactGachaPanel: "gacha"
   };
   const tradeDialogs = new Set(["TradeOfferModal", "ProfileTradeOfferModal", "FlexTradeOfferDialog"]);
   const sortScopes = { "artifact-equip": "inventory", "artifact-enhance": "enhance", "artifact-decompose": "decompose",
-    "artifact-gacha": "gacha", "trade-offer": "trade" };
+    "artifact-gacha": "gacha", "artifact-reroll": "reroll", "trade-offer": "trade" };
   const marketRow = ".overflow-y-auto.custom-scrollbar > div";
   const auctionRow = 'div[role="button"][tabindex="0"].min-h-11.border-b';
   const flexLabels = {
-    "fx-artifact-list-title": "inventory", "fx-aenh-title": "enhance", "fx-adec-title": "decompose"
+    "fx-artifact-list-title": "inventory", "fx-aenh-title": "enhance", "fx-adec-title": "decompose", "fx-arr-title": "reroll"
   };
 
   function elementRoots(vnode) {
@@ -674,6 +675,7 @@
       }
       const scope = tradeDialogs.has(name) ? (tradeCategory ? "trade" : null)
         : name === "FlexArtifactDecompose" ? "decompose" : name === "FlexArtifactEnhance" ? "enhance"
+          : name === "FlexArtifactTraitReroll" ? "reroll"
           : Object.hasOwn(classicScopes, name) ? classicScopes[name] : parentScope;
       if (estimateEnabled && scope === "enhance") {
         if (name === "ArtifactEnhancePanel" || name === "FlexArtifactEnhance") {
