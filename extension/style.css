@@ -108,6 +108,7 @@
 }
 
 [data-ha4="native-forecast"] input { appearance: auto; accent-color: #aa69e9; }
+[data-ha4="native-forecast"][hidden] { display: none; }
 [data-ha4="sort-value"] {
   display: block;
   color: #a7f3e4;
@@ -1163,6 +1164,21 @@ textarea[data-ha4="training-input"] { width: 100%; resize: vertical; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+[data-ha4="explore-priority-resource"] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  order: -1;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border: 1px solid #e0ad40;
+  border-radius: 8px;
+  background: #392b16;
+  color: #ffdc7a;
+}
+[data-ha4="explore-priority-resource"] > img { width: 34px; height: 34px; object-fit: contain; }
+[data-ha4="explore-priority-resource"] > :last-child { margin-inline-start: auto; white-space: nowrap; }
+[data-ha4-explore-priority-source] { display: none !important; }
 @media (hover: hover) and (pointer: fine) {
   [data-ha4-explore-flow] { display: flex; flex-direction: column; }
   [data-ha4-explore-flow] > [data-ha4-explore-resources] { order: 1; }

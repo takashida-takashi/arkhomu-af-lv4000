@@ -7,6 +7,7 @@
   const SUM = "rate_sum";
   const DROP = "trait:add_drop";
   const CONVERSION = "trait:add_artifact_rate";
+  const OP_STAR = "op_star:";
 
   function sumRates(metrics, allowMissing = false) {
     const a = metrics.get(CONVERSION);
@@ -24,6 +25,7 @@
 
   function metricValue(item, metric, forecast) {
     if (!metric) return null;
+    if (metric.fixed) return metric.n;
     if (!forecast || item.level >= getTarget()) return metric.n;
     const multiplier = ratio(item.level);
     if (multiplier === null) return null;
@@ -192,6 +194,6 @@
     return ranked.map(row => row.item);
   }
 
-  globalThis.hakoAfListRules = Object.freeze({ POWER, SUM, DROP, CONVERSION, sumRates, dropMetrics, metricValue,
+  globalThis.hakoAfListRules = Object.freeze({ POWER, SUM, DROP, CONVERSION, OP_STAR, sumRates, dropMetrics, metricValue,
     activeGroup, minimumMatches, supportsAbsence, evaluateGroup, validationError, viewRule, orderItems });
 })();

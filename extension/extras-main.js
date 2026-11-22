@@ -506,6 +506,49 @@
     return master || item.item_id ? "normal" : "other";
   }
 
+  let priorityResource;
+  function prioritizeExploreResource(root) {
+    let source, icon, amount;
+    if (root && options.explore) {
+      icon = [...root.querySelectorAll('img[src*="fate_change_liquid"]')].find(image => !image.closest("[data-ha4]"));
+      for (let card = icon?.parentElement; card && card !== root; card = card.parentElement) {
+        if (!card.textContent.includes("運命変更液")) continue;
+        const count = card.textContent.normalize("NFKC").match(/[x×]\s*(\d[\d,]*)/);
+        amount = count ? Number(count[1].replaceAll(",", "")) : 0;
+        if (Number.isSafeInteger(amount) && amount > 0) {
+          source = card;
+          for (let grid = card.parentElement, child = card; grid && grid !== root; child = grid, grid = grid.parentElement) {
+            if (getComputedStyle(grid).display !== "grid") continue;
+            source = child;
+            if (grid.children.length === 1 && /^獲得リソース(?:$|[・\s])/.test(grid.parentElement?.firstElementChild?.textContent.trim() ?? "")) source = grid.parentElement;
+            break;
+          }
+        }
+        break;
+      }
+    }
+    if (priorityResource && (priorityResource.source !== source || priorityResource.root !== root)) {
+      priorityResource.source.removeAttribute("data-ha4-explore-priority-source");
+      priorityResource.banner.remove();
+      priorityResource = null;
+    }
+    if (!source) return;
+    if (!priorityResource) {
+      const banner = document.createElement("div");
+      banner.dataset.ha4 = "explore-priority-resource";
+      banner.setAttribute("role", "status");
+      const image = document.createElement("img"), label = document.createElement("strong"), count = document.createElement("strong");
+      image.src = icon.src;image.alt = "";
+      label.textContent = "運命変更液を獲得";
+      banner.append(image, label, count);
+      priorityResource = { root, source, banner, count };
+    }
+    const text = "×" + amount.toLocaleString("ja-JP");
+    if (priorityResource.count.textContent !== text) priorityResource.count.textContent = text;
+    if (root.firstElementChild !== priorityResource.banner) root.prepend(priorityResource.banner);
+    source.setAttribute("data-ha4-explore-priority-source", "");
+  }
+
   function skipExploreLogs(root, stores, summaryShown) {
     if (options.skipExploreLogs !== true || !/^\/(?:f\/)?explore-result\/?$/.test(location.pathname)) return;
     const store = stores?.get("exploreResult");
@@ -1438,7 +1481,7 @@
   }
   document.addEventListener("click", handleQuote, true);
   document.addEventListener("keydown", handleQuote, true);
-  globalThis.hakoAfExtrasMain = { readDrops, readExploreAnalysis, dropType, readInventoryItem, readSkillEditor, readSkillToggle, observeGachaReveal, gachaStage, readGachaCard,
+  globalThis.hakoAfExtrasMain = { readDrops, readExploreAnalysis, dropType, prioritizeExploreResource, readInventoryItem, readSkillEditor, readSkillToggle, observeGachaReveal, gachaStage, readGachaCard,
     prepareQuote, indexChatReplies, skipExploreLogs, observeAlertPage, homeObserverNames, openWatchedItem, readSlotBonus,
     hiddenTitlesEnabled: () => options.hiddenTitles === true,
     enhanceEstimateEnabled: () => options.enhanceEstimate === true, readEnhanceEstimate, watchMarketPrices,

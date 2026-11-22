@@ -63,6 +63,7 @@
   }
 
   function text(n, unit, signed) {
+    if (unit === "★") return "★" + n.toFixed(1);
     return (signed && n >= 0 ? "+" : "") +
       (unit === "%" ? n.toFixed(2) : integerFormat.format(n)) + unit;
   }

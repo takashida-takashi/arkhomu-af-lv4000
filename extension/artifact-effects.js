@@ -96,6 +96,8 @@
       totals.set(key, { raw: (totals.get(key)?.raw ?? 0) + raw, stars });
     }
     for (const [key, { raw, stars }] of totals) metrics.set("trait:" + key, { ...traitValue(key, raw), stars });
+    for (const [key, n] of Object.entries(snapshot.opRatings ?? {})) if (key.startsWith("op_star:") && Number.isFinite(n))
+      metrics.set(key, { n, unit: "★", fixed: true });
     return metrics;
   }
 
@@ -117,6 +119,10 @@
   }
 
   function optionFor(key) {
+    if (key.startsWith("op_star:")) {
+      const op = key.slice(8), multiplier = /^add_(hp|atk|mtk|def|mdf|spd)$/.test(op);
+      return { label: (op === "all_param" ? "全パラメータ倍率" : multiplier ? parameters[op.slice(4)] + "倍率" : traitLabel(op)) + " 推定", group: "other", unit: "★" };
+    }
     if (key.startsWith("stat_")) return { label: parameters[key.slice(5)] ?? key, group: "parameter", unit: "%" };
     const trait = key.slice(6);
     const prefixGroup = [["add_tag_damage_", "damage_type"], ["add_race_param_", "race"],

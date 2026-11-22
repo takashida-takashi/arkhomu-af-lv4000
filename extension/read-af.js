@@ -11,7 +11,18 @@
   delete globalThis.hakoAfExtrasMain;
   delete globalThis.hakoAfHiddenTitles;
   delete globalThis.hakoAfPartyShareMain;
-  const { POWER, SUM, sumRates, dropMetrics, metricValue, viewRule, orderItems } = globalThis.hakoAfListRules;
+  const { POWER, SUM, OP_STAR, sumRates, dropMetrics, metricValue, viewRule, orderItems } = globalThis.hakoAfListRules;
+  const starSorts = new Map();
+  document.addEventListener("hako-af:op-sort", event => {
+    try {
+      const { scope, key } = JSON.parse(event.detail);
+      if (!["inventory", "enhance", "decompose", "gacha", "trade", "market", "auction"].includes(scope) ||
+          key != null && (typeof key !== "string" || !key.startsWith(OP_STAR) || key.length > 100)) return;
+      if ((starSorts.get(scope) ?? null) === key) return;
+      if (key == null) starSorts.delete(scope);else starSorts.set(scope, key);
+      planRevision++;
+    } catch { /* Keep the native list available for unreadable sort events. */ }
+  });
   const { getTarget } = globalThis.hakoAf4000;
   delete globalThis.hakoAf4000;
   delete globalThis.hakoAfEffects;
@@ -119,7 +130,7 @@
     const matches = sectionItems.length ? [] : undefined;
     for (const original of source) {
       const id = original?.id;
-      const raw = snapshot(original?._artifact, decomposeState, id);
+      const raw = snapshot(original?._artifact, decomposeState, id, plan.sort?.key ?? null);
       const values = raw ? readEffects(raw) : new Map();
       const sum = raw && sumRates(values, allowMissingRates);
       if (sum) values.set(SUM, sum);
@@ -282,9 +293,13 @@
     return row?.parentElement === marketList ? row : null;
   }
 
-  function snapshot(artifact, decomposeState, itemId) {
+  function snapshot(artifact, decomposeState, itemId, sortKey) {
     const data = readSnapshot(artifact);
     if (!data) return null;
+    const starKeys = sortKey === undefined ? [...new Set(starSorts.values())] : [sortKey];
+    for (const key of starKeys) if (key?.startsWith(OP_STAR)) {
+      (data.opRatings ??= {})[key] = globalThis.hakoAfOPInsights?.rating(artifact, key.slice(OP_STAR.length)) ?? null;
+    }
     if (decomposeState) {
       if (typeof itemId === "string" || typeof itemId === "number") data.id = String(itemId);
       data.decomposable = artifact.is_favorite || artifact.is_equipped || decomposeState.protectedIds.has(itemId) ? false :
@@ -722,6 +737,7 @@
           const view = drops && exploreView(instance, toolbar, name);
           const summary = el.querySelector(".fx-summary__totals,.result-summary-totals");
           if (!foundAnalysis && summary) {
+            extras?.prioritizeExploreResource(el);
             const kind = props?.kind ?? stores?.get("exploreResult")?.current?.kind;
             const hasDrops = kind === "step" && !!toolbar;
             arrangeExploreResources(el, summary, hasDrops ? toolbar : null);
@@ -836,7 +852,8 @@
           ? el : listCard(el, name, marketList, auctionList);
         if (card && !cards.has(card)) {
           const item = instance?.props?.item ?? vnode.props?.item;
-          const data = snapshot(item?._artifact, scope === "decompose" ? decomposeState : null, item?.id);
+          const sortScope = scope ?? (auctionList ? "auction" : marketList ? "market" : null);
+          const data = snapshot(item?._artifact, scope === "decompose" ? decomposeState : null, item?.id, starSorts.get(sortScope));
           if (data) {
             if (card.parentElement === auctionList || scope === "trade") data.power = cachedPower(item._artifact);
             cards.add(card);
@@ -874,6 +891,7 @@
       }));
     }
     if (!foundAnalysis && resourceLayout) arrangeExploreResources(root, null, null);
+    if (!foundAnalysis) extras?.prioritizeExploreResource(null);
     for (const pager of pagers) {
       const state = methods.get(pager);
       if (!state) continue;
@@ -888,6 +906,9 @@
       }
     }
 
+    if (globalThis.hakoAfOPInsights?.sortOptions) {
+      document.dispatchEvent(new CustomEvent("hako-af:op-sort-options", { detail: JSON.stringify(globalThis.hakoAfOPInsights.sortOptions()) }));
+    }
     const options = stores?.get("userItems")?.artifactTraitOptions;
     if (Array.isArray(options)) {
       const labels = options.filter(option => typeof option.key === "string" && typeof option.label === "string")

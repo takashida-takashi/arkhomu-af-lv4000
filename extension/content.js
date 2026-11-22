@@ -6,7 +6,7 @@
   const names = globalThis.hakoAfFeatureNames;
   const { getTarget, normalize, levelFrom, valueFrom, ratio, projected, text } = globalThis.hakoAf4000;
   const { parameters, readEffects, optionFor, groups } = globalThis.hakoAfEffects;
-  const { POWER, SUM, DROP, CONVERSION, sumRates, dropMetrics, metricValue, viewRule, orderItems } = globalThis.hakoAfListRules;
+  const { POWER, SUM, DROP, CONVERSION, OP_STAR, sumRates, dropMetrics, metricValue, viewRule, orderItems } = globalThis.hakoAfListRules;
   const conditionRows = globalThis.hakoAfConditionRows;
   const OWN = "[data-ha4]";
   const DETAIL = ".fx-item-detail,.item-detail-panel";
@@ -32,6 +32,9 @@
   const sectionColors = ["#62e4ff", "#ff8c9e", "#a3f16d", "#d8a0ff", "#ffce70", "#68f2ca",
     "#ff9d62", "#aeb9ff", "#ef94d7", "#d9ed74", "#8bd7a0", "#99c5ff"];
   const NATIVE_SUM = "ha4_rate_sum";
+  const extensionSort = key => key === NATIVE_SUM || key?.startsWith(OP_STAR);
+  const sentStarSorts = new Map();
+  let starSortOptions = [];
   const ROOTS = [
     DETAIL, CLASSIC_GRID, CLASSIC_EQUIP, FLEX_LISTS, ".fx-artifact__slot-grid",
     ".fx-agrid", FLEX_FILTER, MARKET_SORT, AUCTION_ENTRY, AUCTION_SORT, AUCTION_LIST,
@@ -771,6 +774,7 @@
 
   function nativeMetric(key) {
     if (key === NATIVE_SUM) return { key: SUM, direction: "desc" };
+    if (key.startsWith(OP_STAR)) return { key, direction: "desc" };
     if (key === "power" || key === "power_desc" || key === "power_asc") {
       return { key: POWER, direction: key.endsWith("_asc") ? "asc" : "desc" };
     }
@@ -800,28 +804,43 @@
       select.prepend(sumOption);
       select.selectedIndex = selected?.index ?? -1;
     }
+    if (starSortOptions.length) {
+      let group = select.querySelector('optgroup[data-ha4="op-star-sorts"]');
+      if (!group) {
+        group = node("optgroup", "op-star-sorts");
+        group.label = "OPの推定★順";
+        group.append(...starSortOptions.map(([key, label]) => new Option(label + "（推定★順）", OP_STAR + key)));
+      }
+      if (select.lastElementChild !== group) select.append(group);
+    }
     if (SCOPES.has(type) && restoredNativeSorts.get(select) !== type) {
       const previousScope = restoredNativeSorts.get(select);
       restoredNativeSorts.set(select, type);
       const expected = nativeChoices.get(type)?.key ?? savedNativeChoices.get(type) ??
-        (previousScope && select.value === NATIVE_SUM ? nativeChoices.get(previousScope)?.previous : undefined);
+        (previousScope && extensionSort(select.value) ? nativeChoices.get(previousScope)?.previous : undefined);
       if (typeof expected === "string" && [...select.options].some(option => option.value === expected)) {
         const previous = select.value;
         nativeChoices.set(type, { key: expected, metric: nativeMetric(expected),
-          ...(expected === NATIVE_SUM ? { previous: nativeChoices.get(type)?.previous ?? previous } : {}) });
+          ...(extensionSort(expected) ? { previous: nativeChoices.get(type)?.previous ?? previous } : {}) });
         if (previous !== expected) {
           select.value = expected;
           // Let the game's own select update its reactive state for standard options.
           // Extension-only options are kept locally and never sent to the native handler.
-          if (expected !== NATIVE_SUM) select.dispatchEvent(new Event("change", { bubbles: true }));
+          if (!extensionSort(expected)) select.dispatchEvent(new Event("change", { bubbles: true }));
         }
       }
     }
     const native = nativeChoices.get(type);
-    if (native?.key === NATIVE_SUM) select.value = NATIVE_SUM;
-    else if (select.value !== NATIVE_SUM) {
+    if (extensionSort(native?.key)) select.value = native.key;
+    else if (!extensionSort(select.value)) {
       const key = select.value;
       if (native?.key !== key) nativeChoices.set(type, { key, metric: nativeMetric(key) });
+    }
+    const starKey = nativeChoices.get(type)?.key?.startsWith(OP_STAR) ? nativeChoices.get(type).key : null;
+    if ((sentStarSorts.get(type) ?? null) !== starKey) {
+      sentStarSorts.set(type, starKey);
+      document.dispatchEvent(new CustomEvent("hako-af:op-sort", { detail: JSON.stringify({ scope: type, key: starKey }) }));
+      requestScan();
     }
     const parent = select.closest("label")?.parentElement;
     if (!parent) return;
@@ -843,6 +862,7 @@
       select.closest("label").after(label);
     }
     const input = label.firstElementChild;
+    label.hidden = !!starKey;
     input.checked = state.nativeForecast === true;
     input.title = `Lv${getTarget()}予測値順に並べます` + (isMarketList(type) ? "（このページのみ）" : "");
   }
@@ -892,7 +912,7 @@
     const result = metricValue(item, value, sort.forecast);
     const label = effectOption(sort.key).label;
     const valueText = result == null ? "—" : text(result, value.unit, false);
-    const mode = sort.forecast && item.level < getTarget() && result != null ? `Lv${getTarget()}予測 ` : "";
+    const mode = !value?.fixed && sort.forecast && item.level < getTarget() && result != null ? `Lv${getTarget()}予測 ` : "";
     if (item.placement === "auction" || item.placement === "trade" || sort.key !== POWER || result === null) {
       const holder = item.placement === "auction" ? item.nameEl.parentElement : item.card;
       adorn(holder, "sort-value", `${label} ${mode}${valueText}`);
@@ -960,6 +980,7 @@
   function listOptions(items, nativeSort, conditions, type, report, sortKey) {
     const keys = new Map();
     const add = (key, label, category) => {
+      if (key.startsWith(OP_STAR)) return;
       const option = effectOption(key);
       const group = category && Object.hasOwn(groups, category) ? category : option.group;
       keys.set(key, { ...option, label: label || option.label, group });
@@ -1014,8 +1035,8 @@
     const native = nativeChoices.get(type);
     const sort = state.sortKey
       ? { key: state.sortKey, direction: state.sortDirection, forecast: state.useForecast }
-      : native?.metric && (native.key === NATIVE_SUM || state.nativeForecast)
-        ? { ...native.metric, forecast: !!state.nativeForecast }
+      : native?.metric && (extensionSort(native.key) || state.nativeForecast)
+        ? { ...native.metric, forecast: native.key.startsWith(OP_STAR) ? false : !!state.nativeForecast }
         : null;
     const plan = {
       root: state.root, view: state.view, useForecast: state.useForecast, showUnknown: type !== "gacha" && state.showUnknown,
@@ -1212,9 +1233,14 @@
       const option = select.querySelector(`option[value="${NATIVE_SUM}"]`);
       const selected = select.value;
       option?.remove();
-      if (selected === NATIVE_SUM) {
+      select.querySelector('optgroup[data-ha4="op-star-sorts"]')?.remove();
+      if (extensionSort(selected)) {
         const value = nativeChoices.get(scope)?.previous;
         if (value && Array.from(select.options).some(entry => entry.value === value)) select.value = value;
+      }
+      if (sentStarSorts.get(scope)) {
+        sentStarSorts.delete(scope);
+        document.dispatchEvent(new CustomEvent("hako-af:op-sort", { detail: JSON.stringify({ scope, key: null }) }));
       }
       select.closest("label")?.parentElement?.querySelector(`[data-ha4="native-forecast"][data-scope="${scope}"]`)?.remove();
       delete select.dataset.ha4NativeSort;
@@ -1320,6 +1346,16 @@
       // Use the rendered option labels if the snapshot cannot be read.
     }
   });
+  document.addEventListener("hako-af:op-sort-options", event => {
+    try {
+      const options = JSON.parse(event.detail);
+      if (!Array.isArray(options) || !options.every(row => Array.isArray(row) && row.length === 2 &&
+          typeof row[0] === "string" && /^[a-z][a-z0-9_-]{0,79}$/.test(row[0]) && typeof row[1] === "string")) return;
+      if (JSON.stringify(starSortOptions) === event.detail) return;
+      starSortOptions = options;
+      requestScan();
+    } catch { /* The standard sort options remain available. */ }
+  });
 
   document.addEventListener("click", event => {
     if (!(event.target instanceof Element) || !event.isTrusted ||
@@ -1339,10 +1375,10 @@
     const select = event.target;
     if (!(select instanceof HTMLSelectElement) || !select.dataset.ha4NativeSort) return;
     const type = select.dataset.ha4NativeSort;
-    if (select.value === NATIVE_SUM) event.stopImmediatePropagation();
+    if (extensionSort(select.value)) event.stopImmediatePropagation();
     if (event.type === "change") {
       const prior = nativeChoices.get(type);
-      const previous = select.value === NATIVE_SUM ? prior?.previous ?? prior?.key : null;
+      const previous = extensionSort(select.value) ? prior?.previous ?? prior?.key : null;
       nativeChoices.set(type, { key: select.value, metric: nativeMetric(select.value), previous });
       const state = modes.get(type);
       if (state) state.sortKey = "";

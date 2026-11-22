@@ -9,12 +9,12 @@
   const decimal = row => row.star >= 1 && row.star <= 5 && row.position != null && !row.outside && !row.count
     ? row.star + Math.min(9, Math.max(0, Math.floor(row.position / 10 + 1e-8))) / 10 : null;
   function settings() { try { return JSON.parse(localStorage.getItem("hakoAf4000:settings")) ?? {}; } catch { return {}; } }
-  function evaluate(af, fallbackRank) {
+  function evaluate(af, fallbackRank, onlyKey) {
     const rank = Number(af?.rank ?? fallbackRank ?? af?.rarities?.__artifact_rank), level = Number(af?.level);
     if (!Number.isFinite(rank) || rank < 1 || rank >= 12 || !(level >= 1)) return [];
     const growth = ((level + data.offset) / (data.reference + data.offset)) ** data.exponent;
     const shin = af.prefix?.startsWith("真・") === true;
-    return (Array.isArray(af.traits) ? af.traits : []).flatMap(trait => {
+    return (Array.isArray(af.traits) ? af.traits : []).filter(trait => !onlyKey || trait.key === onlyKey).flatMap(trait => {
       const key = trait.key, raw = Number(trait.value), star = Number(af.rarities?.[key]) || 0;
       if (typeof key !== "string" || !Number.isFinite(raw)) return [];
       const count = key === "add_multi_hit", multiplier = isMultiplier(key);
@@ -83,6 +83,14 @@
   const opKeys = [...new Set([...Object.keys(data.graded), ...Object.keys(data.fixed)].map(key => key.split("|")[1])
     .concat(["all_param", ...["hp", "atk", "mtk", "def", "mdf", "spd"].map(key => "add_" + key)]))]
     .sort((a, b) => nameOf({ key: a, multiplier: isMultiplier(a) }).localeCompare(nameOf({ key: b, multiplier: isMultiplier(b) }), "ja"));
+  const gradedKeys = new Set(Object.keys(data.graded).map(key => key.split("|")[1]));
+  let sortList;
+  const sortOptions = () => sortList ??= opKeys.filter(key => gradedKeys.has(key) || isMultiplier(key))
+    .map(key => [key, nameOf({ key, multiplier: isMultiplier(key) })]);
+  function rating(af, key) {
+    const row = evaluate(af, undefined, key)[0];
+    return row ? decimal(row) : null;
+  }
   function simulator(af, rank) {
     const panel = el("details"), summary = el("summary", "OPの想定値を試算（すべて★5.9など）");panel.dataset.ha4 = "op-simulator";panel.append(summary);
     const fields = el("div");fields.className = "ha4-stat-fields";const controls = {};
@@ -191,5 +199,5 @@
     }
     table.append(thead, tbody);const scroll = el("div");scroll.className = "ha4-stat-scroll";scroll.append(table);body.append(scroll, simulator(af, Number(rank)));
   }
-  globalThis.hakoAfOPInsights = Object.freeze({ evaluate, render, decimal, predict, rangeAt });
+  globalThis.hakoAfOPInsights = Object.freeze({ evaluate, render, decimal, predict, rangeAt, sortOptions, rating });
 })();
