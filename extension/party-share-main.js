@@ -220,7 +220,7 @@
     const level = native.level ?? record.level;
     const target = JSON.stringify({ id: String(id), name: level ? `${nameLabel} Lv${level}` : nameLabel });
     if (anchor.dataset.ha4TrainingTarget !== target) anchor.dataset.ha4TrainingTarget = target;
-    return { anchor, monster, record, id: String(id) };
+    return { anchor, monster, record, id: String(id), instance: vnode.component };
   }
 
   function bindMember(name, props, vnode, owned, translate) {

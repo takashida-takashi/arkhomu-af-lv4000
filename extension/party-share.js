@@ -52,6 +52,8 @@
     const levels = Object.entries(data.preview?.skillLevels ?? {}).filter(([id, level]) =>
       ids.has(id) && Number.isSafeInteger(level) && level >= 1 && level <= 1000);
     if (levels.length) route.preview = { skillLevels: Object.fromEntries(levels) };
+    if (typeof data.orderUnique === "string") route.orderUnique = text(data.orderUnique, 140);
+    if (Array.isArray(data.skillOrder)) route.skillOrder = globalThis.hakoAfSkillIdentity?.routeOrder({ ...route, skillOrder: skills(data.skillOrder) }) ?? skills(data.skillOrder);
     return route;
   }
 
@@ -495,6 +497,11 @@
       const download = makeButton(data.individual ? "個体ファイルを保存" : "編成ファイルを保存");
       download.addEventListener("click", () => saveParty(data));
       ui.controls.replaceChildren(image, download);
+      if (openTrainingTarget && trainingEnabled?.()) {
+        const restore = makeButton("既存ルートの並び順を更新");
+        restore.addEventListener("click", () => document.dispatchEvent(new CustomEvent("hako-af:training-restore-order", { detail: JSON.stringify(data) })));
+        ui.controls.append(restore);
+      }
       let url;
       try { url = await shareLink(data); } catch { /* File sharing works on browsers without compression streams. */ }
       if (!ui.root.open) return;

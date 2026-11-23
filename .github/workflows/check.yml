@@ -42,8 +42,10 @@ jobs:
           node tests/settings-storage.cjs
           node tests/training-sources.cjs
           node tests/training-share.cjs
+          node tests/training-order.cjs
           node tests/planner-limits.cjs
           node tests/guild-filter-state.cjs
+          node tests/guild-hidden.cjs
           node tests/guild-global-order.cjs
           node tests/monster-guards.cjs
           node scripts/build-userscripts.cjs --pages

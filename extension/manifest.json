@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "はこホム拡張",
-  "version": "3.3.3",
+  "version": "3.3.9",
   "description": "AFの予測・絞り込み、探索統計、通知、編成共有、ホムンクルスの育成を補助します。",
   "permissions": [
     "storage",
@@ -86,6 +86,7 @@
         "training-artifacts.js",
         "training-preview.js",
         "training-planner.js",
+        "guild-dungeon-hidden.js",
         "guild-dungeon-filter.js",
         "dungeon-rewards.js",
         "content.js"

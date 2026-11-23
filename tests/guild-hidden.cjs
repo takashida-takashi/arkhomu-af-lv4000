@@ -1,0 +1,17 @@
+const fs=require('fs'),path=require('path'),vm=require('vm'),assert=require('node:assert/strict');
+const scope={};vm.createContext(scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../extension/guild-dungeon-hidden.js'),'utf8'),scope);
+const create=scope.hakoAfGuildDungeonHidden.createStore,plain=value=>JSON.parse(JSON.stringify(value));
+const row={id:'guild',revision:4,name:'行かない迷宮',guild:'ギルド'},other={...row,id:'guild:2'};
+let store=create();assert.equal(store.hide(row),true);assert.equal(store.has(row),true);assert.equal(store.has(other),false,'Guild slots have independent exclusions');
+assert.equal(store.observe([{...row,todayEntrants:999,entryFee:0}]),false,'Daily statistics never restore a hidden dungeon');
+assert.equal(store.observe([{...row,revision:null}]),false,'Unknown revisions must not discard the preference');
+assert.equal(store.observe([{...row,revision:3}]),false,'Stale session/detail revisions do not trigger restoration');
+store=create(plain(store.serialize()));assert.equal(store.has(row),true,'Preferences survive serialization');
+assert.equal(store.observe([{...row,revision:5,name:'更新された迷宮'}]),true);assert.equal(store.has(row),false);assert.equal(store.updated.get('guild').name,'更新された迷宮');
+assert.equal(store.observe([{...row,revision:5}]),false,'Restoration is recorded once per exclusion');
+store=create(plain(store.serialize()));assert.equal(store.updated.size,1,'The update notice survives a reload until acknowledged');
+assert.equal(store.hide({...row,revision:5}),true);assert.equal(store.updated.size,0);assert.equal(store.observe([{...row,revision:6}]),true,'A later manual exclusion follows its new baseline');
+store.hide(other);assert.equal(store.restore('guild:2'),true);assert.equal(store.updated.has('guild:2'),false,'Manual restoration is not described as a publication update');
+assert.equal(store.hide({...row,revision:undefined}),false);assert.equal(store.hide({...row,revision:-1}),false);
+const corrupt=create({hiddenDungeons:[null,{id:'bad',revision:'4'},row],updatedDungeons:'invalid'});assert.equal(corrupt.hidden.size,1);assert.equal(corrupt.updated.size,0);
+console.log('Guild personal hiding: stable guild/slot keys, persistence, publication updates, stale/unknown revisions, daily statistics, notices, re-hide, manual restore and invalid data passed.');

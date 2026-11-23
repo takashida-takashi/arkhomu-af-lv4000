@@ -103,6 +103,7 @@
     }).filter(Boolean), complete: values.every(item => { const key = item.nameKey ?? item.name_key ?? (item.skillId ? "PASSIVE_" + item.skillId.toUpperCase() + "_NAME" : item.source_item_id ? "ITEM_" + item.source_item_id.toUpperCase() + "_NAME" : "");return !!key && translate(key) !== key; }) } : null;
     const maxLevel = rows => Array.isArray(rows) && rows.filter(Boolean).every(e => number(e.level) != null) ? Math.max(0, ...rows.filter(Boolean).map(e => Number(e.level))) : null;
     const data = {
+      id, revision: number(browseLayouts?.get(id)?.revision ?? (!summary.sessionId ? current?.revision : null)),
       nativeOrder: order,
       name: entry.name ?? summary.name,
       guild: entry.guildName ?? summary.guildName,
@@ -155,11 +156,11 @@
   }
 
   function startScan(dependencies, translate) {
-    if (!document.querySelector(listSelector)) return;
     const contexts = new WeakMap();
+    const selected = [];
     const countries = new Map();
     const rememberCountries = groups => { for (const group of groups) if (group.nationId != null && group.name) countries.set(String(group.nationId), group.name); };
-    return (name, instance, vnode, el) => {
+    const read = (name, instance, vnode, el) => {
       if (classicLists.has(name) && instance && el?.nodeType === 1) {
         const groups = instance.props?.groups ?? [];
         rememberCountries(groups);
@@ -185,8 +186,22 @@
         if (!entry) return;
         const value = rowData(entry, translate, order.get(entry.id), countries.get(String(entry.summary?.nationId)));
         if (el.getAttribute(rowAttribute) !== value) el.setAttribute(rowAttribute, value);
+        if (el.querySelector(':scope > button[aria-pressed="true"]')) selected.push({ el, value });
       }
     };
+    read.finish = () => {
+      const active = new Set();
+      for (const { el, value } of selected) {
+        const area = el.closest('[data-base-modal-root],dialog') ?? el.closest('.fx-dungeon') ?? document.getElementById("__nuxt");
+        const heading = [...area?.querySelectorAll('.fx-dungeon-stage__title,#fx-dungeon-detail-title,h4.text-2xl.text-center.leading-tight') ?? []]
+          .find(node => node.getClientRects().length && !node.closest('[data-ha4]'));
+        if (!heading) continue;
+        active.add(heading);
+        if (heading.getAttribute("data-ha4-guild-selected") !== value) heading.setAttribute("data-ha4-guild-selected", value);
+      }
+      for (const heading of document.querySelectorAll('[data-ha4-guild-selected]')) if (!active.has(heading)) heading.removeAttribute("data-ha4-guild-selected");
+    };
+    return read;
   }
 
   globalThis.hakoAfGuildDungeonMain = { startScan };

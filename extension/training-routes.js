@@ -150,9 +150,27 @@
       if (Array.isArray(reserved)) {
         route.reserved = [...new Set([...route.ordinary, ...route.permanent])].filter(name => reservedKeys.has(nameKey(name)));
       }
+      const skillOrder = draft.skillOrder ?? current?.skillOrder;
+      const orderUnique = draft.orderUnique ?? current?.orderUnique;
+      if (typeof orderUnique === "string" && identity.parse(orderUnique).kind) route.orderUnique = orderUnique;
+      if (Array.isArray(skillOrder)) route.skillOrder = identity.routeOrder({ ...route, skillOrder });
       if (current) data.routes[data.routes.indexOf(current)] = route;
       else data.routes.push(route);
       return persist(data, status) ? route : undefined;
+    }
+
+    function deleteRoute(id, status) {
+      const data = load(), saved = data.routes.find(route => route.id === id);
+      if (!saved) {
+        if (status) status.textContent = "この育成ルートは削除されています。";
+        return;
+      }
+      const count = data.bindings.filter(binding => binding.routeId === id).length;
+      const notice = count ? `\n設定中の${count}体の割り当ても解除します。` : "";
+      if (!window.confirm(`「${saved.name}」の育成ルートを削除しますか？${notice}`)) return;
+      data.routes = data.routes.filter(route => route.id !== id);
+      data.bindings = data.bindings.filter(binding => binding.routeId !== id);
+      return persist(data, status) ? saved : undefined;
     }
 
     document.addEventListener("hako-af:mating-completed", event => {
@@ -180,11 +198,21 @@
     });
 
     function routeBinding(monsterId, route) {
-      return { monsterId, routeId: route.id, ...(Array.isArray(route.reserved) ? {
-        pendingSkillStates: [...new Set([...route.ordinary, ...route.permanent])],
-        skillStateRevision: crypto.randomUUID()
+      return { monsterId, routeId: route.id, skillStateRevision: crypto.randomUUID(), ...(Array.isArray(route.reserved) ? {
+        pendingSkillStates: [...new Set([...route.ordinary, ...route.permanent])]
       } : {}) };
     }
+
+    document.addEventListener("hako-af:training-skill-order-applied", event => {
+      if (!enabled()) return;
+      let result;try { result = JSON.parse(event.detail); } catch { return; }
+      if (typeof result?.signature !== "string") return;
+      const data = load(), binding = data.bindings.find(item => item.monsterId === result.monsterId && item.routeId === result.routeId);
+      if (!binding || binding.skillStateRevision !== result.revision || binding.skillOrderApplied === result.signature) return;
+      binding.skillOrderApplied = result.signature;
+      binding.skillOrderResult = typeof result.message === "string" ? result.message : "並び順を反映しました。";
+      persist(data);
+    });
 
     document.addEventListener("hako-af:training-skill-states-applied", event => {
       if (!enabled()) return;
@@ -389,12 +417,7 @@
       const save = node("button", "extra-button", "保存");
       save.type = "submit";
       const remove = button("削除", () => {
-        const data = load();
-        const saved = data.routes.find(route => route.id === currentId);
-        if (!saved || !window.confirm(`「${saved.name}」の育成ルートを削除しますか？`)) return;
-        data.routes = data.routes.filter(route => route.id !== currentId);
-        data.bindings = data.bindings.filter(binding => binding.routeId !== currentId);
-        if (persist(data, status)) {
+        if (deleteRoute(currentId, status)) {
           setRoute();
           status.textContent = "育成ルートを削除しました。";
         }
@@ -408,7 +431,7 @@
       let currentId, metadata;
       function setRoute(route) {
         currentId = route?.id;
-        metadata = Object.fromEntries(["baseMonsterId", "preview", "previewSkillIds", "rank6Passive"]
+        metadata = Object.fromEntries(["baseMonsterId", "preview", "previewSkillIds", "rank6Passive", "skillOrder", "orderUnique"]
           .filter(key => route?.[key] !== undefined).map(key => [key, route[key]]));
         reservedNames = Array.isArray(route?.reserved) ? new Set(route.reserved.map(nameKey))
           : route?.id || route?.reserved === null ? undefined : new Set();
@@ -465,8 +488,8 @@
 
     async function openMember(member, slot, party, source) {
       if (member.trainingRoute) {
-        const { name, group, ordinary, permanent, reserved, baseMonsterId, preview, previewSkillIds, rank6Passive } = member.trainingRoute;
-        open({ name, group, ordinary, permanent, reserved: reserved ?? null, baseMonsterId, preview, previewSkillIds, rank6Passive });
+        const { name, group, ordinary, permanent, reserved, baseMonsterId, preview, previewSkillIds, rank6Passive, skillOrder, orderUnique } = member.trainingRoute;
+        open({ name, group, ordinary, permanent, reserved: reserved ?? null, baseMonsterId, preview, previewSkillIds, rank6Passive, skillOrder, orderUnique });
         return;
       }
       const unique = nameKey(await readSharedUnique(member, source) ?? "");
@@ -477,8 +500,54 @@
       open({ name: slot == null ? member.name : `${party} ${slot}枠目 ${member.name}`.slice(0, 120),
         ordinary: entries.filter(skill => !skill.permanent && nameKey(skill.name) !== unique && routeName(skill) !== unique).map(routeName),
         permanent: entries.filter(skill => skill.permanent).map(routeName),
+        skillOrder: entries.map(routeName),
+        orderUnique: entries.find(skill => nameKey(skill.name) === unique) && routeName(entries.find(skill => nameKey(skill.name) === unique)),
         reserved: member.skillStates || entries.some(skill => skill.reserved) ? entries.filter(skill => skill.reserved).map(routeName) : null });
     }
+
+    document.addEventListener("hako-af:training-restore-order", event => {
+      if (!enabled() || typeof event.detail !== "string") return;
+      let party;try { party = JSON.parse(event.detail); } catch { return; }
+      if (!Array.isArray(party?.slots)) return;
+      const data = load(), root = modal("既存ルートの並び順を更新"), form = node("form", "training-form"), picks = [];
+      form.append(node("p", "extra-note", "通常・永久の割り当て、控え、スキルLvはそのままに、選んだルートの処理順だけを更新します。"));
+      party.slots.forEach((member, slot) => {
+        if (!member || !Array.isArray(member.active) || !Array.isArray(member.passive)) return;
+        const entries = [...member.active.map(skill => ({ ...skill, kind: "skill" })), ...member.passive.map(skill => ({ ...skill, kind: "passive" }))];
+        const order = entries.filter(skill => typeof skill.name === "string").map(skill => identity.typed(skill.name, skill.kind));
+        const unique = entries.find(skill => nameKey(skill.name) === nameKey(member.rank6Unique ?? ""));
+        const picker = node("select", "training-input");
+        picker.setAttribute("aria-label", `${slot + 1}枠目 ${member.name}の更新先`);
+        picker.replaceChildren(new Option("更新しない", ""), ...routeOptions(data.routes));
+        const exact = data.routes.filter(route => nameKey(route.name) === nameKey(`${party.name} ${slot + 1}枠目 ${member.name}`));
+        const preferred = exact.filter(route => data.bindings.some(binding => binding.routeId === route.id));
+        if (preferred.length === 1 || exact.length === 1) picker.value = (preferred[0] ?? exact[0]).id;
+        picks.push({ picker, order, unique: unique && identity.typed(unique.name, unique.kind) });
+        form.append(field(`${slot + 1}枠目　${member.name}`, picker));
+      });
+      const status = node("p", "extra-note");status.setAttribute("role", "status");
+      const save = node("button", "extra-button", "選んだルートの並び順を更新");save.type = "submit";
+      form.append(save, status);
+      form.addEventListener("submit", event => {
+        event.preventDefault();const next = load(), selected = picks.filter(item => item.picker.value);
+        if (!selected.length) { status.textContent = "更新するルートを選んでください。";return; }
+        if (new Set(selected.map(item => item.picker.value)).size !== selected.length) { status.textContent = "同じルートが複数選ばれています。";return; }
+        try {
+          if (!localStorage.getItem("ha4-training-order-backup-v1")) localStorage.setItem("ha4-training-order-backup-v1", JSON.stringify(next));
+        } catch { status.textContent = "元のルートを退避できなかったため、更新を中止しました。";return; }
+        for (const item of selected) {
+          const route = next.routes.find(route => route.id === item.picker.value);
+          if (!route) { status.textContent = "更新先のルートが削除されています。";return; }
+          if (item.unique) route.orderUnique = item.unique;
+          route.skillOrder = identity.routeOrder({ ...route, skillOrder: item.order });
+          for (const binding of next.bindings.filter(binding => binding.routeId === route.id)) {
+            delete binding.skillOrderApplied;delete binding.skillOrderResult;binding.skillOrderRevision = crypto.randomUUID();
+          }
+        }
+        if (persist(next, status)) status.textContent = `${selected.length}件の並び順を更新しました。設定済みの個体詳細を開くと反映します。`;
+      });
+      show(root, form);
+    });
 
     function assign(target) {
       const root = modal(loadRouteLabel);
@@ -503,7 +572,7 @@
       controls.append(save);
       if (current) controls.append(button("設定を解除", () => commit("")));
       form.append(field("保存済みのルート", picker), controls, status);
-      form.append(node("p", "extra-note", "控えを保存したルートは、個体のスキルタブを開くと使用中・控えも反映します。"));
+      form.append(node("p", "extra-note", "設定したルートのスキル順を個体に反映します。控えを保存したルートは、スキルタブで使用中・控えも反映します。"));
       form.addEventListener("submit", event => { event.preventDefault(); commit(picker.value); });
       show(root, form);
 
@@ -676,17 +745,19 @@
           const shareStatus = node("span", "extra-note");
           shareStatus.dataset.ha4 = "training-share-status";
           shareStatus.setAttribute("role", "status");
-          const applyStates = button("使用中・控えを反映", () => {
+          const applyStates = button("使用中・控え・並び順を反映", () => {
             const current = readTarget(anchor);
             const data = load();
             const binding = data.bindings.find(item => item.monsterId === current?.id);
             const route = data.routes.find(item => item.id === binding?.routeId);
-            if (!Array.isArray(route?.reserved)) return;
+            if (!route) return;
             Object.assign(binding, routeBinding(current.id, route));
+            delete binding.skillOrderApplied;
+            binding.skillOrderResult = "並び順を反映中…";
             persist(data);
           });
           applyStates.dataset.ha4 = "training-apply-skill-states";
-          applyStates.title = "スキルタブを開くと、覚えているスキルの使用中・控えを育成ルートに合わせます。";
+          applyStates.title = "覚えているスキルの並び順を育成ルートに合わせます。控えの指定がある場合はスキルタブで使用中・控えも反映します。";
           const mother = button("世代上げ母体に指定", () => {
             const current = readTarget(anchor);
             if (!current?.id || !enabled()) return;
@@ -695,7 +766,8 @@
             persist(data);
           });
           mother.dataset.ha4 = "training-mother";
-          panel.append(loadButton, edit, shareButton, applyStates, mother, node("span", "training-detail-route"), shareStatus);
+          const applyStatus = node("span", "training-order-status");applyStatus.setAttribute("role", "status");
+          panel.append(loadButton, edit, shareButton, applyStates, mother, node("span", "training-detail-route"), applyStatus, shareStatus);
           anchor.append(panel);
         }
         const binding = bindings.find(item => item.monsterId === target.id);
@@ -703,7 +775,7 @@
         const edit = panel.querySelector('[data-ha4="training-edit-target"]');
         edit.hidden = !route;
         panel.querySelector('[data-ha4="training-share-target"]').hidden = !route;
-        panel.querySelector('[data-ha4="training-apply-skill-states"]').hidden = !Array.isArray(route?.reserved);
+        panel.querySelector('[data-ha4="training-apply-skill-states"]').hidden = !route;
         const mother = panel.querySelector('[data-ha4="training-mother"]');
         const designated = mothers.includes(target.id);
         const motherText = designated ? "世代上げ母体の指定を解除" : "世代上げ母体に指定";
@@ -712,6 +784,9 @@
         const label = panel.querySelector('[data-ha4="training-detail-route"]');
         const text = route ? `設定中　${[groupName(route.group), route.name].filter(Boolean).join(" ／ ")}` : "";
         if (label.textContent !== text) label.textContent = text;
+        const applyStatus = panel.querySelector('[data-ha4="training-order-status"]');
+        const result = binding?.skillOrderResult ?? "";
+        if (applyStatus.textContent !== result) applyStatus.textContent = result;
         renderProgress(panel, anchor, target, route);
       }
     }
@@ -719,7 +794,7 @@
     return { open: (id) => {
       const { routes } = load();
       open(routes.find(route => route.id === id) ?? routes[0]);
-    }, openMember, update, scan, saveRoute, groups, groupInput, share,
+    }, openMember, update, scan, saveRoute, deleteRoute, groups, groupInput, share,
       forMonster: monsterId => {
         const { routes, bindings } = load();
         const binding = bindings.find(item => item.monsterId === String(monsterId));

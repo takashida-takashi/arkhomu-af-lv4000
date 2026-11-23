@@ -408,13 +408,24 @@
         save.textContent = "変更を保存";
         status.textContent = `「${result.name}」を保存しました。`;
         savedRoute.hidden = false;
+        removeRoute.hidden = false;
       }, "planner-primary");
       const share = button("育成ルートを共有", () => {
         const draft = routeDraft();
         draft.name ||= monster?.name ?? "";
         void routes.share(draft, status);
       });
-      footer.append(status, savedRoute, share, save);
+      const removeRoute = button("ルートを削除", () => {
+        const removed = routes.deleteRoute(currentId, status);
+        if (!removed) return;
+        currentId = draftScreen = cleanDraft = undefined;
+        savedRoute.hidden = removeRoute.hidden = true;
+        showScreen("start");
+        showSavedRoutes(true);
+        renderSavedRoutes(`「${removed.name}」を削除しました。`);
+      });
+      removeRoute.setAttribute("data-ha4-planner-delete", "");
+      footer.append(status, removeRoute, savedRoute, share, save);
       left.append(base, library);
       right.append(node("h3", "planner-section-title", "育成ルート"), routeName, routeGroup, groupList, rank6Panel, plan);
       right.dataset.ha4 = "planner-route";
@@ -430,7 +441,7 @@
       let rendered = 0;
       let tooltipAnchor, tooltipTimer, tooltipLevel = 1;
       let pinned = false;
-      let monster, baseMonsterId, currentId, rank6Passive = null, reservedNames;
+      let monster, baseMonsterId, currentId, rank6Passive = null, reservedNames, skillOrder, orderUnique;
       let draftScreen, cleanDraft;
       let innateExpanded = true;
       const preview = createPreview?.({ node, button,
@@ -449,6 +460,8 @@
           if (skill.id) draft.previewSkillIds[routeSkillName(skill)] = skill.id;
         }
         for (const group of groupKeys) draft[group] = picked[group].map(routeSkillName);
+        if (orderUnique) draft.orderUnique = orderUnique;
+        if (skillOrder) draft.skillOrder = identity.routeOrder({ ...draft, skillOrder });
         if (reservedNames) draft.reserved = [...new Set([...draft.ordinary, ...draft.permanent])]
           .filter(name => reservedNames.has(skillKey(name)) || reservedNames.has(skillKey(identity.parse(name).name)));
         return draft;
@@ -492,6 +505,8 @@
         }
         if (hasUnsavedChanges() && !window.confirm("保存していない変更を破棄しますか？")) return;
         currentId = saved?.id;
+        skillOrder = saved?.skillOrder;
+        orderUnique = saved?.orderUnique;
         reservedNames = Array.isArray(saved?.reserved) ? new Set(saved.reserved.map(skillKey)) : saved ? undefined : new Set();
         baseMonsterId = typeof saved?.baseMonsterId === "string" ? saved.baseMonsterId : "";
         monster = catalog?.monsters.find(item => item.id === baseMonsterId);
@@ -861,7 +876,7 @@
           updateAddButton(button, catalog.byId.get(button.dataset.plannerAdd));
         }
         renderRank6Passive();
-        const completionRank = Number(preview?.getValues().rank) || Math.max(6, Number(monster?.rank) || 6);
+        const completionRank = Math.max(Number(monster?.rank) || 1, Number(preview?.getValues().rank) || 6);
         plan.replaceChildren(...groupKeys.map(group => {
           const other = group === "ordinary" ? "permanent" : "ordinary";
           const [name, editLimit] = groups[group];
@@ -924,6 +939,7 @@
           return section;
         }));
         save.textContent = currentId ? "変更を保存" : "拡張育成ルートに保存";
+        removeRoute.hidden = !currentId;
         save.disabled = !currentId && !baseMonsterId && !rank6Passive && !picked.ordinary.length && !picked.permanent.length;
         preview?.refresh();
       }

@@ -598,6 +598,29 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
 }
 [data-ha4="guild-pending-toggle"][aria-pressed="true"] { background: #493521; }
 [data-ha4="guild-pending-toggle"][hidden] { display: none !important; }
+[data-ha4="guild-hide-selected"], [data-ha4="guild-hidden-action"] {
+  font: inherit; color: #ead9fb; background: #30223f; border: 1px solid #816298; border-radius: 5px;
+  padding: 6px 9px; cursor: pointer;
+}
+[data-ha4="guild-hide-selected"] { display: block; min-height: 44px; max-width: 100%; margin: 12px auto 16px; pointer-events: auto; }
+[data-ha4="guild-hide-selected"]:disabled, [data-ha4="guild-hidden-action"]:disabled { opacity: .5; cursor: default; }
+[data-ha4="guild-hidden-notice"] { flex-basis: 100%; padding: 8px; border: 1px solid #b08d37; color: #ffe6a2; border-radius: 5px; }
+[data-ha4="guild-hidden-notice"][hidden] { display: none; }
+[data-ha4="guild-hidden-notice"] button { margin-inline-start: 8px; }
+[data-ha4="guild-hidden-restored"] { display: block; color: #ffe6a2; font-size: .7rem; }
+[data-ha4="guild-hidden-manager"] {
+  width: min(560px, calc(100vw - 24px)); max-height: 85dvh; box-sizing: border-box; overflow: auto;
+  background: #21182e; color: #eee6f8; border: 1px solid #a48bb7; border-radius: 8px; padding: 14px;
+  font: inherit;
+}
+[data-ha4="guild-hidden-manager"]::backdrop { background: #0009; }
+[data-ha4="guild-hidden-manager"] header, [data-ha4="guild-hidden-entry"] { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+[data-ha4="guild-hidden-manager"] h2 { font-size: 1rem; margin: 0; }
+[data-ha4="guild-hidden-manager"] p { font-size: .8rem; line-height: 1.6; }
+[data-ha4="guild-hidden-entry"] { padding: 9px 0; border-bottom: 1px solid #594367; }
+[data-ha4="guild-hidden-entry"] > span { overflow-wrap: anywhere; min-width: 0; }
+[data-ha4="guild-hidden-entry"] small { display: block; color: #bfb1cb; }
+[data-ha4="guild-hidden-entry"] button { flex-shrink: 0; }
 [data-ha4="guild-clear-rate"], [data-ha4="guild-match-note"] { display: block; margin-block: .15rem; color: #caeee5; font-size: .75rem; }
 [data-ha4-guild-filter-row] { order: var(--ha4-guild-order, 0); }
 [data-ha4-guild-hidden], [data-ha4-guild-empty] { display: none !important; }
@@ -1898,6 +1921,7 @@ html[data-ha4-slot-home-active] #__nuxt { visibility: hidden; }
   cursor: pointer;
 }
 [data-ha4="planner-primary"] { min-height: 2.25rem; background: #7449ad; border-color: #a482cd; font-weight: 700; }
+[data-ha4-planner-delete] { color: #ffb8b8; border-color: #a15b70; }
 [data-ha4="planner-button"][aria-pressed="true"] { background: #52366f; border-color: #b690e3; }
 [data-ha4="training-planner"] button:hover:not(:disabled) { border-color: #d0b2f4; }
 [data-ha4="training-planner"] button:disabled { opacity: .55; cursor: default; }

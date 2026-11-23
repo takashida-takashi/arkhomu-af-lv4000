@@ -870,6 +870,7 @@
         for (let i = vnode.children.length - 1; i >= 0; i--) pending.push([vnode.children[i], ...context]);
       }
     }
+    readGuildDungeon?.finish?.();
     extras?.skipExploreLogs(root, stores, summaryShown);
     for (const owner of expeditionOwners) expeditionNative?.sync(owner);
     if (matingPage) trainingRoutes?.legacyMating(legacyMatingParents);

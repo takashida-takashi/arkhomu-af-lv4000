@@ -25,6 +25,7 @@
   const bulkKey = "ha4-training-mating-bulk";
   const grantBindings = new WeakMap();
   const progressBindings = new WeakMap();
+  const orderDrafts = new WeakMap();
   const skillStateAttempts = new WeakMap();
   let skillStateControls = [];
   let routes = new Map();
@@ -70,6 +71,7 @@
       const nextRoutes = new Map(data.routes.map(route => [route.id, {
         name: route.name, group: typeof route.group === "string" ? route.group : "",
         ordinaryNames: route.ordinary, permanentNames: route.permanent, rank6Passive: route.rank6Passive,
+        skillOrder: route.skillOrder, orderUnique: route.orderUnique,
         previewSkillIds: route.previewSkillIds,
         reserved: Array.isArray(route.reserved) ? new Set(route.reserved.map(name => routeKey(name, route))) : null,
         skills: new Set([...route.ordinary, ...route.permanent].map(name => routeKey(name, route))),
@@ -150,6 +152,76 @@
       control.click();
       document.dispatchEvent(new Event("hako-af:grid-rendered"));
     });
+  }
+
+  function orderedSkillIds(route, lists, title, saved) {
+    const result = {};
+    for (const [kind, entries] of [["skill", lists.active], ["passive", lists.passive]]) {
+      const field = kind === "skill" ? "active" : "passive";
+      const ids = new Set(entries.map(entry => entry.id));
+      const current = [...new Set([...(saved?.[field] ?? []).filter(id => ids.has(id)), ...ids])];
+      const wanted = [];
+      for (const name of identity.routeOrder(route)) {
+        const reference = route.previewSkillIds?.[name];
+        const entry = entries.find(entry => /^[sp]\./.test(reference ?? "")
+          ? identity.kind(reference) === kind && reference.slice(2) === entry.id
+          : identity.matches(new Set([routeKey(name, route)]), title(entry, kind), kind));
+        if (entry && !wanted.includes(entry.id)) wanted.push(entry.id);
+      }
+      result[field] = [...wanted, ...current.filter(id => !wanted.includes(id))];
+    }
+    return result;
+  }
+
+  function syncSkillOrderDraft(instance, id) {
+    const pending = instance && orderDrafts.get(instance);
+    if (!pending || pending.id !== id) return;
+    const binding = targets.get(id);
+    if (!enabled || binding?.routeId !== pending.routeId || binding.skillStateRevision !== pending.revision ||
+        binding.skillOrderRevision !== pending.orderRevision) { orderDrafts.delete(instance);return; }
+    const buttons = { active: new Map(), passive: new Map() };
+    for (const row of walk(instance.subTree, true)) {
+      const key = row.props?.["data-fx-drag-id"] ?? row.key;
+      const match = typeof key === "string" && /^(active|passive)[:-](.+)$/.exec(key);
+      if (!match || !pending.desired[match[1]].includes(match[2])) continue;
+      const top = [...walk(row, true)].find(node => node.type === "button" &&
+        node.props?.["aria-label"] === "いちばん上へ" && typeof node.props.onClick === "function");
+      if (top) buttons[match[1]].set(match[2], top.props.onClick);
+    }
+    if (!buttons.active.size && !buttons.passive.size) return;
+    // The native detail controller keeps a private editing draft, independent of its store.
+    // Use its own reorder handlers too, so the open view and later manual edits share the saved order.
+    orderDrafts.delete(instance);
+    for (const kind of ["active", "passive"]) for (const skillId of [...pending.desired[kind]].reverse()) {
+      buttons[kind].get(skillId)?.(new MouseEvent("click", { cancelable: true }));
+    }
+    // Reserved or hidden rows may have no move controls. Preserve their complete saved order.
+    pending.settings.replaceSkillOrder(id, pending.desired);
+    document.dispatchEvent(new Event("hako-af:grid-rendered"));
+  }
+
+  function applySkillOrder(id, route, assigned, properties, lists, title, anchor, instance) {
+    const order = identity.routeOrder(route), binding = targets.get(id), current = binding && routes.get(binding.routeId);
+    if (!enabled || !anchor.isConnected || !anchor.getClientRects().length || binding?.routeId !== assigned.routeId ||
+        binding.skillStateRevision !== assigned.skillStateRevision || binding.skillOrderRevision !== assigned.skillOrderRevision || JSON.stringify(current && identity.routeOrder(current)) !== JSON.stringify(order)) return;
+    const signature = JSON.stringify([order, assigned.skillStateRevision, assigned.skillOrderRevision, lists.active.map(entry => entry.id).sort(), lists.passive.map(entry => entry.id).sort()]);
+    if (binding.skillOrderApplied === signature) return;
+    const stores = properties.$pinia?._s, settings = stores?.get("skillSettings");
+    if (!stores?.get("userMonsters")?.monsters?.some(member => String(monsterId(member)) === id) ||
+        typeof settings?.getSkillOrder !== "function" || typeof settings?.replaceSkillOrder !== "function") return;
+    const saved = settings.getSkillOrder(id), desired = orderedSkillIds(route, lists, title, saved);
+    const differs = ["active", "passive"].some(kind => JSON.stringify(saved?.[kind] ?? []) !== JSON.stringify(desired[kind]));
+    if (differs) settings.replaceSkillOrder(id, desired);
+    if (instance) {
+      orderDrafts.set(instance, { id, routeId: assigned.routeId, revision: assigned.skillStateRevision,
+        orderRevision: assigned.skillOrderRevision, desired, settings });
+      syncSkillOrderDraft(instance, id);
+    }
+    document.dispatchEvent(new CustomEvent("hako-af:training-skill-order-applied", {
+      detail: JSON.stringify({ monsterId: id, routeId: assigned.routeId, revision: assigned.skillStateRevision, signature,
+        message: (differs ? "並び順を反映しました。" : "保存ルートと同じ並び順です。") + (!Array.isArray(route.skillOrder) ? " 元の通常・永久の混在順は未保存です。" : "") })
+    }));
+    if (differs) document.dispatchEvent(new Event("hako-af:grid-rendered"));
   }
 
   function rememberOwned() {
@@ -625,14 +697,15 @@
   }
 
   function readMonster(target, app, profile) {
-    const { id, anchor, record, monster } = target ?? {};
+    const { id, anchor, record, monster, instance } = target ?? {};
     const assigned = targets.get(id);
     const route = assigned && routes.get(assigned.routeId);
     if (!route || !anchor.getClientRects().length) return;
+    syncSkillOrderDraft(instance, id);
     const native = monster.t_user_monsters ?? monster;
     const storedPermanent = record.permanent_skills ?? native.permanent_skills;
     const permanent = Array.isArray(storedPermanent) ? storedPermanent : [];
-    const signature = JSON.stringify([id, assigned.routeId, route.ordinaryNames, route.permanentNames, route.previewSkillIds, route.rank6Passive, record.level ?? native.level,
+    const signature = JSON.stringify([id, assigned.routeId, assigned.skillStateRevision, assigned.skillOrderRevision, route.ordinaryNames, route.permanentNames, route.skillOrder, route.orderUnique, route.previewSkillIds, route.rank6Passive, record.level ?? native.level,
       record.monster_id ?? native.monster_id, record.rank_up ?? native.rank_up, permanent,
       record.disabled_passives ?? native.disabled_passives, record.meta?.rank6_unique_skill ?? native.meta?.rank6_unique_skill,
       record.rank6_unique_skill_granted ?? native.rank6_unique_skill_granted,
@@ -651,6 +724,7 @@
     const buildId = properties?.$config?.public?.buildId ?? properties?.$nuxt?.$config?.public?.buildId;
     if (!getReaders || !properties) return;
     void Promise.all([getReaders(), trainingSources?.readMasters(buildId)]).then(([readers, data]) => {
+      if (!anchor.isConnected || progressBindings.get(anchor) !== state || targets.get(id)?.routeId !== assigned.routeId) return;
       const run = properties.$nuxt?.runWithContext?.bind(properties.$nuxt) ?? app.runWithContext.bind(app);
       const translate = key => properties.$t?.(key) ?? key;
       const result = run(() => {
@@ -672,6 +746,7 @@
         }
         const passives = skills.getPassiveSkills(member, { includeReserved: true, includeDisabled: true });
         const active = skills.getActiveSkills(member, { includeReserved: true });
+        applySkillOrder(id, route, assigned, properties, { active, passive: passives }, title, anchor, instance);
         const knownIds = new Set([...active.map(entry => `s.${entry.id}`), ...passives.map(entry => `p.${entry.id}`),
           ...permanent.flatMap(entry => typeof entry === "object" && entry?.id ? [`${entry.effect === "passive" ? "p" : "s"}.${entry.id}`] : [])]);
         const known = new Set([
@@ -886,7 +961,7 @@
   }
 
   globalThis.hakoAfTrainingRoutesMain = globalThis[singleton] = { read, readMonster, legacyMating, rememberOwned,
-    readSkillState, applySkillStates,
+    readSkillState, applySkillStates, orderedSkillIds,
     rememberLegacyAuto: (element, key) => legacyAutoKeys.set(element, key),
     accepts: name => matingComponents.has(name) || grantComponents.has(name) || name === "FlexMatingCandidates" };
 })();

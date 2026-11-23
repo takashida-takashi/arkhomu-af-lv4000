@@ -3,6 +3,7 @@ const fs = require("node:fs"), path = require("node:path"), vm = require("node:v
 const scope = { Blob, Response, CompressionStream, DecompressionStream, Uint8Array, TextDecoder,
   btoa, atob, location: { origin: "https://arkhomu.com" } };
 vm.createContext(scope);
+vm.runInContext(fs.readFileSync(path.join(__dirname, "../extension/feature-names.js"), "utf8"), scope);
 const source = fs.readFileSync(path.join(__dirname, "../extension/party-share.js"), "utf8");
 vm.runInContext(source.replace("globalThis.hakoAfPartyShare = { start };",
   "globalThis.api = { validated, validatedTrainingRoute, compactParty, expandLink, shareLink, readLink, skillGroups, skillLabel };"), scope);
@@ -10,6 +11,8 @@ const api = scope.api, plain = value => JSON.parse(JSON.stringify(value));
 const route = { id: "private-route", name: "探索用の完成目標", group: "探索編成", baseMonsterId: "hive_sentinel",
   ordinary: ["蜂の襲撃【アクティブ】", "蜂の襲撃【パッシブ】"], permanent: ["原初の血宴【アクティブ】"],
   reserved: ["蜂の襲撃【パッシブ】"], rank6Passive: { id: "bee_body", name: "蜂の統率", enabled: false },
+  skillOrder: ["原初の血宴【アクティブ】", "蜂の襲撃【パッシブ】", "蜂の襲撃【アクティブ】", "蜂の統率【パッシブ】"],
+  orderUnique: "蜂の統率【パッシブ】",
   previewSkillIds: { "蜂の襲撃【アクティブ】": "s.bee_assault", "蜂の襲撃【パッシブ】": "p.bee_assault",
     "原初の血宴【アクティブ】": "s.primordial_blood_feast" },
   preview: { skillLevels: { "s.primordial_blood_feast": 10, "p.bee_body": 5, "p.unrelated": 10 },
@@ -24,6 +27,8 @@ const party = { version: 1, individual: true, name: route.name, slots: [member, 
   assert.deepEqual(portable.ordinary, route.ordinary);
   assert.deepEqual(portable.reserved, route.reserved);
   assert.deepEqual(portable.rank6Passive, route.rank6Passive);
+  assert.deepEqual(portable.skillOrder, route.skillOrder);
+  assert.equal(portable.orderUnique, route.orderUnique);
   assert.deepEqual(portable.preview, { skillLevels: { "s.primordial_blood_feast": 10, "p.bee_body": 5 } });
   assert.doesNotMatch(JSON.stringify(portable), /private-|unrelated/);
   assert.deepEqual(plain(api.validated(api.expandLink(api.compactParty(validated)))), validated);

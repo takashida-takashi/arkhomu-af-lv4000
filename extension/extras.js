@@ -308,12 +308,16 @@
       const base = `${[route.group, route.name].filter(Boolean).join(" ／ ")}（育成ルート）`;
       let label = base, suffix = 2;
       while (presets.some(item => item !== current && item.label === label)) label = `${base} ${suffix++}`;
-      const preset = { label, entries: [...entries.values()], trainingRouteId: route.id };
+      const order = identity.routeOrder(route);
+      const position = item => order.findIndex(name => identity.matches(new Set([
+        identity.kind(route.previewSkillIds?.[name]) ? identity.typed(name, identity.kind(route.previewSkillIds[name])) : normalize(name)
+      ]), item.name, item.kind ?? identity.kind(item.id)));
+      const preset = { label, entries: [...entries.values()].sort((a, b) => position(a) - position(b)), trainingRouteId: route.id };
       if (JSON.stringify(current) !== JSON.stringify(preset)) {
         presets = current ? presets.map(item => item === current ? preset : item) : [...presets, preset];
         save(key, presets);
       }
-      const signature = JSON.stringify([route.id, binding.skillStateRevision, route.ordinary, route.permanent, route.reserved]);
+      const signature = JSON.stringify([route.id, binding.skillStateRevision, route.ordinary, route.permanent, route.reserved, route.skillOrder]);
       if (previous?.signature !== signature || previous.label !== label) selectedSkillPresets.set(key, label);
       routeSkillPresets.set(key, { signature, label });
       return presets;

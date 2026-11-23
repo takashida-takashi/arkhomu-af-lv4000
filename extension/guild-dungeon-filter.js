@@ -164,30 +164,37 @@
 
   function start(isEnabled) {
     const state = { root: { join: "and", children: [] }, showUnknown: false, sortKey: "", sortDirection: "asc", combineNations: false, hideFinished: false };
+    let personal;
     try {
       const stored = localStorage.getItem(storageKey);
       if (stored) {
         const restored = createPopup.parseSharedPreset(stored, fields, options.shareFormat);
         const display = JSON.parse(stored);
+        personal = display;
         restored.combineNations = display.combineNations === true;
         restored.hideFinished = display.hideFinished === true;
         for (const key of Object.keys(state)) state[key] = restored[key];
       }
     } catch { /* Keep filtering available when saved data or storage cannot be read. */ }
+    const dismissed = globalThis.hakoAfGuildDungeonHidden?.createStore(personal);
+    const hiddenUI = dismissed && globalThis.hakoAfGuildDungeonHidden.controls(dismissed, changed);
     const panels = new Map();
     const snapshots = new WeakMap();
     let badgeId = 0;
     let lastSaved, saveFailed = false;
 
-    function changed() {
+    function persist() {
       try {
         const value = JSON.stringify({ format: options.shareFormat, version: 2, root: state.root,
           showUnknown: state.showUnknown, sortKey: state.sortKey, sortDirection: state.sortDirection,
-          combineNations: state.combineNations, hideFinished: state.hideFinished });
+          combineNations: state.combineNations, hideFinished: state.hideFinished, ...dismissed?.serialize() });
         if (value !== lastSaved) localStorage.setItem(storageKey, value);
         lastSaved = value;
         saveFailed = false;
       } catch { saveFailed = true; }
+    }
+    function changed() {
+      persist();
       scan();
     }
 
@@ -237,6 +244,7 @@
         updatePendingBadge(row, "");
         updateMatchNote(row, "");
         row.querySelector('[data-ha4="guild-clear-rate"]')?.remove();
+        row.querySelector('[data-ha4="guild-hidden-restored"]')?.remove();
       }
       for (const group of list.querySelectorAll(`[${emptyGroupAttribute}]`)) group.removeAttribute(emptyGroupAttribute);
       panels.delete(list);
@@ -246,7 +254,7 @@
       for (const [list, panel] of panels) {
         if (!isEnabled() || !list.isConnected || !list.matches(listSelector)) clear(list, panel);
       }
-      if (!isEnabled()) return;
+      if (!isEnabled()) { hiddenUI?.scan(false);return; }
       const group = activeGroup(state.root, undefined, isActive);
       const error = validationError(group);
       const active = !error && group.children.length > 0;
@@ -299,13 +307,15 @@
           else list.prepend(panel.toolbar);
         }
         const rows = [...list.querySelectorAll(rowSelector)].map(readRow);
+        if (dismissed?.observe(rows.map(row => row.data))) persist();
+        hiddenUI?.toolbar(panel.toolbar);
         panel.combine.checked = state.combineNations;
         nationLayout(list, panel, rows, state.combineNations);
         const counts = new Map();
         const headers = new Map();
         let matched = 0;
         let pending = 0;
-        let finished = 0, visibleFinished = 0;
+        let finished = 0, visibleFinished = 0, manuallyHidden = 0;
         for (const row of rows) {
           const { el, data } = row;
           row.finished = data.todayClosed === "1";
@@ -318,7 +328,9 @@
           if (result === true) matched++;
           if (result === null) pending++;
           const unknownShown = result === null && state.showUnknown;
-          const visible = (result === true || unknownShown) && !(state.hideFinished && row.finished);
+          const ignored = dismissed?.has(data);
+          if (ignored) manuallyHidden++;
+          const visible = (result === true || unknownShown) && !(state.hideFinished && row.finished) && !ignored;
           if (visible && row.finished) visibleFinished++;
           el.toggleAttribute("data-ha4-guild-hidden", !visible);
           const heading = groupHeader(el);
@@ -326,6 +338,7 @@
           updatePendingBadge(el, unknownShown ? pendingLabel(data, group) : "");
           const matchedLabels = result === true && hits?.length ? [...new Set(hits.map(hit => fields.get(hit.key).label))] : [];
           updateMatchNote(el, matchedLabels.length ? `一致条件　${matchedLabels.join("・")}` : "");
+          hiddenUI?.note(el, data);
           let rate = el.querySelector('[data-ha4="guild-clear-rate"]');
           if (showRate && data.todayClearRate != null && visible) {
             if (!rate) {
@@ -379,6 +392,7 @@
         const summary = (error ?? (`一覧 ${rows.length}件` +
           (active ? `・判定済み ${rows.length - pending}件（一致 ${matched}件）・未確認 ${pending}件` : ""))) +
           (state.hideFinished && finished ? `・終了 ${finished}件を非表示` : "") +
+          (manuallyHidden ? `・個別非表示 ${manuallyHidden}件` : "") +
           (saveFailed ? "・条件を保存できませんでした" : "");
         if (panel.status.textContent !== summary) panel.status.textContent = summary;
         panel.pendingToggle.hidden = pending === 0;
@@ -396,7 +410,12 @@
             searchesLineup ? "出現ホムンクルスは種族名で検索します。" : ""
         });
       }
+      hiddenUI?.scan(true);
     }
+    globalThis.addEventListener?.("storage", event => {
+      if (event.key !== storageKey && event.key !== null) return;
+      try { dismissed?.load(JSON.parse(localStorage.getItem(storageKey)) ?? {});scan(); } catch { /* Keep the current choices. */ }
+    });
     return { scan };
   }
 

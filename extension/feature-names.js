@@ -35,7 +35,21 @@
     return match ? { name: match[1], kind: match[2] === "パッシブ" ? "passive" : "skill" } : { name: text, kind: null };
   };
   const typed = (value, kind) => `${parse(value).name}【${kind === "passive" || kind === "p" ? "パッシブ" : "アクティブ"}】`;
-  globalThis.hakoAfSkillIdentity = Object.freeze({ parse, typed,
+  const routeOrder = route => {
+    const key = name => /^[sp]\./.test(route.previewSkillIds?.[name] ?? "")
+      ? typed(name, route.previewSkillIds[name][0]) : normalize(name);
+    const groups = [Array.isArray(route.ordinary) ? route.ordinary : route.ordinaryNames ?? [],
+      Array.isArray(route.permanent) ? route.permanent : route.permanentNames ?? []]
+      .map(list => list.map(name => ({ name, key: key(name) })));
+    if (route.rank6Passive) groups.push([{ name: typed(route.rank6Passive.name, "passive"), key: typed(route.rank6Passive.name, "passive") }]);
+    if (typeof route.orderUnique === "string" && parse(route.orderUnique).kind) groups.push([{ name: route.orderUnique, key: key(route.orderUnique) }]);
+    const available = new Map(groups.flat().map(item => [item.key, item]));
+    const ordered = [...new Map([...(route.skillOrder ?? []).filter(name => typeof name === "string").map(key), ...available.keys()]
+      .filter(id => available.has(id)).map(id => [id, available.get(id)])).values()];
+    // The imported processing order is independent of ordinary/permanent allocation.
+    return ordered.map(item => item.name);
+  };
+  globalThis.hakoAfSkillIdentity = Object.freeze({ parse, typed, routeOrder,
     elementKind: root => {
       const header = root?.closest(".skill-header") ?? root?.parentElement?.closest(".w-full")?.querySelector(".skill-header") ?? root;
       const badge = [...(header?.querySelectorAll("span") ?? [])].map(el => el.textContent.trim())
