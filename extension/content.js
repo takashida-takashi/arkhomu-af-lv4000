@@ -517,12 +517,11 @@
   function renderGachaInput(owner, state) {
     const { capacity, ready, busy, message, target } = state;
     if (capacity) {
-      const { total, multiple, cart: inCart } = capacity;
+      const { multiple, cart: inCart } = capacity;
       const count = new Intl.NumberFormat("ja-JP");
-      const pulls = count.format(Math.floor((multiple + inCart) / 5));
-      const manual = total !== multiple ? ` · 手動で追加できる候補 ${count.format(total)}個` : "";
-      adorn(owner, "gacha-capacity", `連続セットの追加候補 ${count.format(multiple)}個（${inCart ? "カート込み " : ""}${pulls}連分）${manual}`,
-        "素材数で換算しています。指定した合計パワーによって実際に作れるセット数は変わります。");
+      const owned = multiple + inCart;
+      adorn(owner, "gacha-capacity", `所持数：${count.format(owned)}個\nガチャ回数：${count.format(Math.floor(owned / 5))}回`,
+        "現在の絞り込み条件で連続ガチャに使えるAFの数です（カート内を含む）。5個で1回として換算し、指定した合計パワーによって実際に作れるセット数は変わります。");
     }
     let ui = gachaInputControls.get(owner);
     if (!ui) {

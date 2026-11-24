@@ -123,7 +123,7 @@
       if (!candidates) return;
       const classic = panel.type?.__name === "ArtifactGachaPanel";
       const cartItems = classic ? refs.find(ref => Array.isArray(ref._value) &&
-        /Array\.from\(\w+\.value\)\.map\(\w+=>\w+\.value\.get\(\w+\)\)\.filter\(/.test(String(ref.fn))) : null;
+        /Array\.from\([$\w]+\.value\)\.map\([$\w]+=>[$\w]+(?:\.value\.get|\.getArtifactById)\([$\w]+\)\)\.filter\(/.test(String(ref.fn))) : null;
       const state = { classic, store, candidates, cartItems, power, message: "" };
       if (!readThrough(candidates, original => {
         const plan = currentPlan();

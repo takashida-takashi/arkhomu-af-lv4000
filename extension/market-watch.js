@@ -8,6 +8,82 @@
     timeZone: "Asia/Tokyo", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"
   });
   const priceText = price => `${format.format(price)} G`;
+  const axisPrice = new Intl.NumberFormat("ja-JP", { notation: "compact", maximumFractionDigits: 1 });
+
+  function priceChart(node, record) {
+    const points = record.points.filter(point => Number.isFinite(point?.at) && point.at >= 0 &&
+      Number.isSafeInteger(point.price) && point.price > 0).slice(-90).sort((a, b) => a.at - b.at);
+    const last = points.at(-1);
+    if (last && Number.isFinite(record.checked) && record.checked > last.at) points.push({ at: record.checked, price: last.price });
+    if (!points.length) return node("p", "market-watch-note", "価格の記録はまだありません。");
+    const root = node("figure", "market-watch-chart");
+    const reading = node("figcaption", "market-watch-chart-reading");
+    reading.setAttribute("aria-live", "polite");
+    const svg = (tag, attrs, text) => {
+      const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
+      for (const [key, value] of Object.entries(attrs)) element.setAttribute(key, String(value));
+      if (text != null) element.textContent = text;
+      return element;
+    };
+    const width = 600, height = 230, left = 76, right = width - 16, top = 18, bottom = height - 38;
+    const low = Math.min(...points.map(point => point.price)), high = Math.max(...points.map(point => point.price));
+    const padding = Math.max((high - low) * .12, high === low ? high * .05 : 0, 1);
+    const floor = Math.max(0, low - padding), ceiling = high + padding;
+    const firstAt = points[0].at, lastAt = points.at(-1).at;
+    const x = point => firstAt === lastAt ? (left + right) / 2 : left + (point.at - firstAt) / (lastAt - firstAt) * (right - left);
+    const y = point => bottom - (point.price - floor) / (ceiling - floor) * (bottom - top);
+    const plot = svg("svg", { viewBox: `0 0 ${width} ${height}`, width, height, role: "img", tabindex: 0,
+      "aria-label": `${record.name}の最安値推移。グラフを押すか左右キーで日時と価格を確認できます。`, "data-ha4": "market-watch-plot" });
+    plot.append(svg("title", {}, `${record.name}の最安値推移`));
+    for (let index = 0; index < 3; index++) {
+      const value = floor + (ceiling - floor) * index / 2, position = bottom - (bottom - top) * index / 2;
+      plot.append(svg("line", { x1: left, x2: right, y1: position, y2: position, class: "ha4-price-grid" }),
+        svg("text", { x: left - 9, y: position + 5, "text-anchor": "end", class: "ha4-price-axis" }, `${axisPrice.format(value)} G`));
+    }
+    for (const [point, position, anchor] of firstAt === lastAt ? [[points[0], (left + right) / 2, "middle"]] :
+      [[points[0], left, "start"], [points.at(-1), right, "end"]]) {
+      plot.append(svg("text", { x: position, y: height - 12, "text-anchor": anchor, class: "ha4-price-axis" }, `${date.format(point.at)} JST`));
+    }
+    const coordinates = points.map(point => `${x(point).toFixed(2)},${y(point).toFixed(2)}`).join(" ");
+    if (points.length > 1) plot.append(svg("polygon", { points: `${x(points[0])},${bottom} ${coordinates} ${x(points.at(-1))},${bottom}`, class: "ha4-price-area" }));
+    plot.append(svg("polyline", { points: coordinates, class: "ha4-price-line" }));
+    for (const point of points) {
+      const dot = svg("circle", { cx: x(point), cy: y(point), r: 3, class: "ha4-price-dot" });
+      dot.append(svg("title", {}, `${date.format(point.at)} JST　${priceText(point.price)}`));
+      plot.append(dot);
+    }
+    const guide = svg("line", { y1: top, y2: bottom, class: "ha4-price-guide" });
+    const cursor = svg("circle", { r: 5, class: "ha4-price-cursor" });
+    plot.append(guide, cursor);
+    let selected = -1;
+    const select = index => {
+      index = Math.max(0, Math.min(points.length - 1, index));
+      if (selected === index) return;
+      selected = index;
+      const point = points[index];
+      reading.textContent = `${date.format(point.at)} JST　${priceText(point.price)}`;
+      guide.setAttribute("x1", x(point));guide.setAttribute("x2", x(point));
+      cursor.setAttribute("cx", x(point));cursor.setAttribute("cy", y(point));
+    };
+    const pointAt = event => {
+      const rect = plot.getBoundingClientRect();
+      if (!rect.width) return;
+      const position = (event.clientX - rect.left) / rect.width * width;
+      let nearest = 0;
+      for (let index = 1; index < points.length; index++) if (Math.abs(x(points[index]) - position) < Math.abs(x(points[nearest]) - position)) nearest = index;
+      select(nearest);
+    };
+    plot.addEventListener("pointermove", pointAt);
+    plot.addEventListener("click", pointAt);
+    plot.addEventListener("keydown", event => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();event.stopPropagation();
+      select(event.key === "Home" ? 0 : event.key === "End" ? points.length - 1 : selected + (event.key === "ArrowLeft" ? -1 : 1));
+    });
+    select(points.length - 1);
+    root.append(reading, plot, node("p", "market-watch-chart-hint", "タップ・マウス・左右キーで価格を確認"));
+    return root;
+  }
 
   function findLauncherPosition(market) {
     const page = market.querySelector("main") ?? market;
@@ -127,18 +203,28 @@
         const latest = record.points.at(-1);
         const previous = record.points.at(-2);
         const heading = node("summary", "market-watch-summary");
-        heading.append(node("span", "market-watch-name", record.name), node("strong", "market-watch-price", latest ? priceText(latest.price) : "未観測"));
+        const caption = node("span", "market-watch-caption");
+        caption.append(node("span", "market-watch-name", record.name), node("strong", "market-watch-price", latest ? priceText(latest.price) : "未観測"));
         if (latest && previous) {
           const delta = latest.price - previous.price;
           const trend = node("span", "market-watch-delta", `${delta > 0 ? "↑ +" : "↓ −"}${priceText(Math.abs(delta))}`);
           trend.dataset.direction = delta > 0 ? "up" : "down";
-          heading.append(trend);
+          caption.append(trend);
+        }
+        heading.append(caption);
+        if (!key.startsWith("skill:")) {
+          const go = node("a", "extra-button", "商品を開く");
+          go.href = `/market?${new URLSearchParams({ item: key.slice(5) })}`;
+          go.setAttribute("aria-label", `${record.name}の商品を開く`);
+          go.addEventListener("click", event => event.stopPropagation());
+          heading.append(go);
         }
         row.append(heading);
         const body = node("div", "market-watch-detail");
         const fill = () => {
           if (!row.open || body.childElementCount) return;
           if (record.checked) body.append(node("p", "market-watch-note", `最終確認 ${date.format(record.checked)} JST`));
+          body.append(priceChart(node, record));
           if (record.points.length) {
             const history = node("ul", "market-watch-points");
             for (const point of record.points.slice().reverse()) {
@@ -163,10 +249,6 @@
               }
             });
             body.append(check);
-          } else {
-            const go = node("a", "extra-button", "商品を開く");
-            go.href = `/market?${new URLSearchParams({ item: key.slice(5) })}`;
-            body.append(go);
           }
           const remove = node("button", "extra-button", "追跡を解除して履歴を削除");
           remove.type = "button";
