@@ -218,12 +218,15 @@
       if (initial.cart % setSize) return fail("途中の組を完成させるか、カートを空にしてください。");
       const cartLimit = pulls === 1 ? initial.cart + setSize : pulls * setSize;
       const limit = Math.floor((Math.min(cartLimit, initial.limit) - initial.cart) / setSize);
+      const requested = initial.cart / setSize + limit;
       if (limit <= 0) return fail("指定の連数までセット済みです。");
       const key = keyFor(initial.target);
       if (currentPlan()?.error) return fail("拡張フィルタの条件を確認してください。");
-      const valid = () => state.root?.querySelector('[data-ha4="gacha-use-sets"]')?.checked &&
+      const valid = () => !state.cancelRequested && initial.root.isConnected && state.root === initial.root &&
+        state.root?.querySelector('[data-ha4="gacha-use-sets"]')?.checked &&
         !currentPlan()?.error && keyFor(controls(state).target) === key;
       state.busy = true;
+      state.cancelRequested = false;
       state.messageKey = key;
       try {
         if (retained?.key !== key || Date.now() >= retained.until) {
@@ -243,20 +246,24 @@
         const groups = plan.groups.map(group => group.map(id => input.get(id))).filter(group => group.every(Boolean));
         const maximum = plan.groups.length === plan.upper
           ? `最大 ${format.format(plan.upper)}連` : `${format.format(plan.groups.length)}連を計画（理論上限 ${format.format(plan.upper)}連）`;
-        state.message = `${maximum} · カートにセット中…`;
+        const progress = added => `${maximum} · ${format.format(initial.cart / setSize + added)} / ${format.format(requested)}連をセット中…`;
+        state.message = progress(0);
         notify();
         staging = initial.root;
         let added = 0;
         let interrupted = false;
         let slice = performance.now();
-        const stepDeadline = slice + 2000;
+        let notified = slice;
         let excluded = excludedItems(state);
         for (const group of groups) {
-          if (added >= limit || performance.now() >= stepDeadline || !valid()) break;
+          if (added >= limit) break;
+          if (!valid()) { interrupted = true;break; }
           if (performance.now() - slice >= 8) {
+            state.message = progress(added);
+            if (performance.now() - notified >= 100) { notify();notified = performance.now(); }
             await pause();
             slice = performance.now();
-            if (!valid() || !controls(state).ready) break;
+            if (!valid() || !controls(state).ready) { interrupted = true;break; }
             excluded = excludedItems(state);
           }
           if (!group.every(item => fits(state, item, excluded)) ||
@@ -281,11 +288,15 @@
           if (interrupted) break;
         }
         state.message = `${maximum} · ${added ? `${format.format(added)}連をセット、計画に残り ${format.format(groups.length - added)}連` : "追加できる組はありません"}`;
-        if (interrupted) state.message += " · カートへのセットが途中で止まりました";
+        if (pulls > 1) state.message += ` · カート合計 ${format.format(initial.cart / setSize + added)} / ${format.format(requested)}連`;
+        if (state.cancelRequested) state.message += " · 中止しました";
+        else if (interrupted) state.message += " · カートへのセットが途中で止まりました";
+        else if (added < limit) state.message += " · 条件を満たす追加候補が足りず、指定数に届きませんでした";
       } finally {
         if (staging === initial.root) staging = null;
-        if (state.message.endsWith("中…")) state.message = "";
+        if (state.message.endsWith("中…")) state.message = state.cancelRequested ? "拡張セットを中止しました。" : "条件が変わったためセットを中止しました。";
         state.busy = false;
+        state.cancelRequested = false;
         notify();
       }
     }
@@ -298,9 +309,17 @@
       notify();
     });
 
+    document.addEventListener("hako-af:gacha-cancel-sets", event => {
+      const state = roots.get(event.target);
+      if (!state?.busy) return;
+      state.cancelRequested = true;
+      notify();
+    });
+
     document.addEventListener("click", event => {
       if (!event.isTrusted || !(event.target instanceof Element)) return;
       if (staging?.contains(event.target)) {
+        if (event.target.closest('[data-ha4="gacha-cancel-sets"]')) return;
         event.preventDefault();
         event.stopImmediatePropagation();
         return;

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "はこホム拡張",
-  "version": "3.3.11",
+  "version": "3.3.16",
   "description": "AFの予測・絞り込み、探索統計、通知、編成共有、ホムンクルスの育成を補助します。",
   "permissions": [
     "storage",
@@ -72,6 +72,7 @@
         "forecast.js",
         "artifact-effects.js",
         "list-rules.js",
+        "name-suggestions.js",
         "filter-popup.js",
         "enhance-estimate.js",
         "explore-analysis.js",

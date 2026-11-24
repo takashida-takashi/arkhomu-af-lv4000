@@ -54,7 +54,7 @@
 <body>
   <main>
     <header>
-      <div class="version">v3.3.11</div>
+      <div class="version">v3.3.16</div>
       <h1>はこホム拡張</h1>
       <p class="intro">AFのLv4500予測・絞り込み、探索統計、ホーム通知、編成共有、ホムンクルスの育成を補助します。</p>
       <div class="links"><a class="button primary" href="./guide/#planner">拡張育成プランナーの使い方</a><a class="button" href="./guide/">画像付きの取説を開く</a><a class="button" href="./calculator/">AF強化シミュレーターを開く</a></div>
@@ -65,7 +65,7 @@
       <div class="platforms">
         <article>
           <h3>PC（Chrome・Edge）</h3>
-          <div class="links"><a class="button primary" href="./arkhomu-af-lv4000-v3.3.11.zip" download>PC用ZIPをダウンロード</a></div>
+          <div class="links"><a class="button primary" href="./arkhomu-af-lv4000-v3.3.16.zip" download>PC用ZIPをダウンロード</a></div>
           <ol>
             <li>ZIPを展開します。</li>
             <li>「拡張機能の管理」でデベロッパーモードを有効にし、「パッケージ化されていない拡張機能を読み込む」で展開したフォルダーを選びます。</li>
@@ -106,6 +106,14 @@
 
     <section aria-labelledby="changes">
       <h2 id="changes">最近の変更</h2>
+      <h3>v3.3.16</h3>
+      <ul>
+        <li>AFガチャの「1000連セット」が途中で止まる問題を修正しました。1000回分（5000個）までセットし、進捗・中止・候補不足の案内を表示します。カートに既に入っている分は、不足分だけ追加します。</li>
+        <li>AFの拡張フィルタに「真・」「極・」を追加しました。「含む」「含まない」や、AND・OR、プリセットの保存・共有で使えます。</li>
+        <li>探索結果のエターナルAFに対応し、アイテム名ごとの表示順・ページ指定を追加しました。表示順は小数にも対応し、設定を保存します。</li>
+        <li>探索結果で「強化補助薬」「運命変更液」を獲得したときだけ、「獲得リソース」欄を上部に表示します。通常ドロップとして別ページにある場合も、アイコンと個数を上部で確認できます。</li>
+        <li>ギルドダンジョンのホム名・指定パッシブ名、探索結果のアイテム名の入力に候補表示を追加しました。名前の一部や、ひらがな・カタカナで探せます。</li>
+      </ul>
       <h3>v3.3.11</h3>
       <ul>
         <li>拡張価格追跡に価格推移グラフを追加しました。タップ・マウス・左右キーで日時と価格を確認できます。通常アイテムは履歴を展開せずに「商品を開く」で移動できます。</li>

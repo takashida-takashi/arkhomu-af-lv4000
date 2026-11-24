@@ -463,12 +463,13 @@
           minimumStars: condition.stars, absent: condition.absent
         })) : [];
         return { ...item, original, status, matches,
-          group: plan.groups[extras.dropType(original, original.m_items)] ?? plan.groups.other };
+          group: extras.exploreGroup(original, plan.groups, plan.itemPriorities) };
       }).filter(({ status, original }) => !rule.active || plan.candidates !== "only" ||
         !original._artifact || status?.result === true || status?.unknown && plan.showUnknown);
       const ordered = orderItems(records, plan.sort);
       const candidate = item => item.status?.result === true ? 0 : 1;
-      ordered.sort((a, b) => (plan.candidates === "first" ? candidate(a) - candidate(b) : 0) || a.group.order - b.group.order);
+      ordered.sort((a, b) => (plan.candidates === "first" ? candidate(a) - candidate(b) : 0) || a.group.order - b.group.order ||
+        Number(b.group.type === "af12") - Number(a.group.type === "af12"));
       const groups = new Map();
       for (const item of ordered) {
         if (!groups.has(item.group.page)) groups.set(item.group.page, []);
@@ -739,7 +740,7 @@
           const view = drops && exploreView(instance, toolbar, name);
           const summary = el.querySelector(".fx-summary__totals,.result-summary-totals");
           if (!foundAnalysis && summary) {
-            extras?.prioritizeExploreResource(el);
+            extras?.prioritizeExploreResource(el, props);
             const kind = props?.kind ?? stores?.get("exploreResult")?.current?.kind;
             const hasDrops = kind === "step" && !!toolbar;
             arrangeExploreResources(el, summary, hasDrops ? toolbar : null);
@@ -761,7 +762,7 @@
               explorePlan = null;
             }
             exploreGrid = view.toolbar.parentElement?.querySelector(":scope > .fx-item-grid,:scope > .grid");
-            view.toolbar.dispatchEvent(new CustomEvent("hako-af:drops", { bubbles: true, detail: JSON.stringify(drops.rows) }));
+            view.toolbar.dispatchEvent(new CustomEvent("hako-af:drops", { bubbles: true, detail: JSON.stringify({ rows: drops.rows, itemNames: drops.itemNames }) }));
           }
         }
         if (exploreGrid && components.has(name) && currentExplore.cache?.plan === explorePlan) {

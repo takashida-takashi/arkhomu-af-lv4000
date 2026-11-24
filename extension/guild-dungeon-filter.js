@@ -14,15 +14,15 @@
   const storageKey = "hakoAf4000:guild-dungeon-filter-state";
   const difficulty = ["通常", "過酷", "凶悪", "災厄", "修羅", "修羅Ⅱ", "修羅Ⅲ", "神域", "黙示録",
     "裏Ⅰ", "裏Ⅱ", "裏Ⅲ", "裏Ⅳ", "裏Ⅴ", "裏Ⅵ"].map((label, index) => [String(index + 1), label]);
-  const text = (label, group) => ({ label, group, kind: "text", sortable: false });
+  const text = (label, group, catalog) => ({ label, group, kind: "text", sortable: false, ...(catalog ? { catalog } : {}) });
   const number = (label, group, unit) => ({ label, group, unit, kind: "number" });
   const choice = (label, group, choices, sortable = false) => ({ label, group, kind: "choice", choices, sortable });
   const fields = new Map([
     ["mobDifficulty", { ...choice("道中の難易度", "trial", difficulty, true), ordered: true }],
-    ["mobEnemies", text("道中のホムンクルス", "trial")],
+    ["mobEnemies", text("道中のホムンクルス", "trial", "monsters")],
     ["mobStars", number("道中の強さ", "trial", "★")],
     ["bossDifficulty", { ...choice("ボス難易度", "trial", difficulty, true), ordered: true }],
-    ["bossEnemies", text("ボスのホムンクルス", "trial")],
+    ["bossEnemies", text("ボスのホムンクルス", "trial", "monsters")],
     ["bossStars", number("ボスの強さ", "trial", "★")],
     ["entryFee", number("本日の入場料", "fee", "G")],
     ["normalFee", number("通常入場料", "fee", "G")],
@@ -39,7 +39,7 @@
     for (const [suffix, title, unit] of [["Count", "のホム数", "体"], ["MaxLevel", "の最高Lv", "Lv"],
       ["PassiveCount", "の付与パッシブ枠数", "個"], ["ChosenCount", "の指定パッシブ数", "個"], ["RandomCount", "のランダムパッシブ数", "個"],
       ["ArtifactCount", "の装備AF数", "個"], ["DropRate", "のドロップ倍率", "倍"], ["StealRate", "の盗み倍率", "倍"], ["TrialDrop", "の試練によるドロップ・AF変換率補正", "%"]]) fields.set(side + suffix, number(label + title, "trial", unit));
-    fields.set(side + "Passives", text(label + "の指定パッシブ", "trial"));
+    fields.set(side + "Passives", text(label + "の指定パッシブ", "trial", "passives"));
     fields.set(side + "Artifacts", text(label + "の装備AF", "trial"));
     fields.set(side + "TrialPassive", choice(label + "の報酬元専用パッシブ", "trial", [["1", "あり"], ["0", "なし"]]));
   }
@@ -62,7 +62,14 @@
     unknownLabel: "未確認のダンジョンも表示",
     presetPrefix: "guild-dungeon-filter-preset:",
     shareFormat: "hako-guild-dungeon-filter",
-    isActive
+    isActive,
+    suggestions(key) {
+      if (["description", "version"].includes(key)) return [];
+      return [...document.querySelectorAll(rowSelector)].flatMap(row => {
+        try { const value = JSON.parse(row.getAttribute("data-ha4-guild-filter-row"))[key];return typeof value === "string" ? [value] : value?.names ?? []; }
+        catch { return []; }
+      });
+    }
   };
 
   function evaluate(row, condition) {

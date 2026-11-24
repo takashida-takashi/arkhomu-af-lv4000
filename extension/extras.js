@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const { activeGroup, sumRates } = globalThis.hakoAfListRules;
+  const { activeGroup, sumRates, isVariant, itemPriorities } = globalThis.hakoAfListRules;
   const { readEffects } = globalThis.hakoAfEffects;
   const { getTarget, setTarget, normalizeTarget, DEFAULT_TARGET, MAX_TARGET, MAX_ESTIMATE_TARGET, text: formatMetric } = globalThis.hakoAf4000;
   const names = globalThis.hakoAfFeatureNames;
@@ -82,8 +82,8 @@
   function save(key, value) {
     try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Keep the in-tab settings. */ }
   }
-  function bounded(number, fallback) {
-    const n = Math.floor(Number(number));
+  function bounded(number, fallback, whole = true) {
+    const n = whole ? Math.floor(Number(number)) : Number(number);
     return Number.isFinite(n) && n >= 1 && n <= 99 ? n : fallback;
   }
   function loadSettings() {
@@ -98,8 +98,9 @@
       candidates: ["mark", "first", "only"].includes(stored.candidates) ? stored.candidates : "first",
       matchColor: matchColors.some(([color]) => color === stored.matchColor) ? stored.matchColor : "red",
       thresholdName: typeof stored.thresholdName === "string" ? stored.thresholdName : "",
+      itemPriorities: itemPriorities(stored.itemPriorities),
       groups: Object.fromEntries(types.map(([id, , order, page, legacy]) => [id, {
-        order: bounded((stored.groups?.[id] ?? stored.groups?.[legacy])?.order, order),
+        order: bounded((stored.groups?.[id] ?? stored.groups?.[legacy])?.order, order, false),
         page: bounded((stored.groups?.[id] ?? stored.groups?.[legacy])?.page, page)
       }])),
       alerts: Object.fromEntries(Object.keys(alerts).map(id => [id,
@@ -444,7 +445,7 @@
       labeled(parent, label, field);
       field.addEventListener("change", () => { onChange(field.value); changeSettings(); });
     }
-    function field(parent, label, type, value, onChange) {
+    function field(parent, label, type, value, onChange, step = "1") {
       const input = document.createElement("input");
       input.type = type;
       if (type === "checkbox") input.checked = value;
@@ -452,6 +453,7 @@
       if (type === "number") {
         input.min = 1;
         input.max = 99;
+        input.step = step;
       }
       if (type === "text") input.maxLength = 80;
       labeled(parent, label, input);
@@ -603,19 +605,54 @@
         settings.candidates, value => { settings.candidates = value; });
       select(drops, "一致したAFの強調色", matchColors, settings.matchColor, value => { settings.matchColor = value; });
       field(drops, "条件名（通知用）", "text", settings.thresholdName, value => { settings.thresholdName = value.trim(); });
-      drops.append(node("p", "extra-note", "数字が小さい種類から先に表示します。同じ表示順ではゲーム側の並び順が使われます。リソース・レシピは標準の獲得欄に表示されます。"));
+      drops.append(node("p", "extra-note", "数字が小さい種類から先に表示します。表示順は1.1など小数でも指定できます。同じ表示順はエターナルAFを先にし、その他はゲーム側の並び順を使います。リソース・レシピは標準の獲得欄に表示されます。"));
       const table = node("div", "extra-ranks");
       for (const caption of ["アイテムの種類", "表示順", "ページ"]) table.append(node("strong", "extra-caption", caption));
       for (const [id, name] of types) {
         table.append(node("span", "extra-category", name));
         field(table, name + "の表示順", "number", settings.groups[id].order, value => {
-          settings.groups[id].order = bounded(value, settings.groups[id].order);
-        });
+          settings.groups[id].order = bounded(value, settings.groups[id].order, false);
+        }, "any");
         field(table, name + "のページ", "number", settings.groups[id].page, value => {
           settings.groups[id].page = bounded(value, settings.groups[id].page);
         });
       }
       drops.append(table);
+      drops.append(node("h4", "extra-heading", "アイテム名ごとの表示順"),
+        node("p", "extra-note", "名前が完全一致した通常・特殊アイテムなどに、種類別の設定より優先して適用します。数字が小さいほど先です。条件に合うAFを先頭へ出す設定は維持します。"));
+      const itemTable = node("div", "explore-item-priorities");
+      const suggestions = document.createElement("datalist");
+      suggestions.id = "ha4-explore-item-names";
+      for (const name of currentDrops?.itemNames ?? []) suggestions.append(new Option(name, name));
+      const addItem = makeButton("アイテム名の指定を追加");
+      function renderItems() {
+        itemTable.replaceChildren(...["アイテム名", "表示順", "ページ", ""].map(label => node("strong", "extra-caption", label)));
+        for (const [index, rule] of settings.itemPriorities.entries()) {
+          const name = document.createElement("input");
+          name.type = "text";name.maxLength = 120;name.placeholder = "アイテム名を入力";name.value = rule.name;
+          name.setAttribute("aria-label", `指定${index + 1}のアイテム名`);name.setAttribute("list", suggestions.id);
+          name.addEventListener("change", () => { rule.name = name.value.trim();changeSettings(); });
+          itemTable.append(name);
+          globalThis.hakoAfNameSuggestions?.attach(name, { kind: "items", values: () => currentDrops?.itemNames ?? [] });
+          for (const [key, label] of [["order", "表示順"], ["page", "ページ"]]) {
+            const input = document.createElement("input");
+            input.type = "number";input.min = 1;input.max = 99;input.step = key === "order" ? "any" : "1";input.value = rule[key];
+            input.setAttribute("aria-label", `指定${index + 1}の${label}`);
+            input.addEventListener("change", () => { input.value = rule[key] = bounded(input.value, rule[key], key !== "order");changeSettings(); });
+            itemTable.append(input);
+          }
+          const remove = makeButton("×");
+          remove.setAttribute("aria-label", `指定${index + 1}を削除`);
+          remove.addEventListener("click", () => { settings.itemPriorities.splice(index, 1);renderItems();changeSettings(); });
+          itemTable.append(remove);
+        }
+        addItem.disabled = settings.itemPriorities.length >= 200;
+      }
+      addItem.addEventListener("click", () => {
+        settings.itemPriorities.push({ name: "", order: 1, page: 1 });renderItems();
+        const inputs = itemTable.querySelectorAll('input[type="text"]');inputs[inputs.length - 1]?.focus();
+      });
+      renderItems();drops.append(itemTable, suggestions, addItem);
       const home = subsection(dialog, names.home);
       home.append(node("p", "extra-note", "ショップやギルドの状態を読み込むまでは「未確認」と表示します。"));
       const npcOptions = node("fieldset", "npc-alert-options");
@@ -732,7 +769,7 @@
       if (ui.mode.value !== settings.paging) ui.mode.value = settings.paging;
       const plan = { enabled: true, root: state.root, useForecast: state.useForecast, showUnknown: state.showUnknown,
         sort: state.sortKey ? { key: state.sortKey, direction: state.sortDirection, forecast: state.useForecast } : null,
-        paging: settings.paging, groups: settings.groups, candidates: settings.candidates };
+        paging: settings.paging, groups: settings.groups, itemPriorities: itemPriorities(settings.itemPriorities), candidates: settings.candidates };
       applyExplore(plan);
       const config = JSON.stringify([plan, settings.thresholdName]);
       if (config === ui.signature && data === ui.data) return;
@@ -755,7 +792,7 @@
         const outcome = view.check(item);
         if (outcome.result === true) matches += item.amount;
         if (outcome.unknown) unknown += item.amount;
-        for (const metric of item.metrics.keys()) counts.set(metric, (counts.get(metric) ?? 0) + item.amount);
+        for (const [metric, value] of item.metrics) if (!isVariant(metric) || value.n === 1) counts.set(metric, (counts.get(metric) ?? 0) + item.amount);
       }
       const condition = view.active && !view.error ? labelThreshold(state) : "";
       const unverified = unknown ? "（判定不可 " + numbers.format(unknown) + "個）" : "";
@@ -1137,8 +1174,9 @@
         currentDrops = previousDrops;
         return;
       }
-      receive(event, rows => {
-        if (Array.isArray(rows)) currentDrops = previousDrops = { anchor: event.target, rows, payload: event.detail };
+      receive(event, data => {
+        const rows = Array.isArray(data) ? data : data?.rows;
+        if (Array.isArray(rows)) currentDrops = previousDrops = { anchor: event.target, rows, itemNames: data?.itemNames, payload: event.detail };
       });
     });
     document.addEventListener("hako-af:balance", event => receive(event, recordBalance));

@@ -6,7 +6,7 @@
   const names = globalThis.hakoAfFeatureNames;
   const { getTarget, normalize, levelFrom, valueFrom, ratio, projected, text } = globalThis.hakoAf4000;
   const { parameters, readEffects, optionFor, groups } = globalThis.hakoAfEffects;
-  const { POWER, SUM, DROP, CONVERSION, OP_STAR, sumRates, dropMetrics, metricValue, viewRule, orderItems } = globalThis.hakoAfListRules;
+  const { POWER, SUM, DROP, CONVERSION, OP_STAR, sumRates, dropMetrics, metricValue, isVariant, viewRule, orderItems } = globalThis.hakoAfListRules;
   const conditionRows = globalThis.hakoAfConditionRows;
   const OWN = "[data-ha4]";
   const DETAIL = ".fx-item-detail,.item-detail-panel";
@@ -57,6 +57,7 @@
   let guildDungeonFilter;
   let dungeonRewards;
   document.addEventListener("hako-af:dungeon-rewards-changed", () => requestScan());
+  document.addEventListener("hako-af:explore-priorities-ready", () => requestScan());
   const partyRoots = '.fx-party__panel,.fx-hall-detail,aside[aria-label="投稿の詳細"],[aria-labelledby="hall-classic-comments-title"],[data-party-pointer-slot],.fx-mdetail__hero,.fx-mdetail__head,.detail-pc-fonts,[data-ha4-share-member],[data-ha4-public-training-detail]';
   const trainingRoots = ".fx-mating,.fx-mati,.fx-tgrant,.fx-tgflow,[data-ha4-training-scope],[data-inherit-row]";
   let marketWatch;
@@ -535,14 +536,19 @@
         requestScan();
       });
       const retry = node("button", "extra-button", "計画をリセット");
+      const cancel = node("button", "gacha-cancel-sets", "中止");
       const status = node("span", "gacha-set-status");
       status.setAttribute("role", "status");
       retry.type = "button";
+      cancel.type = "button";
+      cancel.addEventListener("click", event => {
+        if (event.isTrusted) owner.dispatchEvent(new Event("hako-af:gacha-cancel-sets", { bubbles: true }));
+      });
       retry.addEventListener("click", event => {
         if (event.isTrusted) owner.dispatchEvent(new Event("hako-af:gacha-reset-plan", { bubbles: true }));
       });
-      root.append(label, retry, status);
-      ui = { root, toggle, retry, status };
+      root.append(label, retry, cancel, status);
+      ui = { root, toggle, retry, cancel, status };
       gachaInputControls.set(owner, ui);
     }
     if (ui.root.parentElement !== owner) owner.append(ui.root);
@@ -550,6 +556,7 @@
     ui.toggle.checked = extrasApi?.get(gachaSetKey) === true;
     ui.retry.hidden = !ui.toggle.checked || !state.canRecalculate;
     ui.retry.disabled = busy;
+    ui.cancel.hidden = !busy;
     const label = ui.toggle.checked ? message || (!target ? "「合計パワー以上」の条件を選んでください。"
       : !ready ? "投入候補の読み込みを待ち、カートに出し入れできる状態でお試しください。" : "") : "";
     if (ui.status.textContent !== label) ui.status.textContent = label;
@@ -986,6 +993,7 @@
     };
     add(POWER);
     add(SUM);
+    for (const key of ["variant:shin", "variant:goku"]) add(key);
     for (const key of Object.keys(parameters)) add("stat_" + key);
     if (SCOPES.has(type) || type === "auction" || type === "trade" || type === "explore") {
       for (const [key, label, category] of standardTraits) add("trait:" + key, label, category);
@@ -1135,7 +1143,7 @@
       : `${scope} · ${active || checked ? `${resultLabel} ${matched} / ${total}件` : `読み込み ${total}件`}${unknownStatus}${protectedStatus}${keptStatus}`;
     const counts = new Map();
     for (const { metrics } of items) {
-      for (const key of metrics.keys()) counts.set(key, (counts.get(key) ?? 0) + 1);
+      for (const [key, metric] of metrics) if (!isVariant(key) || metric.n === 1) counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     panel.refresh(listOptions(items, nativeSort, conditionRows(state.root), type, report, state.sortKey), counts, {
       active: active || checked, matched, unknown: discard || checked || type === "gacha" ? 0 : unknown, message, resultLabel,

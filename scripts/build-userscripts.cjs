@@ -81,7 +81,7 @@ function copyPreviousDownloads(site) {
   }
 }
 
-const files = ["feature-names.js", "popup-dismiss.js", "forecast.js", "artifact-effects.js", "list-rules.js", "filter-popup.js", "hidden-titles.js", "extras.js", "extras-main.js",
+const files = ["feature-names.js", "popup-dismiss.js", "forecast.js", "artifact-effects.js", "list-rules.js", "name-suggestions.js", "filter-popup.js", "hidden-titles.js", "extras.js", "extras-main.js",
   "enhance-estimate.js", "explore-analysis.js", "market-watch.js", "party-share-main.js", "training-sources-main.js", "training-preview-main.js", "stat-compensation.js", "training-routes-main.js",
   "party-share.js", "training-routes.js", "training-artifacts.js", "training-preview.js", "training-planner.js", "expedition.js", "guild-dungeon-hidden.js", "guild-dungeon-filter.js", "dungeon-rewards.js", "content.js", "gacha-sets.js",
   "expedition-main.js", "expedition-native.js", "monster-boxes.js", "guild-dungeon-main.js", "dungeon-rewards-main.js", "stat-simulator-main.js", "op-model-data.js", "op-insights-main.js", "read-af.js"];
@@ -95,7 +95,7 @@ if (missing.length || extra.length) {
 }
 // Register the UI before the game bridge discards the module exports it uses. The first scan runs next frame.
 // These UI modules do not inspect function source like the game bridges do.
-const compactModules = new Set(["stat-simulator-main.js", "stat-compensation.js", "op-insights-main.js", "market-watch.js", "guild-dungeon-filter.js", "training-planner.js", "training-routes.js", "guild-dungeon-hidden.js"]);
+const compactModules = new Set(["name-suggestions.js", "filter-popup.js", "stat-simulator-main.js", "stat-compensation.js", "op-insights-main.js", "market-watch.js", "guild-dungeon-filter.js", "training-planner.js", "training-routes.js", "guild-dungeon-hidden.js"]);
 const moduleSource = file => {
   const source = read(file).replaceAll("globalThis.hakoAf", "modules.hakoAf");
   return "// " + file + "\n" + (compactModules.has(file) ? minify_sync(source, {

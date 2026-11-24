@@ -4,7 +4,7 @@
   const names = globalThis.hakoAfFeatureNames;
   const { getTarget, normalize } = globalThis.hakoAf4000;
   const { groups } = globalThis.hakoAfEffects;
-  const { activeGroup, minimumMatches, supportsAbsence } = globalThis.hakoAfListRules;
+  const { activeGroup, minimumMatches, isVariant, supportsAbsence } = globalThis.hakoAfListRules;
   const PRESET_PREFIX = "af-filter-preset:";
   const SHARE_FORMAT = "hako-af-filter";
   let openPopup;
@@ -23,7 +23,7 @@
     }
     let visited = 0;
     const metric = key => typeof key === "string" && (fields ? fields.has(key) :
-      /^(power|rate_sum|(?:stat_|trait:)[\w-]{1,128})$/.test(key));
+      /^(power|rate_sum|variant:(?:shin|goku)|(?:stat_|trait:)[\w-]{1,128})$/.test(key));
     function readNumber(value) {
       if (value == null || value === "") return "";
       if ((typeof value === "number" || (typeof value === "string" && value.trim())) && Number.isFinite(Number(value))) {
@@ -65,6 +65,7 @@
         }
         annotation.absent = true;
       }
+      if (isVariant(node.key)) return { key: node.key, min: "", max: "", stars: "", ...annotation };
       const stars = node.stars == null ? "" : String(node.stars);
       if (stars && !/^[1-5]$/.test(stars)) throw new Error("★の数は1～5で指定してください。");
       return { key: node.key, min: readNumber(node.min), max: readNumber(node.max), stars, ...annotation };
@@ -72,7 +73,7 @@
     return {
       name: typeof data.name === "string" ? data.name.trim().slice(0, 48) : "",
       root: readNode(data.root, 0), useForecast: data.useForecast !== false, showUnknown: data.showUnknown === true,
-      sortKey: metric(data.sortKey) && fields?.get(data.sortKey)?.sortable !== false ? data.sortKey : "",
+      sortKey: metric(data.sortKey) && !isVariant(data.sortKey) && fields?.get(data.sortKey)?.sortable !== false ? data.sortKey : "",
       sortDirection: data.sortDirection === "asc" ? "asc" : "desc",
       highlightSections: data.highlightSections !== false
     };
@@ -347,7 +348,7 @@
     });
     copyPreset.addEventListener("click", async () => {
       const preset = currentPreset();
-      const needsCurrentFormat = node => node.sectionPage || node.absent || node.children?.some(needsCurrentFormat);
+      const needsCurrentFormat = node => isVariant(node.key) || node.sectionPage || node.absent || node.children?.some(needsCurrentFormat);
       const version = needsCurrentFormat(preset.root) ? 2 : 1;
       shareText.value = JSON.stringify({ format: shareFormat, version, name: presetName.value.trim(), ...preset });
       updatePresetButtons();
@@ -424,7 +425,7 @@
       }
     }
 
-    function renderValues(row, condition, { label, unit, kind, choices, ordered }) {
+    function renderValues(row, condition, { label, unit, kind, choices, ordered, catalog }) {
       if (kind === "text" || kind === "choice") {
         if (kind === "text") {
           const operator = element("select");
@@ -463,6 +464,9 @@
           onChange();
         });
         row.append(input);
+        if (kind === "text" && (catalog || custom?.suggestions)) globalThis.hakoAfNameSuggestions?.attach(input, {
+          kind: catalog, values: () => custom?.suggestions?.(condition.key) ?? []
+        });
         return;
       }
       const bounds = [];
@@ -479,6 +483,7 @@
         });
         row.append(operator);
       }
+      if (kind === "flag") return;
       for (const [field, caption] of [["min", "下限"], ["max", "上限"]]) {
         const input = element("input");
         input.type = "number";

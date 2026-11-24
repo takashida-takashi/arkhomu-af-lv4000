@@ -30,6 +30,10 @@ jobs:
           node tests/update-check.cjs
           node tests/desktop-update.cjs
           node tests/forecast-target.cjs
+          node tests/artifact-variants.cjs
+          node tests/explore-priority.cjs
+          node tests/name-suggestions.cjs
+          node tests/gacha-fill.cjs
           node tests/op-insights.cjs
           node tests/stat-compensation.cjs
           node tests/enhance-potion.cjs

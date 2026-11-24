@@ -80,11 +80,16 @@
     const effects = traits
       .filter(trait => /^[a-z][a-z0-9_-]{0,79}$/.test(trait?.key ?? "") && Number.isFinite(Number(trait.value)))
       .map(({ key, value }) => [key, Number(value), stars(key)]);
-    return { level, parameters, effects };
+    const prefix = artifact.prefix;
+    const variant = typeof prefix === "string" ? prefix.startsWith("真・") ? "shin" : prefix.startsWith("極・") ? "goku" : "normal" : null;
+    return { level, parameters, effects, ...(variant == null ? {} : { variant }) };
   }
 
   function readEffects(snapshot) {
     const metrics = new Map();
+    if (["normal", "shin", "goku"].includes(snapshot.variant)) {
+      for (const variant of ["shin", "goku"]) metrics.set("variant:" + variant, { n: Number(snapshot.variant === variant), unit: "", fixed: true });
+    }
     for (const [key, n, stars] of snapshot.parameters) {
       if (n !== 0 && Object.hasOwn(parameters, key)) {
         metrics.set("stat_" + key, { n: Number(n.toFixed(2)), unit: "%", stars });
@@ -119,6 +124,9 @@
   }
 
   function optionFor(key) {
+    if (key === "variant:shin" || key === "variant:goku") {
+      return { label: key === "variant:shin" ? "真・" : "極・", group: "basic", unit: "", kind: "flag", sortable: false };
+    }
     if (key.startsWith("op_star:")) {
       const op = key.slice(8), multiplier = /^add_(hp|atk|mtk|def|mdf|spd)$/.test(op);
       return { label: (op === "all_param" ? "全パラメータ倍率" : multiplier ? parameters[op.slice(4)] + "倍率" : traitLabel(op)) + " 推定", group: "other", unit: "★" };

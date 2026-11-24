@@ -1,0 +1,12 @@
+const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm"), assert = require("node:assert/strict");
+const scope = { document: { addEventListener() {} } };vm.createContext(scope);
+vm.runInContext(fs.readFileSync(path.join(__dirname, "../extension/name-suggestions.js"), "utf8"), scope);
+const matches = (names, query) => Array.from(scope.hakoAfNameSuggestions.matches(names, query));
+assert.deepEqual(matches(["ファフニール", "極・ファフニール", "ファフニール", "ベルフェゴール"], "ふぁふ"), ["ファフニール", "極・ファフニール"]);
+assert.deepEqual(matches(["超ポーション", "ポーション", "ポーションの欠片"], "ポー"), ["ポーション", "ポーションの欠片", "超ポーション"]);
+assert.deepEqual(matches(["黄金の巣母アピソフィア", "黄金のアピソフィア", "巣母"], "黄金　巣母"), ["黄金の巣母アピソフィア"]);
+assert.deepEqual(matches(["ＡＦ素材", "af武器", null, 5, ""], "af"), ["ＡＦ素材", "af武器"]);
+assert.deepEqual(matches(["名前"], ""), []);
+assert.equal(matches(Array.from({ length: 1000 }, (_, index) => "素材" + index), "素材").length, 20);
+assert.deepEqual(matches(["<script>名前</script>"], "名前"), ["<script>名前</script>"], "Labels remain text for safe DOM rendering");
+console.log("Name suggestions: partial/AND matching, kana and width equivalence, exact duplicate removal, prefix priority, empty queries and result limits passed.");

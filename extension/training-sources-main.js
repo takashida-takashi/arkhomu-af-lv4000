@@ -77,6 +77,22 @@
     return (name && name !== master.name_key ? name : master?.name ?? name) || master?.id;
   }
 
+  document.addEventListener("hako-af:read-name-catalog", async event => {
+    const kind = event.detail;
+    if (!["monsters", "items", "passives"].includes(kind)) return;
+    try {
+      const properties = document.getElementById("__nuxt")?.__vue_app__?.config?.globalProperties;
+      const build = properties?.$config?.public?.buildId ?? properties?.$nuxt?.$config?.public?.buildId;
+      const data = await readMasters(build, kind);
+      const translate = key => properties?.$t?.(key) ?? key;
+      const names = [...new Set((data?.[kind] ?? []).filter(isPublic).map(master => {
+        const name = label(master, translate);
+        return typeof name === "string" && name !== master.id && !(name === master.name_key && /^[\w.-]+$/.test(name)) ? name : null;
+      }).filter(Boolean))];
+      document.dispatchEvent(new CustomEvent("hako-af:name-catalog", { detail: JSON.stringify({ kind, names, loaded: names.length > 0 }) }));
+    } catch { document.dispatchEvent(new CustomEvent("hako-af:name-catalog", { detail: JSON.stringify({ kind, names: [], loaded: false }) })); }
+  });
+
   function rank6UniqueName(data, member, translate) {
     const monsters = (data?.monsters ?? []).filter(isPublic);
     const name = member.name?.normalize("NFKC");

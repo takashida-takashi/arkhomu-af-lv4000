@@ -9,6 +9,31 @@
   const CONVERSION = "trait:add_artifact_rate";
   const OP_STAR = "op_star:";
 
+  const itemName = name => typeof name === "string" ? name.normalize("NFKC").replace(/\s+/g, " ").trim() : "";
+  function itemPriorities(value) {
+    const bounded = (n, fallback, whole = false) => Number.isFinite(Number(n)) && Number(n) >= 1 && Number(n) <= 99 ? whole ? Math.floor(Number(n)) : Number(n) : fallback;
+    return (Array.isArray(value) ? value : []).slice(0, 200).flatMap(row => {
+      const name = itemName(row?.name).slice(0, 120);
+      return name ? [{ name, order: bounded(row.order, 1), page: bounded(row.page, 1, true) }] : [];
+    });
+  }
+  function dropType(item, master = item?.m_items) {
+    if (item?._artifact) {
+      const rank = Number(item._artifact.rank ?? item.artifact_rank ?? item._artifact.rarities?.__artifact_rank ??
+        item.rarities?.__artifact_rank ?? item.display_rank ?? master?.rank);
+      return Number.isInteger(rank) && rank >= 1 && rank <= 12 ? "af" + rank : "afOther";
+    }
+    if (item?.soul_monster_id) return "soul";
+    if (master?.type === "homunculus_egg" || item?.type === "homunculus_egg") return "egg";
+    if (master?.type || item?.type) return "special";
+    return master || item?.item_id ? "normal" : "other";
+  }
+  function dropGroup(item, master, groups, priorities, name) {
+    const type = dropType(item, master), target = itemName(name);
+    const override = !item?._artifact && target && priorities?.find(row => itemName(row.name) === target);
+    return { ...(override || groups[type] || groups.other || { order: 6, page: 5 }), type };
+  }
+
   function sumRates(metrics, allowMissing = false) {
     const a = metrics.get(CONVERSION);
     const b = metrics.get(DROP);
@@ -59,12 +84,17 @@
     return Number.isSafeInteger(group.minimum) && group.minimum > 0 ? group.minimum : 2;
   }
 
+  function isVariant(key) {
+    return key === "variant:shin" || key === "variant:goku";
+  }
+
   function supportsAbsence(key) {
-    return key.startsWith("trait:") || key.startsWith("stat_");
+    return isVariant(key) || key.startsWith("trait:") || key.startsWith("stat_");
   }
 
   function evaluate(item, condition, forecast) {
     const metric = item.metrics.get(condition.key);
+    if (isVariant(condition.key)) return metric ? (metric.n === 1) !== (condition.absent === true) : null;
     if (condition.absent === true) return metric ? false : item.complete ? true : null;
     if (!metric) return item.complete && condition.key !== POWER ? false : null;
     if (condition.stars) {
@@ -141,7 +171,7 @@
       }
       return node.children.map(validationError).find(Boolean);
     }
-    if (!node.absent && node.min && node.max && Number(node.min) > Number(node.max)) {
+    if (!isVariant(node.key) && !node.absent && node.min && node.max && Number(node.min) > Number(node.max)) {
       return "下限は上限以下にしてください。";
     }
   }
@@ -195,5 +225,6 @@
   }
 
   globalThis.hakoAfListRules = Object.freeze({ POWER, SUM, DROP, CONVERSION, OP_STAR, sumRates, dropMetrics, metricValue,
-    activeGroup, minimumMatches, supportsAbsence, evaluateGroup, validationError, viewRule, orderItems });
+    activeGroup, minimumMatches, isVariant, supportsAbsence, evaluateGroup, validationError, viewRule, orderItems,
+    itemPriorities, dropType, dropGroup });
 })();

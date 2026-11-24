@@ -812,7 +812,7 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
 .fx-agrid__cell:has(> [data-ha4="keep"]) { position: relative; }
 [data-ha4="keep"] input { appearance: auto; accent-color: #aa69e9; margin: 0; }
 
-[data-ha4="settings-launch"], [data-ha4="extra-button"],
+[data-ha4="settings-launch"], [data-ha4="extra-button"], [data-ha4="gacha-cancel-sets"],
 [data-ha4="explore-controls"] select, [data-ha4="settings"] :is(input:not([type="checkbox"]),select),
 [data-ha4="watch-item"] input, [data-ha4="skill-presets"] :is(input,select) {
   background: #272039;
@@ -823,7 +823,7 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
   padding: 5px 9px;
   min-height: 30px;
 }
-[data-ha4="settings-launch"], [data-ha4="extra-button"] { cursor: pointer; white-space: nowrap; }
+[data-ha4="settings-launch"], [data-ha4="extra-button"], [data-ha4="gacha-cancel-sets"] { cursor: pointer; white-space: nowrap; }
 [data-ha4="extra-button"][aria-pressed="true"] { background: #563480; border-color: #c0a0ea; }
 [data-ha4="footer-versions"] {
   display: inline-flex;
@@ -950,6 +950,7 @@ li:has(> [data-ha4="explore-card"][data-matches]) { position: relative; }
 [data-ha4="gacha-capacity"], [data-ha4="gacha-set-controls"] { grid-column: 1 / -1; flex-basis: 100%; }
 [data-ha4="gacha-capacity"] { display: block; white-space: pre-line; font-weight: 650; color: #e3ccff; }
 [data-ha4="gacha-set-controls"] { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; }
+[data-ha4="gacha-cancel-sets"][hidden] { display: none !important; }
 [data-ha4="gacha-set-label"] { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; }
 [data-ha4="gacha-set-status"] { color: #d2c5df; font-size: .85em; }
 [data-ha4="training-form"] { display: grid; gap: .6rem; padding: .7rem .9rem; }
@@ -1129,12 +1130,23 @@ textarea[data-ha4="training-input"] { width: 100%; resize: vertical; }
 [data-ha4="npc-alert-options"]:disabled { opacity: .6; }
 [data-ha4="extra-ranks"] {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 60px 60px;
+  grid-template-columns: minmax(0, 1fr) 76px 60px;
   align-items: center;
   gap: 4px 8px;
 }
 [data-ha4="extra-ranks"] > label { min-width: 0; font-size: 0; }
 [data-ha4="extra-ranks"] input { width: 100%; box-sizing: border-box; }
+[data-ha4="explore-item-priorities"] { display: grid; grid-template-columns: minmax(0, 1fr) 76px 48px 30px; gap: 6px; align-items: center; margin-block: .5rem; }
+[data-ha4="explore-item-priorities"] input { width: 100%; min-width: 0; box-sizing: border-box; }
+[data-ha4="explore-item-priorities"] button { padding-inline: 4px; }
+[data-ha4="name-field"] { position: relative; display: inline-block; min-width: 0; max-width: 100%; flex: 1 1 12rem; }
+[data-ha4="name-field"] > input { box-sizing: border-box; width: 100%; }
+[data-ha4="name-suggestions"] { position: absolute; inset: 100% 0 auto; z-index: 30; overflow-y: auto; padding: 3px; border: 1px solid #806296; border-radius: 4px; background: #21182d; color: #eee2ff; box-shadow: 0 5px 15px #0008; }
+[data-ha4="name-suggestions"][hidden] { display: none !important; }
+[data-ha4="name-suggestions"][data-above="true"] { inset: auto 0 100%; }
+[data-ha4="name-suggestions"] > button { display: block; width: 100%; padding: 7px 9px !important; text-align: start; white-space: normal; overflow-wrap: anywhere; background: transparent !important; border: 0 !important; color: inherit; }
+[data-ha4="name-suggestions"] > button:is(:hover,[aria-selected="true"]) { background: #56356f !important; }
+[data-ha4="name-suggestions"] > small { display: block; padding: 7px; }
 [data-ha4="extra-caption"] { font-size: 12px; }
 [data-ha4="extra-note"] { color: #c5b9d6; font-size: 12px; }
 
@@ -1187,21 +1199,16 @@ textarea[data-ha4="training-input"] { width: 100%; resize: vertical; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-[data-ha4="explore-priority-resource"] {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  order: -1;
-  padding: 10px 12px;
-  margin-bottom: 10px;
-  border: 1px solid #e0ad40;
-  border-radius: 8px;
-  background: #392b16;
-  color: #ffdc7a;
-}
-[data-ha4="explore-priority-resource"] > img { width: 34px; height: 34px; object-fit: contain; }
-[data-ha4="explore-priority-resource"] > :last-child { margin-inline-start: auto; white-space: nowrap; }
-[data-ha4-explore-priority-source] { display: none !important; }
+[data-ha4-explore-priority-flow] { display: flex; flex-direction: column; }
+[data-ha4-explore-priority-flow] > [data-ha4-explore-priority-resources] { order: -1 !important; }
+[data-ha4="explore-priority-resources"] { margin-bottom: 10px; }
+[data-ha4="explore-priority-resources"] > h3 { margin: 0 0 6px; font-size: 1rem; color: #dfc3f5; }
+[data-ha4="priority-resource-grid"] { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 112px)); gap: 8px; list-style: none; margin: 6px 0; padding: 0; }
+[data-ha4="priority-resource-grid"][hidden] { display: none !important; }
+[data-ha4="priority-resource-card"] { position: relative; display: grid; justify-items: center; padding: 9px 5px 5px; border: 1px solid #69527e; border-radius: 5px; background: #211a2d; color: #eee5f8; }
+[data-ha4="priority-resource-card"] > img { width: 48px; height: 48px; object-fit: contain; }
+[data-ha4="priority-resource-card"] > strong { position: absolute; inset: 3px 4px auto auto; font-size: 12px; background: #100c19d9; padding: 1px 3px; border-radius: 3px; }
+[data-ha4="priority-resource-card"] > span { font-size: 12px; text-align: center; overflow-wrap: anywhere; }
 @media (hover: hover) and (pointer: fine) {
   [data-ha4-explore-flow] { display: flex; flex-direction: column; }
   [data-ha4-explore-flow] > [data-ha4-explore-resources] { order: 1; }
